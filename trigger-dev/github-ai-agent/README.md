@@ -79,6 +79,7 @@ If you previously used `GITHUB_PERSONAL_ACCESS_TOKEN` in `.env`, rename that lin
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude (**required** for deploy sync) |
 | `GITHUB_LABELS` | Optional CSV of allowed issue labels |
 | `SLACK_WEBHOOK_URL` | Optional Slack incoming webhook URL |
+| `GITHUB_PUSH_SUMMARY_DEFAULT_BRANCH_ONLY` | Optional. If `true`, **`handle-push`** only runs for the repo’s default branch (`main`). **Default:** unset / `false` — **any branch** gets a Slack summary (easier for demos). |
 
 ## Deploying task changes
 

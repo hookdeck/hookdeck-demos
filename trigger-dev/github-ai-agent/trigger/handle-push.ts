@@ -1,8 +1,10 @@
 /**
  * AI-powered deployment summary to Slack.
  *
- * When code is pushed to the default branch, summarizes what shipped using
- * Claude and posts the summary to a Slack channel.
+ * On `push`, summarizes what changed using Claude and posts to Slack.
+ * By default **any branch** is summarized (good for demos). Set
+ * `GITHUB_PUSH_SUMMARY_DEFAULT_BRANCH_ONLY=true` in Trigger.dev env to only
+ * run for the repo default branch (e.g. `main`).
  *
  * In Pattern A: triggered by github-webhook-handler (no verification needed).
  * In Pattern B: triggered directly by Hookdeck (verifies independently).
@@ -52,10 +54,15 @@ export const handlePush = task({
     const branch = payload.ref.replace("refs/heads/", "");
     const defaultBranch = payload.repository.default_branch;
 
-    // Only summarize pushes to the default branch
-    if (branch !== defaultBranch) {
-      console.log(`Ignoring push to non-default branch: ${branch}`);
-      return { skipped: true, branch };
+    const defaultBranchOnly =
+      process.env.GITHUB_PUSH_SUMMARY_DEFAULT_BRANCH_ONLY === "true" ||
+      process.env.GITHUB_PUSH_SUMMARY_DEFAULT_BRANCH_ONLY === "1";
+
+    if (defaultBranchOnly && branch !== defaultBranch) {
+      console.log(
+        `Ignoring push to non-default branch (${branch}; default is ${defaultBranch}) — set GITHUB_PUSH_SUMMARY_DEFAULT_BRANCH_ONLY=false to allow all branches`
+      );
+      return { skipped: true, branch, defaultBranch };
     }
 
     const commits = payload.commits ?? [];
@@ -64,7 +71,9 @@ export const handlePush = task({
       return { skipped: true, reason: "no commits" };
     }
 
-    console.log(`Summarizing push to ${repoName}/${defaultBranch}: ${commits.length} commits`);
+    console.log(
+      `Summarizing push to ${repoName}@${branch}${branch === defaultBranch ? " (default)" : ""}: ${commits.length} commits`
+    );
 
     // Build context for the LLM
     const commitSummary = commits
@@ -78,10 +87,10 @@ export const handlePush = task({
       ...new Set(commits.flatMap((c) => [...c.added, ...c.modified, ...c.removed])),
     ];
 
-    const prompt = `Summarize this deployment for a team Slack channel. Write 2-3 sentences about what shipped. Be specific about the changes, not generic. Don't list individual commits — synthesize them into a cohesive summary.
+    const prompt = `Summarize this code push for a team Slack channel. Write 2-3 sentences about what changed. Be specific, not generic. Don't list individual commits — synthesize them into a cohesive summary.
 
 Repository: ${repoName}
-Branch: ${defaultBranch}
+Branch: ${branch}${branch === defaultBranch ? " (default branch)" : ""}
 Pushed by: ${payload.pusher.name}
 Commits (${commits.length}):
 ${commitSummary}
@@ -92,7 +101,7 @@ ${allFiles.slice(0, 30).join("\n")}${allFiles.length > 30 ? `\n... and ${allFile
     const summary = await ask(prompt, 300);
 
     // Format the Slack message
-    const slackMessage = `*Deploy: ${repoName}*\n${summary}\n\n_${commits.length} commits by ${payload.pusher.name}_ | <${payload.compare}|View diff>`;
+    const slackMessage = `*Push: ${repoName} (${branch})*\n${summary}\n\n_${commits.length} commits by ${payload.pusher.name}_ | <${payload.compare}|View diff>`;
 
     await postToSlack(slackMessage);
 
