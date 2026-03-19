@@ -4,7 +4,8 @@
   "private": true,
   "description": "GitHub AI agent demo: Hookdeck webhook routing to Trigger.dev tasks",
   "scripts": {
-    "setup": "npm run deploy && bash scripts/setup-hookdeck.sh && bash scripts/setup-github-webhook.sh",
+    "setup": "bash scripts/setup.sh",
+    "setup:check": "bash scripts/setup.sh --check",
     "setup:hookdeck": "bash scripts/setup-hookdeck.sh",
     "setup:github": "bash scripts/setup-github-webhook.sh",
     "setup:dry-run": "DRY_RUN=true bash scripts/setup-hookdeck.sh",

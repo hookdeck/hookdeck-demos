@@ -6,11 +6,16 @@
  * under Incoming Webhooks.
  */
 
-/** Post a message to a Slack channel via incoming webhook. */
-export async function postToSlack(text: string): Promise<void> {
+/**
+ * Post a message to a Slack channel via incoming webhook.
+ * If SLACK_WEBHOOK_URL is not set, logs to console instead of failing.
+ * Returns true if posted to Slack, false if logged to console.
+ */
+export async function postToSlack(text: string): Promise<boolean> {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) {
-    throw new Error("SLACK_WEBHOOK_URL environment variable is not set");
+    console.log("[Slack not configured] Would have posted:", text);
+    return false;
   }
 
   const response = await fetch(webhookUrl, {
@@ -22,4 +27,6 @@ export async function postToSlack(text: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Failed to post to Slack: ${response.status} ${response.statusText}`);
   }
+
+  return true;
 }
