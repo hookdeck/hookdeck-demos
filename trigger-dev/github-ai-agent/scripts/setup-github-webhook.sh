@@ -31,12 +31,37 @@ done
 
 # Get the Hookdeck source URL
 echo "Getting Hookdeck source URL..."
-hookdeck ci --api-key "$HOOKDECK_API_KEY" 2>/dev/null
 
-HOOKDECK_SOURCE_URL=$(hookdeck gateway source get github --output json 2>/dev/null | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
+# First, check if setup-hookdeck.sh saved the URL to a file
+SOURCE_URL_FILE="$PROJECT_DIR/.hookdeck-source-url"
+if [ -f "$SOURCE_URL_FILE" ]; then
+  HOOKDECK_SOURCE_URL=$(cat "$SOURCE_URL_FILE")
+  echo "  Found saved URL from Hookdeck setup"
+fi
 
-if [ -z "$HOOKDECK_SOURCE_URL" ]; then
-  echo "Error: Could not get Hookdeck source URL. Run setup-hookdeck.sh first."
+# If not found in file, try to fetch it via the CLI
+if [ -z "${HOOKDECK_SOURCE_URL:-}" ]; then
+  echo "  Fetching from Hookdeck API..."
+  hookdeck ci --api-key "$HOOKDECK_API_KEY" 2>/dev/null
+  
+  # Try to get the source and parse the URL using Python (more portable than jq)
+  SOURCE_JSON=$(hookdeck gateway source get github --output json 2>/dev/null || true)
+  if [ -n "$SOURCE_JSON" ]; then
+    HOOKDECK_SOURCE_URL=$(echo "$SOURCE_JSON" | python3 -c "
+import sys
+import json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('url', ''))
+except:
+    pass
+" 2>/dev/null || true)
+  fi
+fi
+
+if [ -z "${HOOKDECK_SOURCE_URL:-}" ]; then
+  echo "Error: Could not get Hookdeck source URL."
+  echo "  Run setup-hookdeck.sh first, or set HOOKDECK_SOURCE_URL in .env"
   exit 1
 fi
 
@@ -56,7 +81,7 @@ if [ -n "$EXISTING_HOOK_ID" ]; then
     -f "events[]=pull_request" \
     -f "events[]=issues" \
     -f "events[]=push" \
-    -f "active=true" \
+    -F "active=true" \
     --silent
   echo "Webhook updated successfully."
 else
@@ -70,7 +95,7 @@ else
     -f "events[]=pull_request" \
     -f "events[]=issues" \
     -f "events[]=push" \
-    -f "active=true" \
+    -F "active=true" \
     --silent
   echo "Webhook created successfully."
 fi

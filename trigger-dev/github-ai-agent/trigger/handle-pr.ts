@@ -36,6 +36,8 @@ interface PRPayload {
   repository: {
     full_name: string;
   };
+  /** Allows passing this payload to `verifyHookdeckEvent` (`HookdeckPayload`). */
+  [key: string]: unknown;
 }
 
 export const handlePR = task({

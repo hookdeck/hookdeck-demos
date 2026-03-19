@@ -50,7 +50,8 @@ echo ""
 echo "=== Pattern A: Single main task (fan-out) ==="
 echo ""
 
-hookdeck gateway connection upsert "github-to-main-handler" \
+# Create the first connection and capture output to extract the Source URL
+CONNECTION_OUTPUT=$(hookdeck gateway connection upsert "github-to-main-handler" \
   --source-name "github" \
   --source-type GITHUB \
   --source-webhook-secret "$GITHUB_WEBHOOK_SECRET" \
@@ -64,7 +65,25 @@ hookdeck gateway connection upsert "github-to-main-handler" \
   --rule-transform-code "$TRANSFORM_CODE" \
   --rule-retry-count 5 \
   --rule-retry-strategy linear \
-  $DRY_RUN_FLAG
+  --rule-retry-interval 60000 \
+  $DRY_RUN_FLAG 2>&1)
+
+echo "$CONNECTION_OUTPUT"
+
+# Extract Source URL from the connection output using Python (more portable than jq)
+HOOKDECK_SOURCE_URL=$(echo "$CONNECTION_OUTPUT" | python3 -c "
+import sys
+for line in sys.stdin:
+    if 'Source URL:' in line:
+        # Format is 'Source URL:  https://hkdk.events/xxx'
+        print(line.split('Source URL:')[1].strip())
+        break
+" 2>/dev/null || true)
+
+# Export for later use by setup-github-webhook.sh
+if [ -n "$HOOKDECK_SOURCE_URL" ]; then
+  export HOOKDECK_SOURCE_URL
+fi
 
 echo ""
 echo "=== Pattern B: Per-event routing ==="
@@ -84,6 +103,7 @@ hookdeck gateway connection upsert "github-to-handle-pr" \
   --rule-transform-name "trigger-wrapper" \
   --rule-retry-count 5 \
   --rule-retry-strategy linear \
+  --rule-retry-interval 60000 \
   $DRY_RUN_FLAG
 
 echo ""
@@ -102,6 +122,7 @@ hookdeck gateway connection upsert "github-to-handle-issue" \
   --rule-transform-name "trigger-wrapper" \
   --rule-retry-count 5 \
   --rule-retry-strategy linear \
+  --rule-retry-interval 60000 \
   $DRY_RUN_FLAG
 
 echo ""
@@ -120,11 +141,21 @@ hookdeck gateway connection upsert "github-to-handle-push" \
   --rule-transform-name "trigger-wrapper" \
   --rule-retry-count 5 \
   --rule-retry-strategy linear \
+  --rule-retry-interval 60000 \
   $DRY_RUN_FLAG
 
 echo ""
 echo "=== Hookdeck setup complete ==="
 echo ""
-echo "Source URL (register this with GitHub):"
-hookdeck gateway source get github --output json 2>/dev/null | grep -o '"url":"[^"]*"' | cut -d'"' -f4 || echo "  (run without --dry-run to see the URL)"
+
+# Output the Source URL that was captured during connection creation
+if [ -n "${HOOKDECK_SOURCE_URL:-}" ]; then
+  echo "Source URL (register this with GitHub):"
+  echo "  $HOOKDECK_SOURCE_URL"
+  
+  # Save to a temp file so setup-github-webhook.sh can read it
+  echo "$HOOKDECK_SOURCE_URL" > "$PROJECT_DIR/.hookdeck-source-url"
+else
+  echo "Source URL: (could not extract — check the Hookdeck dashboard)"
+fi
 echo ""

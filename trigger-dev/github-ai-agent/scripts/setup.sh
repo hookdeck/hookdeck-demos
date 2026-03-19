@@ -40,15 +40,15 @@ load_env() {
 }
 
 # Write a key=value to .env (update if exists, append if not)
+# Values are quoted to handle spaces (e.g., label names like "good first issue")
 set_env() {
   local key="$1"
   local value="$2"
   if [ -f "$ENV_FILE" ] && grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-    # Update existing line (use | as sed delimiter to handle URLs with /)
-    sed -i.bak "s|^${key}=.*|${key}=${value}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
-  else
-    echo "${key}=${value}" >> "$ENV_FILE"
+    # Update existing line - delete and re-append to handle quoting properly
+    grep -v "^${key}=" "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
   fi
+  echo "${key}=\"${value}\"" >> "$ENV_FILE"
   export "$key=$value"
 }
 
@@ -116,17 +116,21 @@ fi
 
 ok "gh CLI authenticated"
 
-# Auto-detect GitHub token
-if [ -z "${GITHUB_TOKEN:-}" ]; then
+# GitHub API token for tasks (same name in .env and Trigger.dev)
+if [ -z "${GITHUB_ACCESS_TOKEN:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+  set_env "GITHUB_ACCESS_TOKEN" "$GITHUB_TOKEN"
+  ok "Copied legacy GITHUB_TOKEN → GITHUB_ACCESS_TOKEN (you can delete GITHUB_TOKEN from .env)"
+fi
+if [ -z "${GITHUB_ACCESS_TOKEN:-}" ]; then
   GH_TOKEN=$(gh auth token 2>/dev/null || true)
   if [ -n "$GH_TOKEN" ]; then
-    set_env "GITHUB_TOKEN" "$GH_TOKEN"
-    ok "GITHUB_TOKEN auto-detected from gh CLI"
+    set_env "GITHUB_ACCESS_TOKEN" "$GH_TOKEN"
+    ok "GITHUB_ACCESS_TOKEN auto-detected from gh CLI"
   else
-    prompt_for "GITHUB_TOKEN" "GitHub token" "Create at: https://github.com/settings/tokens"
+    prompt_for "GITHUB_ACCESS_TOKEN" "GitHub access token" "Create at: https://github.com/settings/tokens (repo scope)"
   fi
 else
-  ok "GITHUB_TOKEN already set"
+  ok "GITHUB_ACCESS_TOKEN already set"
 fi
 
 # Auto-detect repo
@@ -157,6 +161,22 @@ else
   ok "GITHUB_WEBHOOK_SECRET already set"
 fi
 
+# Fetch available labels from the repo
+if [ -z "${GITHUB_LABELS:-}" ]; then
+  echo "  Fetching labels from $GITHUB_REPO..."
+  REPO_LABELS=$(gh api "repos/$GITHUB_REPO/labels" --jq '.[].name' 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+  if [ -n "$REPO_LABELS" ]; then
+    set_env "GITHUB_LABELS" "$REPO_LABELS"
+    ok "GITHUB_LABELS fetched from repo"
+    echo -e "  ${DIM}Labels: ${REPO_LABELS}${NC}"
+  else
+    warn "Could not fetch labels — using defaults"
+    set_env "GITHUB_LABELS" "bug,enhancement,question,documentation"
+  fi
+else
+  ok "GITHUB_LABELS already set"
+fi
+
 # ── 2. Hookdeck ───────────────────────────────────────────
 
 header "Hookdeck"
@@ -175,11 +195,11 @@ prompt_for "HOOKDECK_API_KEY" "Hookdeck API key" \
 
 header "Trigger.dev"
 
-prompt_for "TRIGGER_SECRET_KEY" "Trigger.dev secret key" \
-  "Dashboard → Project Settings → API Keys (starts with tr_dev_ or tr_prod_)"
+prompt_for "TRIGGER_SECRET_KEY" "Trigger.dev Production secret key" \
+  "Dashboard → API keys → Production (must start with tr_prod_) https://cloud.trigger.dev"
 
 prompt_for "TRIGGER_PROJECT_REF" "Trigger.dev project ref" \
-  "Dashboard → Project Settings (e.g., proj_xxxx)"
+  "Project settings → General (e.g., proj_xxxx) https://cloud.trigger.dev"
 
 # ── 4. Anthropic ──────────────────────────────────────────
 
@@ -213,14 +233,36 @@ fi
 
 header "Configuration summary"
 
-echo -e "  GITHUB_REPO            = ${GITHUB_REPO:-${RED}not set${NC}}"
-echo -e "  GITHUB_TOKEN           = ${GITHUB_TOKEN:+${GREEN}set${NC}}${GITHUB_TOKEN:-${RED}not set${NC}}"
-echo -e "  GITHUB_WEBHOOK_SECRET  = ${GITHUB_WEBHOOK_SECRET:+${GREEN}set (auto-generated)${NC}}${GITHUB_WEBHOOK_SECRET:-${RED}not set${NC}}"
-echo -e "  HOOKDECK_API_KEY       = ${HOOKDECK_API_KEY:+${GREEN}set${NC}}${HOOKDECK_API_KEY:-${RED}not set${NC}}"
-echo -e "  TRIGGER_SECRET_KEY     = ${TRIGGER_SECRET_KEY:+${GREEN}set${NC}}${TRIGGER_SECRET_KEY:-${RED}not set${NC}}"
-echo -e "  TRIGGER_PROJECT_REF    = ${TRIGGER_PROJECT_REF:+${GREEN}set${NC}}${TRIGGER_PROJECT_REF:-${RED}not set${NC}}"
-echo -e "  ANTHROPIC_API_KEY      = ${ANTHROPIC_API_KEY:+${GREEN}set${NC}}${ANTHROPIC_API_KEY:-${RED}not set${NC}}"
-echo -e "  SLACK_WEBHOOK_URL      = ${SLACK_WEBHOOK_URL:+${GREEN}set${NC}}${SLACK_WEBHOOK_URL:-${YELLOW}skipped${NC}}"
+# Helper to show masked status
+show_var() {
+  local name="$1"
+  local label="${2:-}"
+  local value="${!name:-}"
+  local pad=$(printf "%-24s" "$name")
+  if [ -n "$value" ]; then
+    if [ -n "$label" ]; then
+      echo -e "  ${pad} ${GREEN}$label${NC}"
+    else
+      echo -e "  ${pad} ${GREEN}set${NC}"
+    fi
+  else
+    echo -e "  ${pad} ${RED}not set${NC}"
+  fi
+}
+
+show_var "GITHUB_REPO"
+show_var "GITHUB_ACCESS_TOKEN" "auto-detected (gh CLI)"
+show_var "GITHUB_WEBHOOK_SECRET" "auto-generated"
+show_var "GITHUB_LABELS" "fetched from repo"
+show_var "HOOKDECK_API_KEY"
+show_var "TRIGGER_SECRET_KEY"
+show_var "TRIGGER_PROJECT_REF"
+show_var "ANTHROPIC_API_KEY"
+if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+  show_var "SLACK_WEBHOOK_URL"
+else
+  printf "  %-24s ${YELLOW}skipped${NC}\n" "SLACK_WEBHOOK_URL"
+fi
 echo ""
 
 # ── Check mode: stop here ─────────────────────────────────
@@ -234,9 +276,24 @@ fi
 
 header "Step 1/3: Deploy Trigger.dev tasks"
 
-echo -e "  ${DIM}Running: npx trigger.dev@latest deploy${NC}"
+# This demo is Production-only: Hookdeck must use the Production API key (tr_prod_...).
+if [ -n "${TRIGGER_SECRET_KEY:-}" ]; then
+  case "$TRIGGER_SECRET_KEY" in
+    tr_dev_*|tr_stg_*)
+      err "TRIGGER_SECRET_KEY must be a Production secret (tr_prod_...). This demo does not use Development or Staging."
+      err "Create or copy a Production key in Trigger.dev → API keys, update .env, then run setup again."
+      exit 1
+      ;;
+    tr_prod_*) ;;
+    *)
+      warn "TRIGGER_SECRET_KEY does not start with tr_prod_. Use a Production key or setup may fail."
+      ;;
+  esac
+fi
+
+echo -e "  ${DIM}Running: npm run deploy:prod (Trigger.dev Production environment)${NC}"
 cd "$PROJECT_DIR"
-npx trigger.dev@latest deploy --skip-update-check
+npm run deploy:prod
 
 echo ""
 header "Step 2/3: Create Hookdeck resources"
@@ -254,8 +311,7 @@ echo ""
 echo -e "${GREEN}${BOLD}Setup complete!${NC}"
 echo ""
 echo "  Next steps:"
-echo "    npm run dev          # start Trigger.dev dev server for local testing"
-echo "    npm run deploy       # deploy task changes to Trigger.dev Cloud"
+echo "    npm run deploy        # redeploy task code to Trigger.dev Production after changes"
 echo ""
 echo "  Test it:"
 echo "    • Create an issue on ${GITHUB_REPO} → watch it get labeled"

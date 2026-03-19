@@ -10,8 +10,14 @@ import Anthropic from "@anthropic-ai/sdk";
 let client: Anthropic | null = null;
 
 function getClient(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error(
+      "ANTHROPIC_API_KEY is not set in this Trigger.dev environment. Add it under Project → Environment variables → Production, or ensure it is in .env and run npm run deploy (secrets sync on deploy)."
+    );
+  }
   if (!client) {
-    client = new Anthropic();
+    client = new Anthropic({ apiKey });
   }
   return client;
 }

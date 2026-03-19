@@ -40,9 +40,24 @@ npm run setup
 
 `npm run setup` does three things in order:
 
-1. **Deploys Trigger.dev tasks** — bundles and uploads task code to Trigger.dev Cloud
+1. **Deploys Trigger.dev tasks to Production** — `npm run deploy:prod` (explicit `--env prod`)
 2. **Creates Hookdeck resources** — source, destinations, connections, filters, and transformation (idempotent)
 3. **Registers GitHub webhook** — points the webhook at the Hookdeck source URL
+
+### Trigger.dev (Production only)
+
+This demo is wired for **Trigger.dev Production** only:
+
+- **`TRIGGER_SECRET_KEY`** must be your **Production** API key (`tr_prod_…`). Hookdeck destinations use it as the Bearer token, so HTTP triggers always hit Production workers.
+- **`npm run setup`** and **`npm run deploy`** run **`trigger.dev deploy --env prod`**.
+
+Task runtime secrets are **synced from your local `.env` to Trigger.dev Production on every `npm run deploy`** (see `trigger.config.ts` → `syncEnvVars`): `ANTHROPIC_API_KEY`, `GITHUB_ACCESS_TOKEN`, and optional `GITHUB_LABELS`, `SLACK_WEBHOOK_URL`. Use the **same variable names** in `.env` and in the Trigger dashboard. If you still have an old `GITHUB_TOKEN` line only, deploy copies it to `GITHUB_ACCESS_TOKEN` for sync — rename when convenient.
+
+**Why `GITHUB_ACCESS_TOKEN` and not `GITHUB_TOKEN`?** Many tools use `GITHUB_TOKEN`, but that name is special in GitHub Actions and some cloud UIs don’t persist it reliably. `GITHUB_ACCESS_TOKEN` is explicit and syncs cleanly.
+
+If you previously used `GITHUB_PERSONAL_ACCESS_TOKEN` in `.env`, rename that line to `GITHUB_ACCESS_TOKEN` and redeploy.
+
+**Dashboard:** open **Production** (not Development) when checking vars.
 
 ### Environment variables
 
@@ -52,25 +67,32 @@ npm run setup
 |----------|-------------|
 | `HOOKDECK_API_KEY` | Hookdeck project API key |
 | `GITHUB_WEBHOOK_SECRET` | Shared secret for GitHub HMAC verification |
-| `TRIGGER_SECRET_KEY` | Trigger.dev project secret key |
+| `TRIGGER_SECRET_KEY` | Trigger.dev **Production** secret (`tr_prod_…` only) |
 | `TRIGGER_PROJECT_REF` | Trigger.dev project ref |
 | `GITHUB_REPO` | Target repo (e.g., `hookdeck/hookdeck-demos`) |
 
-**For task runtime** (set in Trigger.dev dashboard under Environment Variables):
+**For task runtime** (keep in `.env` — **synced to Production on `npm run deploy`**, or set in the Trigger.dev dashboard):
 
 | Variable | Description |
 |----------|-------------|
-| `GITHUB_TOKEN` | Fine-grained PAT with repo scope |
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude |
-| `SLACK_WEBHOOK_URL` | Slack incoming webhook URL |
+| `GITHUB_ACCESS_TOKEN` | GitHub API token with `repo` scope (**required** in `.env`; synced on deploy) |
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude (**required** for deploy sync) |
+| `GITHUB_LABELS` | Optional CSV of allowed issue labels |
+| `SLACK_WEBHOOK_URL` | Optional Slack incoming webhook URL |
 
-## Local development
+## Deploying task changes
+
+After editing files under `trigger/`, push new code to Trigger.dev Production:
 
 ```bash
-npm run dev
+npm run deploy
 ```
 
-This starts the Trigger.dev dev server. Tasks run on your machine but appear in the Trigger.dev dashboard. Push events to your Hookdeck source URL to trigger them.
+This also **re-syncs** the task env vars listed in `trigger.config.ts` from `.env` (so updating an API key locally and redeploying updates Production). `deploy:prod` passes **`--env-file .env`** so the deploy CLI loads your file before `syncEnvVars` runs. During deploy, Trigger prints **`Found N env vars to sync`** — `N` should match how many keys you’re syncing (typically **4** if `ANTHROPIC_API_KEY`, `GITHUB_ACCESS_TOKEN`, `GITHUB_LABELS`, and `SLACK_WEBHOOK_URL` are all set).
+
+**CI:** use `npm run deploy:prod:ci` and export `ANTHROPIC_API_KEY`, `GITHUB_ACCESS_TOKEN`, etc. as job secrets instead of `--env-file`.
+
+Then re-run Hooks or events as needed; Hookdeck continues to call the same task URLs.
 
 ## Project structure
 
@@ -102,3 +124,9 @@ Events are verified at three levels:
 3. **Task-level verification** — `verifyHookdeckEvent()` confirms the `_hookdeck.verified` flag injected by the transformation
 
 In Pattern A, verification happens once in the router task. In Pattern B, each task verifies independently.
+
+## TODO
+
+- [ ] **Architecture diagrams:** Add Mermaid diagrams to this README illustrating **Pattern A** (single Hookdeck connection → `github-webhook-handler` → fan-out to sub-tasks) vs **Pattern B** (separate filtered connections per event type → dedicated Trigger.dev tasks). Not implemented yet.
+- [ ] **Hookdeck source verification:** Revisit event-source verification end-to-end (e.g. `x-hookdeck-verified` vs transform-time `context.connection.source.verification`, `_hookdeck.verified` semantics, and docs alignment). See `hookdeck/trigger-wrapper.js` and `trigger/lib/verify-hookdeck.ts`.
+- [ ] **Development environment & prod parity:** Explore what a **dev** setup would look like (Trigger.dev Development + `trigger dev`, Hookdeck project or connections, webhook routing), how to **migrate or promote** to Production, and how to keep a dev stack **effectively matching prod** (env vars, connection names, transformation code, secrets rotation). This demo is Production-only today; document or script an optional path if we add it later.

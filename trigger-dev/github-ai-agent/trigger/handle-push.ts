@@ -40,6 +40,7 @@ interface PushPayload {
     full_name: string;
     default_branch: string;
   };
+  [key: string]: unknown;
 }
 
 export const handlePush = task({

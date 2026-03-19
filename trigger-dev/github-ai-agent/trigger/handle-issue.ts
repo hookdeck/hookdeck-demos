@@ -17,8 +17,15 @@ import { verifyHookdeckEvent } from "./lib/verify-hookdeck.js";
 import { addLabels, parseRepo } from "./lib/github.js";
 import { ask } from "./lib/ai.js";
 
-// Labels the LLM can apply. These must exist in the target GitHub repo.
-const VALID_LABELS = ["bug", "feature", "question", "documentation"] as const;
+// Labels the LLM can apply, loaded from GITHUB_LABELS env var (CSV).
+// Falls back to GitHub's default labels if not set.
+function getValidLabels(): string[] {
+  const labelsEnv = process.env.GITHUB_LABELS;
+  if (labelsEnv) {
+    return labelsEnv.split(",").map((l) => l.trim()).filter(Boolean);
+  }
+  return ["bug", "enhancement", "question", "documentation"];
+}
 
 interface IssuePayload {
   _hookdeck?: {
@@ -36,6 +43,7 @@ interface IssuePayload {
   repository: {
     full_name: string;
   };
+  [key: string]: unknown;
 }
 
 export const handleIssue = task({
@@ -45,18 +53,16 @@ export const handleIssue = task({
 
     const { owner, repo } = parseRepo(payload.repository.full_name);
     const issue = payload.issue;
+    const validLabels = getValidLabels();
 
     console.log(`Labeling issue #${issue.number}: ${issue.title}`);
+    console.log(`Available labels: ${validLabels.join(", ")}`);
 
-    const prompt = `Classify this GitHub issue into one or more categories. Return ONLY a JSON array of labels from this list: ${JSON.stringify(VALID_LABELS)}.
+    const prompt = `Classify this GitHub issue into one or more categories. Return ONLY a JSON array of labels from this list: ${JSON.stringify(validLabels)}.
 
-Rules:
-- "bug" for bug reports, errors, things that are broken
-- "feature" for feature requests, enhancements, new functionality
-- "question" for questions, help requests, "how do I" posts
-- "documentation" for docs improvements, typos, missing docs
+Pick the most appropriate label(s) based on the issue content. If none fit well, return an empty array [].
 
-Return only the JSON array, nothing else. Example: ["bug"] or ["feature", "documentation"]
+Return only the JSON array, nothing else. Example: ["bug"] or ["enhancement", "documentation"]
 
 Issue title: ${issue.title}
 Issue body: ${issue.body ?? "(no body)"}`;
@@ -72,7 +78,7 @@ Issue body: ${issue.body ?? "(no body)"}`;
       }
       // Filter to only valid labels
       labels = labels.filter((l): l is string =>
-        typeof l === "string" && (VALID_LABELS as readonly string[]).includes(l)
+        typeof l === "string" && validLabels.includes(l)
       );
     } catch {
       console.warn(`Failed to parse LLM response as labels: ${response}`);

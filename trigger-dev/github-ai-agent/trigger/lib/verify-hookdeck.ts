@@ -2,7 +2,8 @@
  * Hookdeck event verification utility.
  *
  * The trigger-wrapper transformation injects a _hookdeck metadata object
- * into every payload with the verification status from Hookdeck's headers.
+ * into every payload. `verified` reflects Hookdeck's x-hookdeck-verified header
+ * when present, otherwise it is derived from connection context (see hookdeck/trigger-wrapper.js).
  * This utility checks that metadata before any task processing begins.
  *
  * Verification chain:

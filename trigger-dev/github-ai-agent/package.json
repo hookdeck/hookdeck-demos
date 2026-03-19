@@ -9,14 +9,17 @@
     "setup:hookdeck": "bash scripts/setup-hookdeck.sh",
     "setup:github": "bash scripts/setup-github-webhook.sh",
     "setup:dry-run": "DRY_RUN=true bash scripts/setup-hookdeck.sh",
-    "dev": "npx trigger.dev@latest dev",
-    "deploy": "npx trigger.dev@latest deploy"
+    "deploy": "npm run deploy:prod",
+    "deploy:prod": "npx trigger.dev@latest deploy --env prod --skip-update-check --env-file .env",
+    "deploy:prod:ci": "npx trigger.dev@latest deploy --env prod --skip-update-check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@trigger.dev/sdk": "^4.3.3"
   },
   "devDependencies": {
+    "@trigger.dev/build": "^4.3.3",
+    "dotenv": "^16.4.5",
     "trigger.dev": "^4.3.3",
     "typescript": "^5.7.0"
   }

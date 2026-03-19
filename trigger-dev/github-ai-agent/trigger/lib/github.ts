@@ -1,17 +1,25 @@
 /**
  * Lightweight GitHub API helpers.
  *
- * Uses raw fetch to keep dependencies minimal. The GITHUB_TOKEN environment
- * variable must be set in Trigger.dev's environment variables (dashboard or
- * syncEnvVars). It needs repo scope for posting comments and applying labels.
+ * Uses raw fetch to keep dependencies minimal. Set `GITHUB_ACCESS_TOKEN` in Trigger.dev
+ * Production (synced from `.env` on deploy). Legacy `GITHUB_TOKEN` is still accepted.
+ * Needs repo scope for posting comments and applying labels.
  */
 
 const GITHUB_API = "https://api.github.com";
 
+function githubToken(): string | undefined {
+  const t =
+    process.env.GITHUB_ACCESS_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+  return t || undefined;
+}
+
 function headers(): Record<string, string> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = githubToken();
   if (!token) {
-    throw new Error("GITHUB_TOKEN environment variable is not set");
+    throw new Error(
+      "GITHUB_ACCESS_TOKEN is not set in this Trigger.dev environment (Production). Add it in the dashboard or in .env and redeploy."
+    );
   }
   return {
     Authorization: `Bearer ${token}`,
