@@ -17,7 +17,7 @@ Create an automated, interactive demonstration of Hookdeck CLI guest mode showca
 Approximately 3 minutes (3.5 minutes with optional error recovery scene)
 
 ### Based On
-- **Framework**: tmux-presenter (reference `../tmux-presenter/`)
+- **Framework**: tmux-presenter (reference `../../_shared/tmux-presenter/`)
 - **Project Structure**: session-filters project (reference `../session-filters/`)
 - **Content**: `cli-overview/walkthrough.md` (existing walkthrough content)
 
@@ -56,7 +56,7 @@ cli-overview/
     "@types/node": "^20.0.0"
   },
   "devDependencies": {
-    "tmux-presenter": "file:../tmux-presenter",
+    "tmux-presenter": "file:../../_shared/tmux-presenter",
     "typescript": "^5.0.0",
     "ts-node": "^10.9.0"
   }
@@ -736,7 +736,7 @@ npm run server
     "@types/node": "^20.0.0"
   },
   "devDependencies": {
-    "tmux-presenter": "file:../tmux-presenter",
+    "tmux-presenter": "file:../../_shared/tmux-presenter",
     "typescript": "^5.0.0",
     "ts-node": "^10.9.0"
   }

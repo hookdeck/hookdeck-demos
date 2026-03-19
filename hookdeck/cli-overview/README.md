@@ -24,7 +24,7 @@ npm install
 npm run walkthrough
 ```
 
-This command uses the [tmux-presenter](../tmux-presenter) framework to orchestrate an automated demonstration. The walkthrough guides you through 10 scenes showing the CLI's guest mode capabilities in a multi-pane terminal setup.
+This command uses the [tmux-presenter](../../_shared/tmux-presenter) framework to orchestrate an automated demonstration. The walkthrough guides you through 10 scenes showing the CLI's guest mode capabilities in a multi-pane terminal setup.
 
 **Walkthrough details:**
 - **Duration:** ~3 minutes
@@ -231,7 +231,7 @@ cli-overview/
 
 - **Automated walkthrough configuration:** [`presentation.yaml`](./presentation.yaml)
 - **Manual step-by-step guide:** [`walkthrough.md`](./walkthrough.md)
-- **tmux-presenter framework:** [`../tmux-presenter/README.md`](../tmux-presenter/README.md)
+- **tmux-presenter framework:** [`../../_shared/tmux-presenter/README.md`](../../_shared/tmux-presenter/README.md)
 - **Hookdeck CLI documentation:** [https://hookdeck.com/docs/cli](https://hookdeck.com/docs/cli)
 - **npm scripts:** See [`package.json`](./package.json) for available commands
 

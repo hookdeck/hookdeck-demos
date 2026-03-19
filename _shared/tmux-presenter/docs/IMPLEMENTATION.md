@@ -147,7 +147,7 @@ tmux-presenter/
 ## Design Decisions
 
 ### 1. Extraction from walkthrough.ts
-Generalized patterns from [`session-filters/src/walkthrough.ts`](../session-filters/src/walkthrough.ts):
+Generalized patterns from [`session-filters/src/walkthrough.ts`](../../hookdeck/session-filters/src/walkthrough.ts):
 - `loadEnv()` → ConfigParser.loadEnvFile()
 - `tmux()` → TmuxController.exec()
 - `sendToPane()` → PaneManager.executeCommand()
@@ -225,4 +225,4 @@ The framework is ready to be used by the session-filters demo:
 
 All TypeScript compilation errors related to `process`, `fs`, `path`, and `readline` are expected and resolved after running `npm install` which installs the required `@types/node` package.
 
-The framework follows the architecture defined in [`docs/tmux-presenter-plan.md`](docs/tmux-presenter-plan.md) and successfully extracts/generalizes patterns from the reference implementation in [`session-filters/src/walkthrough.ts`](../session-filters/src/walkthrough.ts).
+The framework follows the architecture defined in [`docs/tmux-presenter-plan.md`](docs/tmux-presenter-plan.md) and successfully extracts/generalizes patterns from the reference implementation in [`session-filters/src/walkthrough.ts`](../../hookdeck/session-filters/src/walkthrough.ts).

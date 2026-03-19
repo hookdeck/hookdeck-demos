@@ -101,7 +101,7 @@ You must consult and align with these sources:
 Produce a concrete file tree, for example:
 
 ```
-/shopify-webhooks-at-scale/
+/shopify/webhooks-at-scale/
   README.md
   .env.example
   /hookdeck/
