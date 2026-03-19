@@ -157,7 +157,7 @@ Extract insights from audio using Deepgram's intelligence features.
 ## Project Structure
 
 ```
-ai/deepgram/
+deepgram/stt-tts/
 ├── .env.example              # Environment variables template
 ├── .gitignore               # Git ignore patterns
 ├── README.md                # This file

@@ -13,10 +13,10 @@ HOOKDECK_WEBHOOK_SECRET={HOOKDECK_PROJECT_SECRET}
 
 ## Walkthroughs
 
-- [General overview](demo_scripts/overview.md)
-- [PagerDuty](demo_scripts/pagerduty.md)
-- [Stripe (simple)](demo_scripts/stripe_simple.md)
-- [Stripe (detailed)](demo_scripts/stripe_detailed.md)
+- [General overview](../demo-scripts/overview.md)
+- [PagerDuty](../demo-scripts/pagerduty.md)
+- [Stripe (simple)](../demo-scripts/stripe_simple.md)
+- [Stripe (detailed)](../demo-scripts/stripe_detailed.md)
 
 ## Run the app
 

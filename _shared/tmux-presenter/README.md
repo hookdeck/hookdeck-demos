@@ -541,7 +541,7 @@ steps:
 
 ### Real Example
 
-Here's a complete example from [`session-filters/presentation.yaml`](../session-filters/presentation.yaml:1):
+Here's a complete example from [`session-filters/presentation.yaml`](../../hookdeck/session-filters/presentation.yaml:1):
 
 ```yaml
 metadata:
