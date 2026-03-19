@@ -1,0 +1,81 @@
+#!/bin/bash
+# setup-github-webhook.sh
+#
+# Registers a GitHub webhook pointing to the Hookdeck source URL.
+# Checks for an existing webhook first to avoid duplicates.
+#
+# Prerequisites:
+#   - gh CLI installed and authenticated (gh auth login)
+#   - .env file with GITHUB_REPO, GITHUB_WEBHOOK_SECRET
+#   - Hookdeck setup already run (source URL must exist)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Load environment variables
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a
+  source "$PROJECT_DIR/.env"
+  set +a
+fi
+
+# Validate required env vars
+for var in GITHUB_REPO GITHUB_WEBHOOK_SECRET HOOKDECK_API_KEY; do
+  if [ -z "${!var:-}" ]; then
+    echo "Error: $var is not set. See .env.example."
+    exit 1
+  fi
+done
+
+# Get the Hookdeck source URL
+echo "Getting Hookdeck source URL..."
+hookdeck ci --api-key "$HOOKDECK_API_KEY" 2>/dev/null
+
+HOOKDECK_SOURCE_URL=$(hookdeck gateway source get github --output json 2>/dev/null | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$HOOKDECK_SOURCE_URL" ]; then
+  echo "Error: Could not get Hookdeck source URL. Run setup-hookdeck.sh first."
+  exit 1
+fi
+
+echo "Hookdeck source URL: $HOOKDECK_SOURCE_URL"
+
+# Check for existing webhook pointing to this URL
+echo "Checking for existing webhook on $GITHUB_REPO..."
+EXISTING_HOOK_ID=$(gh api "repos/$GITHUB_REPO/hooks" --jq ".[] | select(.config.url == \"$HOOKDECK_SOURCE_URL\") | .id" 2>/dev/null || true)
+
+if [ -n "$EXISTING_HOOK_ID" ]; then
+  echo "Found existing webhook (ID: $EXISTING_HOOK_ID). Updating..."
+  gh api "repos/$GITHUB_REPO/hooks/$EXISTING_HOOK_ID" \
+    --method PATCH \
+    -f "config[url]=$HOOKDECK_SOURCE_URL" \
+    -f "config[content_type]=json" \
+    -f "config[secret]=$GITHUB_WEBHOOK_SECRET" \
+    -f "events[]=pull_request" \
+    -f "events[]=issues" \
+    -f "events[]=push" \
+    -f "active=true" \
+    --silent
+  echo "Webhook updated successfully."
+else
+  echo "Creating new webhook..."
+  gh api "repos/$GITHUB_REPO/hooks" \
+    --method POST \
+    -f "name=web" \
+    -f "config[url]=$HOOKDECK_SOURCE_URL" \
+    -f "config[content_type]=json" \
+    -f "config[secret]=$GITHUB_WEBHOOK_SECRET" \
+    -f "events[]=pull_request" \
+    -f "events[]=issues" \
+    -f "events[]=push" \
+    -f "active=true" \
+    --silent
+  echo "Webhook created successfully."
+fi
+
+echo ""
+echo "GitHub webhook configured for $GITHUB_REPO"
+echo "  URL: $HOOKDECK_SOURCE_URL"
+echo "  Events: pull_request, issues, push"
