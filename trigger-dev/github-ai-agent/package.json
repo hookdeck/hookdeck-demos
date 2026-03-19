@@ -1,0 +1,22 @@
+{
+  "name": "trigger-dev-github-ai-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub AI agent demo: Hookdeck webhook routing to Trigger.dev tasks",
+  "scripts": {
+    "setup": "npm run deploy && bash scripts/setup-hookdeck.sh && bash scripts/setup-github-webhook.sh",
+    "setup:hookdeck": "bash scripts/setup-hookdeck.sh",
+    "setup:github": "bash scripts/setup-github-webhook.sh",
+    "setup:dry-run": "DRY_RUN=true bash scripts/setup-hookdeck.sh",
+    "dev": "npx trigger.dev@latest dev",
+    "deploy": "npx trigger.dev@latest deploy"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@trigger.dev/sdk": "^4.3.3"
+  },
+  "devDependencies": {
+    "trigger.dev": "^4.3.3",
+    "typescript": "^5.7.0"
+  }
+}
