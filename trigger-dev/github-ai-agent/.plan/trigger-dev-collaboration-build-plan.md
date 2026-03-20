@@ -6,6 +6,22 @@
 
 ---
 
+## Execution status
+
+*Last updated: March 2026*
+
+| Phase | Status |
+|-------|--------|
+| **Phase 1–3** | **Done** — Trigger.dev deploy, Hookdeck resources (incl. Pattern A + B connections from `setup-hookdeck.sh`), GitHub webhook registered. |
+| **Phase 4 (Pattern A)** | **Mostly done** — Issue labeler, PR AI review, push → Slack validated; Hookdeck + Trigger.dev dashboards checked for those paths. **Open:** send an **unsupported** GitHub event (e.g. `star`, if enabled on the webhook) and confirm Pattern A behavior in `github-webhook-handler` (ignored / default branch of `switch`). |
+| **Phase 4b (Pattern B)** | **Next** — Exercise the **header-filtered** connections (`github-to-handle-pr`, `github-to-handle-issue`, `github-to-handle-push`) end-to-end: same repo events, verify each task runs **only** for its event type, Hookdeck shows **per-connection** delivery, and each task still calls `verifyHookdeckEvent` independently. Optionally confirm an unsupported event **does not** create deliveries on Pattern B connections (or only hits Pattern A if both are active — document actual wiring). |
+| **Pros / cons** | **Next** — Validate the trade-off table below against real runs (observability, deploy vs dashboard change, noise). Capture 2–3 sentences for the guide. |
+| **Phase 5 (Guide)** | **After** Phase 4 complete + Pattern B tested + trade-offs agreed — draft the Trigger.dev + Hookdeck guide with screenshots, both patterns, verification chain, transformation. |
+
+**Guide dependencies:** Pattern B E2E + trade-off notes → then Phase 5. Skills repo PR to `triggerdotdev/skills` remains **after** the guide is published (see Open Items).
+
+---
+
 ## Resolved Technical Questions
 
 The context doc flagged five open questions. Here's what the research confirmed.
@@ -351,18 +367,32 @@ hookdeck-demos/
 
 ### Phase 4: End-to-end testing
 
-1. Create a test issue → verify it flows through Pattern A and/or Pattern B
-2. Open a test PR → same
-3. Push a commit → same
-4. Check Hookdeck dashboard: events received, verified, transformed, delivered
-5. Check Trigger.dev dashboard: runs created with correct payloads
-6. Test an unsubscribed event type (e.g., `star`) → verify it's filtered out (Pattern B) or handled as default (Pattern A)
+**Pattern A (single connection → `github-webhook-handler` → fan-out)** — *largely complete*
+
+1. ~~Create a test issue~~ → `handle-issue` via router
+2. ~~Open a test PR~~ → `handle-pr` via router
+3. ~~Push a commit~~ → `handle-push` via router (incl. Slack)
+4. ~~Check Hookdeck dashboard~~ for those events: received, verified, transformed, delivered
+5. ~~Check Trigger.dev dashboard~~: runs for router + child tasks with correct payloads
+6. **Remaining:** **Unsupported event** — Enable a webhook event **not** handled in the router (e.g. `star` or `watch`) *or* simulate payload; confirm router hits `default` / “Ignoring event” and **no** erroneous child triggers. Document result for the guide.
+
+**Pattern B (per-event Hookdeck connections → dedicated tasks)** — *next*
+
+7. With `setup-hookdeck.sh` connections active, trigger **issues** / **pull_request** / **push** and confirm **each** flows through the **matching** connection only (`github-to-handle-*`), destinations point at `handle-pr` / `handle-issue` / `handle-push` directly (not only via router). Compare Hookdeck **connection-level** logs vs Pattern A’s single connection.
+8. Confirm **verification** runs in each task (Pattern B path). Optionally compare run counts vs Pattern A for the same repo activity (duplicate deliveries if **both** Pattern A and B connections are enabled — clarify in guide: typically test Pattern B with understanding that setup script creates **both** patterns; may need to pause/disable Pattern A connection for clean Pattern B-only testing, or document dual-delivery behavior).
+
+### Phase 4b: Pros / cons validation (for guide)
+
+Before Phase 5, sanity-check the **Trade-offs** table (below) against experience: routing in code vs Hookdeck, deploy vs dashboard for new event types, observability, retries. Add a short “When to use A vs B” subsection outline for the guide.
 
 ### Phase 5: Guide drafting
 
+**Prerequisites:** Phase 4 item (6) done; Phase 4 Pattern B steps (7–8) done; Phase 4b notes captured.
+
 1. Write the guide based on validated patterns and real screenshots
-2. Include both patterns with trade-off discussion
+2. Include both patterns with trade-off discussion (use Phase 4b notes)
 3. Cover: setup, verification chain, transformation, testing, when to use which pattern
+4. Optional: link from Trigger.dev docs / skills repo after publish
 
 ---
 

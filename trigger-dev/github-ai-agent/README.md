@@ -12,11 +12,87 @@ GitHub webhooks flow through Hookdeck (verification, routing, transformation) in
 
 ## Two patterns
 
-The demo shows two ways to connect Hookdeck to Trigger.dev:
+The demo shows two ways to fan out work after the same Hookdeck ingress:
 
-**Pattern A (fan-out):** A single Hookdeck connection routes all GitHub events to one Trigger.dev task (`github-webhook-handler`), which verifies the event and fans out to sub-tasks based on event type. Simpler to set up, routing logic lives in code.
+**Pattern A — Trigger fan-out (task router):** One Hookdeck connection delivers **all** GitHub events to a single Trigger.dev task, `github-webhook-handler`, which verifies once and **fans out inside Trigger.dev** (`tasks.trigger` to `handle-pr`, `handle-issue`, `handle-push` based on event type). Simpler Hookdeck surface area; branching logic lives in application code.
 
-**Pattern B (Hookdeck routing):** Separate Hookdeck connections with header-based filter rules route each event type to a dedicated Trigger.dev task. Each task verifies independently. More Hookdeck resources, but each event type gets its own observability, retry policy, and filtering.
+**Pattern B — Hookdeck fan-out (connections + filters):** **Multiple** Hookdeck connections share the same source; each connection uses **header filter rules** (e.g. `x-github-event`) so only matching events reach a dedicated Trigger.dev task. Fan-out happens **in Hookdeck** before Trigger. Each task verifies independently. More Hookdeck resources, but per-event-type observability, retries, and policies are separate.
+
+> **Setup note:** `npm run setup` / `scripts/setup-hookdeck.sh` creates **both** Pattern A and Pattern B resources (same shared Hookdeck source `github`). A single GitHub delivery can therefore be processed **more than once** unless you disable or remove one pattern’s connections in Hookdeck for clean testing.
+
+## Architecture
+
+**Pattern A** is **Trigger fan-out**: one HTTP trigger hits a **router handler** task, which dispatches child tasks. **Pattern B** is **Hookdeck fan-out**: the platform splits traffic across **filtered connections** so each task’s HTTP trigger fires only for its event family.
+
+The diagrams use short labels; **each numbered block** under a diagram explains that component and how it fits the demo.
+
+### Pattern A — Trigger fan-out: task router (`github-webhook-handler`)
+
+```mermaid
+flowchart TB
+  GH[GitHub]
+  SRC[Source: github]
+  CONN[Conn: github-to-main-handler]
+  XFORM[Transform: trigger-wrapper]
+  DEST[Dest: trigger-dev-main]
+  HND[Task: github-webhook-handler]
+  PR[handle-pr]
+  IS[handle-issue]
+  PS[handle-push]
+
+  GH -->|Webhook POST| SRC
+  SRC --> CONN
+  CONN --> XFORM
+  XFORM --> DEST
+  DEST -->|Bearer token| HND
+  HND --> PR
+  HND --> IS
+  HND --> PS
+```
+
+**Components (Pattern A)**
+
+1. **GitHub** — Sends repo webhooks (e.g. `pull_request`, `issues`, `push`) to the URL shown after Hookdeck setup (the **Source** ingest URL).
+2. **Source: `github`** — Shared Hookdeck **source** (`GITHUB` type). Hooks are registered against this URL; Hookdeck can verify the GitHub HMAC at ingress (see **Verification chain**).
+3. **Connection: `github-to-main-handler`** — Single Hookdeck **connection** for Pattern A: source → transform → the one destination used for **Trigger fan-out** (no per-event-type filters here).
+4. **Transform: `trigger-wrapper`** — Rule-level **transformation** running `hookdeck/trigger-wrapper.js`: shapes the payload for Trigger.dev HTTP triggers and sets `_hookdeck.verified` for task-side checks.
+5. **Destination: `trigger-dev-main`** — Hookdeck **HTTP destination** pointing at Trigger.dev Production:  
+   `https://api.trigger.dev/api/v1/tasks/github-webhook-handler/trigger` with **Bearer** auth using `TRIGGER_SECRET_KEY`.
+6. **Task: `github-webhook-handler`** — **Router handler**: verifies the event once, then performs **Trigger fan-out** — `tasks.trigger` to the right worker (`handle-pr`, `handle-issue`, `handle-push`) from this task.
+
+**Downstream tasks:** **`handle-pr`**, **`handle-issue`**, **`handle-push`** — The three demo workers (PR summary comment, issue labels, push → Slack). In Pattern A they are started **only** by the router task, not by separate Hookdeck connections.
+
+---
+
+### Pattern B — Hookdeck fan-out: connections + filters
+
+```mermaid
+flowchart TB
+  GH[GitHub]
+  SRC[Source: github]
+  GH -->|Webhook POST| SRC
+  SRC --> C1[Conn: github-to-handle-pr<br/>filter pull_request]
+  SRC --> C2[Conn: github-to-handle-issue<br/>filter issues]
+  SRC --> C3[Conn: github-to-handle-push<br/>filter push]
+  C1 --> D1[Dest: trigger-dev-pr]
+  C2 --> D2[Dest: trigger-dev-issues]
+  C3 --> D3[Dest: trigger-dev-push]
+  D1 --> T1[Task: handle-pr]
+  D2 --> T2[Task: handle-issue]
+  D3 --> T3[Task: handle-push]
+```
+
+**Components (Pattern B)**
+
+Fan-out is **in Hookdeck**: one ingress on the source, then **parallel connection paths** — each path’s **filter** (e.g. on `x-github-event`) decides whether that delivery is forwarded to its destination.
+
+1. **GitHub** — Same as Pattern A; deliveries hit the shared source URL.
+2. **Source: `github`** — Same shared source; one ingress point for all events.
+3. **Connection: `github-to-handle-pr`** — One branch of **Hookdeck fan-out**: **`x-github-event` = `pull_request`**. Non-matching events do not go to this destination. Uses the same **`trigger-wrapper`** transform and retry settings as in `setup-hookdeck.sh`.
+4. **Connection: `github-to-handle-issue`** — Filter **`x-github-event` = `issues`** → dedicated issue path.
+5. **Connection: `github-to-handle-push`** — Filter **`x-github-event` = `push`** → dedicated push path.
+6. **Destinations (`trigger-dev-pr`, `trigger-dev-issues`, `trigger-dev-push`)** — Three HTTP destinations to Trigger.dev task trigger URLs: `/handle-pr/trigger`, `/handle-issue/trigger`, `/handle-push/trigger`, each with Bearer `TRIGGER_SECRET_KEY`.
+7. **Tasks (`handle-pr`, `handle-issue`, `handle-push`)** — Each task’s HTTP trigger is called **directly** by Hookdeck after **connection + filter** fan-out — no `github-webhook-handler` on this path. **Each** runs **`verifyHookdeckEvent()`** independently.
 
 ## Prerequisites
 
@@ -105,7 +181,7 @@ trigger/
     github.ts                  GitHub API helpers (fetch-based)
     slack.ts                   Slack incoming webhook helper
     verify-hookdeck.ts         Event verification utility
-  github-webhook-handler.ts    Pattern A: fan-out router
+  github-webhook-handler.ts    Pattern A: Trigger fan-out router handler
   handle-pr.ts                 PR code review summary
   handle-issue.ts              Issue labeler
   handle-push.ts               Deployment summary to Slack
@@ -124,10 +200,10 @@ Events are verified at three levels:
 2. **Trigger.dev destination auth** — Bearer token authenticates Hookdeck to the Trigger.dev API
 3. **Task-level verification** — `verifyHookdeckEvent()` confirms the `_hookdeck.verified` flag injected by the transformation
 
-In Pattern A, verification happens once in the router task. In Pattern B, each task verifies independently.
+In Pattern A (**Trigger fan-out**), verification happens once in the router handler. In Pattern B (**Hookdeck fan-out**), each leaf task verifies independently.
 
 ## TODO
 
-- [ ] **Architecture diagrams:** Add Mermaid diagrams to this README illustrating **Pattern A** (single Hookdeck connection → `github-webhook-handler` → fan-out to sub-tasks) vs **Pattern B** (separate filtered connections per event type → dedicated Trigger.dev tasks). Not implemented yet.
+- [x] **Architecture diagrams:** Mermaid diagrams for Pattern A vs Pattern B are in **Architecture** above, with per-component descriptions under each diagram.
 - [ ] **Hookdeck source verification:** Revisit event-source verification end-to-end (e.g. `x-hookdeck-verified` vs transform-time `context.connection.source.verification`, `_hookdeck.verified` semantics, and docs alignment). See `hookdeck/trigger-wrapper.js` and `trigger/lib/verify-hookdeck.ts`.
 - [ ] **Development environment & prod parity:** Explore what a **dev** setup would look like (Trigger.dev Development + `trigger dev`, Hookdeck project or connections, webhook routing), how to **migrate or promote** to Production, and how to keep a dev stack **effectively matching prod** (env vars, connection names, transformation code, secrets rotation). This demo is Production-only today; document or script an optional path if we add it later.
