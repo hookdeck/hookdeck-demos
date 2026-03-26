@@ -383,6 +383,8 @@ const review = await ask(prompt, 1500);
 await postComment(owner, repo, prNumber, comment);
 ```
 
+![Claude's AI Review Summary comment posted to a GitHub pull request, covering summary, key observations, and suggestions for improvement](images/github-pr-review-comment.png)
+
 ### 3. Task: `handle-issue.ts` (Issue labeler)
 
 For newly opened issues, this task classifies the title/body into one-or-more labels using Claude, then applies those labels on GitHub.
@@ -392,6 +394,8 @@ const response = await ask(prompt, 100);
 labels = JSON.parse(response.trim());
 await addLabels(owner, repo, issue.number, labels);
 ```
+
+![GitHub issue titled "This is a test issue" with the question label automatically applied by Claude](images/github-issue-labeled.png)
 
 ### 4. Task: `handle-push.ts` (Deployment summary to Slack)
 
@@ -409,6 +413,8 @@ if (defaultBranchOnly && branch !== defaultBranch) {
 const summary = await ask(prompt, 300);
 await postToSlack(slackMessage);
 ```
+
+![Slack channel showing push summary messages from the Trigger GitHub Demo app, with Claude-generated descriptions of each commit](images/slack-push-summary.png)
 
 ### 5. Helper modules
 
