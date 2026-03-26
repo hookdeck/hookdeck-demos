@@ -4,16 +4,18 @@
  * When an issue is created, analyzes the title and body with Claude and
  * auto-applies appropriate labels.
  *
- * In Pattern A: triggered by github-webhook-handler (no verification needed).
- * In Pattern B: triggered directly by Hookdeck (verifies independently).
+ * Task router path: triggered by github-webhook-handler.
+ * Hookdeck connection routing: triggered directly by Hookdeck.
  *
- * Hookdeck config for Pattern B:
+ * Source verification (GitHub HMAC) is handled by Hookdeck at the source
+ * level — only authenticated events reach this task.
+ *
+ * Hookdeck config for connection routing:
  * - Filter: { "x-github-event": { "$eq": "issues" } }
  * - Destination URL: https://api.trigger.dev/api/v1/tasks/handle-issue/trigger
  */
 
 import { task } from "@trigger.dev/sdk";
-import { verifyHookdeckEvent } from "./lib/verify-hookdeck.js";
 import { addLabels, parseRepo } from "./lib/github.js";
 import { ask } from "./lib/ai.js";
 
@@ -28,10 +30,6 @@ function getValidLabels(): string[] {
 }
 
 interface IssuePayload {
-  _hookdeck?: {
-    verified: boolean;
-    signature?: string;
-  };
   event: string;
   action: string;
   issue: {
@@ -49,8 +47,6 @@ interface IssuePayload {
 export const handleIssue = task({
   id: "handle-issue",
   run: async (payload: IssuePayload) => {
-    verifyHookdeckEvent(payload);
-
     const { owner, repo } = parseRepo(payload.repository.full_name);
     const issue = payload.issue;
     const validLabels = getValidLabels();

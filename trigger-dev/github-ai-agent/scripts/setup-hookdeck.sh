@@ -5,15 +5,34 @@
 # Idempotent: safe to run multiple times (uses connection upsert).
 #
 # Prerequisites:
-#   - hookdeck CLI installed (v1.2.0+)
+#   - hookdeck CLI >= 2.0.0 (so --rule-filter-headers JSON is stored as an object, not a string)
 #   - .env file with HOOKDECK_API_KEY, GITHUB_WEBHOOK_SECRET, TRIGGER_SECRET_KEY
 #
-# Supports both Pattern A (fan-out) and Pattern B (per-event routing).
+# Supports both Trigger.dev task router (single connection) and Hookdeck connection routing (per-event).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Require Hookdeck CLI >= 2.0.0 (JSON filter flags; see hookdeck-cli #262 / v2.0.0).
+MIN_HOOKDECK_VERSION="2.0.0"
+if ! command -v hookdeck >/dev/null 2>&1; then
+  echo "Error: hookdeck CLI not found in PATH. Install: https://hookdeck.com/docs/cli"
+  exit 1
+fi
+HOOKDECK_VERSION_RAW=$(hookdeck version 2>/dev/null | head -n1 || true)
+HOOKDECK_VERSION=$(echo "$HOOKDECK_VERSION_RAW" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+if [ -z "$HOOKDECK_VERSION" ]; then
+  echo "Error: could not parse hookdeck version from: ${HOOKDECK_VERSION_RAW:-<empty>}"
+  exit 1
+fi
+if [ "$(printf '%s\n' "$MIN_HOOKDECK_VERSION" "$HOOKDECK_VERSION" | sort -V | head -n1)" != "$MIN_HOOKDECK_VERSION" ]; then
+  echo "Error: hookdeck CLI must be >= $MIN_HOOKDECK_VERSION for correct connection filter rules (found $HOOKDECK_VERSION)."
+  echo "  Upgrade: brew upgrade hookdeck  or  https://github.com/hookdeck/hookdeck-cli/releases"
+  exit 1
+fi
+echo "Using hookdeck CLI $HOOKDECK_VERSION (>= $MIN_HOOKDECK_VERSION required)"
 
 # Load environment variables
 if [ -f "$PROJECT_DIR/.env" ]; then
@@ -47,7 +66,7 @@ echo "Authenticating with Hookdeck..."
 hookdeck ci --api-key "$HOOKDECK_API_KEY"
 
 echo ""
-echo "=== Pattern A: Single main task (fan-out) ==="
+echo "=== Trigger.dev task router (single connection) ==="
 echo ""
 
 # Create the first connection and capture output to extract the Source URL
@@ -86,7 +105,7 @@ if [ -n "$HOOKDECK_SOURCE_URL" ]; then
 fi
 
 echo ""
-echo "=== Pattern B: Per-event routing ==="
+echo "=== Hookdeck connection routing (per-event) ==="
 echo ""
 
 # PR events

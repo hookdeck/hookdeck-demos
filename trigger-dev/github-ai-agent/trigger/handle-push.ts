@@ -6,16 +6,18 @@
  * `GITHUB_PUSH_SUMMARY_DEFAULT_BRANCH_ONLY=true` in Trigger.dev env to only
  * run for the repo default branch (e.g. `main`).
  *
- * In Pattern A: triggered by github-webhook-handler (no verification needed).
- * In Pattern B: triggered directly by Hookdeck (verifies independently).
+ * Task router path: triggered by github-webhook-handler.
+ * Hookdeck connection routing: triggered directly by Hookdeck.
  *
- * Hookdeck config for Pattern B:
+ * Source verification (GitHub HMAC) is handled by Hookdeck at the source
+ * level — only authenticated events reach this task.
+ *
+ * Hookdeck config for connection routing:
  * - Filter: { "x-github-event": { "$eq": "push" } }
  * - Destination URL: https://api.trigger.dev/api/v1/tasks/handle-push/trigger
  */
 
 import { task } from "@trigger.dev/sdk";
-import { verifyHookdeckEvent } from "./lib/verify-hookdeck.js";
 import { ask } from "./lib/ai.js";
 import { postToSlack } from "./lib/slack.js";
 
@@ -29,10 +31,6 @@ interface Commit {
 }
 
 interface PushPayload {
-  _hookdeck?: {
-    verified: boolean;
-    signature?: string;
-  };
   event: string;
   ref: string;
   compare: string;
@@ -48,8 +46,6 @@ interface PushPayload {
 export const handlePush = task({
   id: "handle-push",
   run: async (payload: PushPayload) => {
-    verifyHookdeckEvent(payload);
-
     const repoName = payload.repository.full_name;
     const branch = payload.ref.replace("refs/heads/", "");
     const defaultBranch = payload.repository.default_branch;

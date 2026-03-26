@@ -4,24 +4,22 @@
  * When a pull request is opened or updated, fetches the diff, sends it to
  * Claude for analysis, and posts a summary comment on the PR.
  *
- * In Pattern A: triggered by github-webhook-handler (no verification needed).
- * In Pattern B: triggered directly by Hookdeck (verifies independently).
+ * Task router path: triggered by github-webhook-handler.
+ * Hookdeck connection routing: triggered directly by Hookdeck.
  *
- * Hookdeck config for Pattern B:
+ * Source verification (GitHub HMAC) is handled by Hookdeck at the source
+ * level — only authenticated events reach this task.
+ *
+ * Hookdeck config for connection routing:
  * - Filter: { "x-github-event": { "$eq": "pull_request" } }
  * - Destination URL: https://api.trigger.dev/api/v1/tasks/handle-pr/trigger
  */
 
 import { task } from "@trigger.dev/sdk";
-import { verifyHookdeckEvent } from "./lib/verify-hookdeck.js";
 import { getPRDiff, postComment, parseRepo } from "./lib/github.js";
 import { ask } from "./lib/ai.js";
 
 interface PRPayload {
-  _hookdeck?: {
-    verified: boolean;
-    signature?: string;
-  };
   event: string;
   action: string;
   number: number;
@@ -36,17 +34,12 @@ interface PRPayload {
   repository: {
     full_name: string;
   };
-  /** Allows passing this payload to `verifyHookdeckEvent` (`HookdeckPayload`). */
   [key: string]: unknown;
 }
 
 export const handlePR = task({
   id: "handle-pr",
   run: async (payload: PRPayload) => {
-    // In Pattern B, events arrive directly from Hookdeck.
-    // In Pattern A, this is a no-op because github-webhook-handler already verified.
-    verifyHookdeckEvent(payload);
-
     const { owner, repo } = parseRepo(payload.repository.full_name);
     const prNumber = payload.number;
     const pr = payload.pull_request;

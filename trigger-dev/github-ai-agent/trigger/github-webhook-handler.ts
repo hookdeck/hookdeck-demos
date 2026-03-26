@@ -1,10 +1,11 @@
 /**
- * Pattern A: Fan-out router.
+ * Trigger.dev task router.
  *
  * Receives all GitHub webhook events via a single Hookdeck connection and
- * routes them to the appropriate sub-task based on the event type. Verification
- * happens once here; sub-tasks trust the payload because they are triggered
- * internally, not by external HTTP requests.
+ * routes them to the appropriate sub-task based on the event type.
+ *
+ * Source verification (GitHub HMAC) is handled by Hookdeck at the source
+ * level — only authenticated events reach this task.
  *
  * Hookdeck config for this pattern:
  * - One source, one connection, one destination
@@ -14,13 +15,8 @@
  */
 
 import { task, tasks } from "@trigger.dev/sdk";
-import { verifyHookdeckEvent } from "./lib/verify-hookdeck.js";
 
 interface GitHubWebhookPayload {
-  _hookdeck?: {
-    verified: boolean;
-    signature?: string;
-  };
   event: string;
   action?: string;
   [key: string]: unknown;
@@ -29,8 +25,6 @@ interface GitHubWebhookPayload {
 export const githubWebhookHandler = task({
   id: "github-webhook-handler",
   run: async (payload: GitHubWebhookPayload) => {
-    verifyHookdeckEvent(payload);
-
     console.log(`Received GitHub event: ${payload.event} (action: ${payload.action ?? "none"})`);
 
     switch (payload.event) {
