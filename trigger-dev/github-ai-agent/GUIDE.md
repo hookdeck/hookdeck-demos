@@ -258,6 +258,28 @@ The verification chain has two layers: Hookdeck verifies the GitHub signature at
 
 The `--rule-transform-name "trigger-wrapper"` flag attached a transform to this connection. `hookdeck/trigger-wrapper.js` runs inside Hookdeck on every event and bridges the format gap between what GitHub sends and what Trigger.dev expects.
 
+```js
+function header(headers, name) {
+  if (!headers) return undefined;
+  const lower = name.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lower) return headers[key];
+  }
+  return undefined;
+}
+
+addHandler("transform", (request, context) => {
+  request.body = {
+    payload: {
+      event: header(request.headers, "x-github-event"),
+      action: request.body.action,
+      ...request.body,
+    },
+  };
+  return request;
+});
+```
+
 **What GitHub sends** (simplified):
 
 ```json
