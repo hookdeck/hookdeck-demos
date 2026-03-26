@@ -266,7 +266,7 @@ The `--rule-transform-name "trigger-wrapper"` flag attached a transform to this 
 // Headers: X-GitHub-Event: pull_request, X-Hub-Signature-256: sha256=...
 {
   "action": "opened",
-  "pull_request": { "number": 42, "title": "Add feature X", "..." : "..." }
+  "pull_request": { "number": 42, "title": "Add feature X", "...": "..." }
 }
 ```
 
@@ -277,7 +277,7 @@ The `--rule-transform-name "trigger-wrapper"` flag attached a transform to this 
   "payload": {
     "event": "pull_request",
     "action": "opened",
-    "pull_request": { "number": 42, "title": "Add feature X", "..." : "..." }
+    "pull_request": { "number": 42, "title": "Add feature X", "...": "..." }
   }
 }
 ```
@@ -317,7 +317,6 @@ This creates a webhook on `$GITHUB_REPO` that sends `pull_request`, `issues`, an
 4. **Secret:** the same value as `GITHUB_WEBHOOK_SECRET` in your `.env` (GitHub signs deliveries with this; Hookdeck verifies using the source webhook secret).
 5. **Which events:** choose **Let me select individual events** and enable at least **Issues**, **Pull requests**, and **Pushes**.
 6. Save the webhook.
-
 
 ### 3. See the task router path in action
 
@@ -453,7 +452,7 @@ hookdeck gateway connection pause "github-to-main-handler"
 
 GitHub still posts to the same source URL, but events are no longer delivered to `github-webhook-handler`. The filtered connections you create next own delivery to Trigger.dev.
 
-![Hookdeck Connections view showing the github source with github-to-main-handler paused and the three filtered connections (github-to-handle-push, github-to-handle-issue, github-to-handle-pr) active](images/hookdeck-connections-paused.png)
+![Hookdeck Connections view with github-to-main-handler paused](images/hookdeck-connections-paused.png)
 
 ### 2. Create the three filtered connections
 
@@ -510,6 +509,8 @@ hookdeck gateway connection upsert "github-to-handle-push" \
 
 These connections share the existing `github` source — the webhook secret and verification were configured when you created the task router connection above. You do not need to set `--source-webhook-secret` again.
 
+![Hookdeck Connections view showing the github source with github-to-main-handler paused and the three filtered connections (github-to-handle-push, github-to-handle-issue, github-to-handle-pr) active](images/hookdeck-connections.png)
+
 ### 3. See Hookdeck connection routing in action
 
 Repeat the same GitHub actions (open a PR, open an issue, push to a branch).
@@ -528,14 +529,14 @@ In the [Trigger.dev dashboard](https://cloud.trigger.dev), notice that `handle-i
 
 Now that you have used both patterns, here is how to choose between them. Both use the same Hookdeck source, transform, and Trigger.dev tasks — the difference is **where you branch** on event type.
 
-| Consideration | Trigger.dev task router | Hookdeck connection routing |
-|---------------|-------------------------|----------------------------|
-| Hookdeck resources | One connection + destination | One connection per event family |
-| Where routing lives | `switch` in task code | Hookdeck header filters |
-| Adding a new event type | Change code and deploy | Add a connection in Hookdeck |
-| Observability | All deliveries on one connection | Per-event-type metrics and logs |
-| Retries | One retry policy for all events | Independent retry policy per connection |
-| Operational control | Pause/replay affects all events | Pause/replay per event type |
+| Consideration           | Trigger.dev task router          | Hookdeck connection routing             |
+| ----------------------- | -------------------------------- | --------------------------------------- |
+| Hookdeck resources      | One connection + destination     | One connection per event family         |
+| Where routing lives     | `switch` in task code            | Hookdeck header filters                 |
+| Adding a new event type | Change code and deploy           | Add a connection in Hookdeck            |
+| Observability           | All deliveries on one connection | Per-event-type metrics and logs         |
+| Retries                 | One retry policy for all events  | Independent retry policy per connection |
+| Operational control     | Pause/replay affects all events  | Pause/replay per event type             |
 
 **When the task router fits well:** You have one primary provider with a small set of event types, and you want all branching logic in TypeScript next to your task code. One Hookdeck connection, minimal gateway configuration.
 
