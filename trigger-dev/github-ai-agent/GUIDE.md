@@ -44,7 +44,7 @@ Every path in this tutorial starts the same way: GitHub posts a signed webhook t
 
 ### Two routing patterns
 
-This tutorial covers two ways to route events from the shared Hookdeck source to Trigger.dev tasks. With a **Trigger.dev task router**, a single Hookdeck connection delivers all events to one router task, which inspects the event type and fans out to child tasks in code. With **Hookdeck connection routing**, separate Hookdeck connections use header filters to deliver each event type directly to the matching task — routing happens at the edge, not in code. Both patterns use the same source, transform, and tasks; only the fan-out point differs. You will build the [task router](#triggerdev-task-router) first, then [scale up to connection routing](#scaling-up-hookdeck-connection-routing).
+This tutorial covers two ways to route events from the shared Hookdeck source to Trigger.dev tasks. With a **Trigger.dev task router**, a single Hookdeck connection delivers all events to one router task, which inspects the event type and fans out to child tasks in code. With **Hookdeck connection routing**, separate Hookdeck connections use header filters to deliver each event type directly to the matching task — routing happens at the edge, not in code. Both patterns use the same source, transform, and tasks; only the fan-out point differs. You will build the [task router](#triggerdev-task-router) first, then [move routing to the edge](#routing-at-the-edge-hookdeck-connection-routing).
 
 ---
 
@@ -256,7 +256,7 @@ The verification chain has two layers: Hookdeck verifies the GitHub signature at
 
 ### What the transform does
 
-The `--rule-transform-name "trigger-wrapper"` flag attached a transform to this connection. `hookdeck/trigger-wrapper.js` runs inside Hookdeck on every event and bridges the format gap between what GitHub sends and what Trigger.dev expects.
+The `--rule-transform-name "trigger-wrapper"` flag attached a transform to this connection. `hookdeck/trigger-wrapper.js` runs inside Hookdeck on every event and does two things. First, Trigger.dev's HTTP trigger API requires the body to be wrapped in `{ payload: { ... } }` — the transform applies that shape. Second, because Hookdeck delivers to Trigger.dev via an HTTP API call, GitHub's original request headers don't automatically appear in the task payload; they exist only on the delivery request itself. The transform extracts `X-GitHub-Event` from the headers and puts it inside the payload as `event`, so task code can branch on it.
 
 ```js
 function header(headers, name) {
@@ -446,9 +446,9 @@ The guide’s focus is the wiring — which task runs, which event/action gates 
 
 ---
 
-## Scaling up: Hookdeck connection routing
+## Routing at the edge: Hookdeck connection routing
 
-Now that you have the task router working, you can see how the same tasks work with a different entry path. Instead of one connection to a router task, you will create separate Hookdeck connections with header filters so each event type is delivered straight to the right task — no router task involved.
+Now that you have the task router working, you can see how the same tasks work with a different entry path. Instead of one connection to a router task with a switch statement, you will create separate Hookdeck connections with header filters so each event type is delivered straight to the right task — routing moves out of application code and into the infrastructure layer.
 
 ```mermaid
 flowchart TB
