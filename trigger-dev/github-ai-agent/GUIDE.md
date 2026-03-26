@@ -69,8 +69,6 @@ cd hookdeck-demos/trigger-dev/github-ai-agent
 npm install
 ```
 
-> **URL note:** If the repository location changes, adjust the clone URL to match the canonical hookdeck-demos (or successor) path; the tutorial assumes this directory layout.
-
 ---
 
 ## Project layout
@@ -450,9 +448,11 @@ Pause the task router connection so events stop flowing through `github-webhook-
 hookdeck gateway connection pause "github-to-main-handler"
 ```
 
-GitHub still posts to the same source URL, but events are no longer delivered to `github-webhook-handler`. The filtered connections you create next own delivery to Trigger.dev.
+GitHub still posts to the same source URL, but events are instead queued and are no longer delivered to `github-webhook-handler`.
 
 ![Hookdeck Connections view with github-to-main-handler paused](images/hookdeck-connections-paused.png)
+
+The filtered connections you create next own delivery to Trigger.dev.
 
 ### 2. Create the three filtered connections
 
