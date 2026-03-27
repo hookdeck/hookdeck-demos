@@ -55,7 +55,8 @@ This tutorial covers two ways to route events from the shared Hookdeck source to
 - [GitHub](https://github.com) repository you control (admin access to **Settings → Webhooks**)
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`); the tutorial registers the webhook via `gh` to stay CLI-first (alternatively you can use the GitHub UI — see [Register the GitHub webhook](#2-register-the-github-webhook))
 - [Node.js](https://nodejs.org/) 18+
-- [Hookdeck CLI](https://hookdeck.com/docs/cli) v2.0.0+
+- [Hookdeck CLI](https://hookdeck.com/docs/cli) v2.0.0+ — authenticated (`hookdeck ci --api-key <your-key>` or `hookdeck login`)
+- [Trigger.dev CLI](https://trigger.dev/docs/cli-introduction) — authenticated (`npx trigger.dev@latest login`)
 - [Anthropic API key](https://console.anthropic.com/settings/keys)
 - Optional: [Slack incoming webhook](https://api.slack.com/messaging/webhooks) for push summaries
 
@@ -111,7 +112,7 @@ Hookdeck
 | Variable                | Description                                                                            |
 | ----------------------- | -------------------------------------------------------------------------------------- |
 | `HOOKDECK_API_KEY`      | Project API key from Hookdeck **Dashboard → Project Settings → API Keys**.             |
-| `GITHUB_WEBHOOK_SECRET` | Shared secret GitHub uses for HMAC signing; must match the secret on the repo webhook. |
+| `GITHUB_WEBHOOK_SECRET` | A secret you choose and set in both places: here, and on the GitHub webhook. GitHub uses it to sign deliveries; Hookdeck uses it to verify them. Generate one with `openssl rand -hex 32` or use any strong random string. |
 
 Trigger.dev (this demo uses Production only)
 
@@ -152,7 +153,13 @@ Optional behavior
 
 Hookdeck destinations need stable HTTP trigger URLs to deliver to, so deploy tasks first. See [Trigger.dev deployment](https://trigger.dev/docs/deployment/overview).
 
-From the project root:
+If you have not authenticated the Trigger.dev CLI yet, do that first:
+
+```bash
+npx trigger.dev@latest login
+```
+
+Then from the project root:
 
 ```bash
 npm run deploy
