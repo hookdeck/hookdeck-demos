@@ -404,12 +404,17 @@ Key idea: with the task router, fan-out happens in Trigger.dev using `tasks.trig
 
 ### 2. Task: `handle-pr.ts` (PR review summary)
 
-For PR events, this task fetches the PR diff, asks Claude for a concise review summary, and posts the result back to the GitHub pull request as a comment.
+For PR events, this task fetches the PR diff, asks Claude for a concise review summary, and upserts the result as a comment on the pull request. On the first run it posts a new comment; on subsequent pushes to the same PR it finds and updates the existing comment rather than accumulating duplicates. The comment is identified by an invisible HTML marker (`<!-- ai-review-summary -->`) in the body.
 
 ```ts
 const diff = await getPRDiff(owner, repo, prNumber);
 const review = await ask(prompt, 1500);
-await postComment(owner, repo, prNumber, comment);
+const existing = await findExistingComment(owner, repo, prNumber, REVIEW_MARKER);
+if (existing) {
+  await updateComment(owner, repo, existing.id, comment);
+} else {
+  await postComment(owner, repo, prNumber, comment);
+}
 ```
 
 ![Claude's AI Review Summary comment posted to a GitHub pull request, covering summary, key observations, and suggestions for improvement](images/github-pr-review-comment.png)

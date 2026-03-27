@@ -72,6 +72,48 @@ export async function postComment(
   }
 }
 
+/** Find an existing comment on a PR/issue that contains a given marker string. */
+export async function findExistingComment(
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  marker: string
+): Promise<{ id: number } | null> {
+  const response = await fetch(
+    `${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`,
+    { headers: headers() }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch comments: ${response.status} ${response.statusText}`);
+  }
+
+  const comments = await response.json() as Array<{ id: number; body: string }>;
+  const found = comments.find((c) => c.body.includes(marker));
+  return found ? { id: found.id } : null;
+}
+
+/** Update an existing comment by ID. */
+export async function updateComment(
+  owner: string,
+  repo: string,
+  commentId: number,
+  body: string
+): Promise<void> {
+  const response = await fetch(
+    `${GITHUB_API}/repos/${owner}/${repo}/issues/comments/${commentId}`,
+    {
+      method: "PATCH",
+      headers: headers(),
+      body: JSON.stringify({ body }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to update comment: ${response.status} ${response.statusText}`);
+  }
+}
+
 /** Apply labels to an issue. */
 export async function addLabels(
   owner: string,
