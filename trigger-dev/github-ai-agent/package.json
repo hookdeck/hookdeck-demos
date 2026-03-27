@@ -11,7 +11,10 @@
     "setup:dry-run": "DRY_RUN=true bash scripts/setup-hookdeck.sh",
     "deploy": "npm run deploy:prod",
     "deploy:prod": "npx trigger.dev@latest deploy --env prod --skip-update-check --env-file .env",
-    "deploy:prod:ci": "npx trigger.dev@latest deploy --env prod --skip-update-check"
+    "deploy:prod:ci": "npx trigger.dev@latest deploy --env prod --skip-update-check",
+    "demo:issue": "bash walkthrough/issue.sh",
+    "demo:push": "bash walkthrough/push.sh",
+    "demo:pr": "bash walkthrough/pr.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

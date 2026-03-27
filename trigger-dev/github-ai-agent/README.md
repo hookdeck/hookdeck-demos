@@ -12,6 +12,18 @@ GitHub webhooks flow through Hookdeck (verification, routing, transformation) in
 - **Issue labeler** — when an issue is created, classifies it with Claude and auto-applies labels (bug, feature, question, documentation)
 - **Deployment summary** — when code is pushed to main, summarizes what shipped with Claude and posts to Slack
 
+## Demo scripts (optional)
+
+After setup, you can trigger real GitHub activity with **`gh`** (no manual UI):
+
+| Command | Effect |
+|--------|--------|
+| `npm run demo:issue` | Opens a disposable issue → issue labeler task |
+| `npm run demo:push` | Pushes an **empty commit** on branch **`demo/hookdeck-trigger`** → push / Slack task |
+| `npm run demo:pr` | Runs `demo:push`, then opens a PR if needed → PR review task |
+
+Requires a **clean** `git status` for push/PR. Video script, branch cleanup, and suggested order: [`walkthrough/README.md`](walkthrough/README.md).
+
 ## Two integration shapes
 
 The demo shows two ways to fan out work after the same Hookdeck ingress (older write-ups may call these **Pattern A** and **Pattern B**):
