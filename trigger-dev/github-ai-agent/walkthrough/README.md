@@ -122,7 +122,7 @@ _[Static screen with:]_
 
 ## Production notes
 
-- **Diagrams:** Use the Mermaid diagrams from the guide rendered as clean images, or recreate as slides. The task router diagram and connection routing diagram are both in GUIDE.md.
+- **Diagrams:** Use the Mermaid diagrams in this repo’s [`README.md`](../README.md) rendered as clean images, or recreate as slides. The long-form tutorial for this demo lives on the Hookdeck site (not in-repo).
 - **Demo prep:** Have the Hookdeck connections and Trigger.dev tasks already deployed before recording. The demo should feel instant — no waiting for setup.
 - **Demo scripts:** `npm run demo:push` (Act 3) handles branch reset and empty commit automatically — run it from the `github-ai-agent` directory. `npm run demo:issue` exists but the GitHub UI is more visual for the issue demo so it's not used in the script. See [Demo scripts](#demo-scripts) below for full details.
 - **Hookdeck events dashboard:** Expand the event detail to show the transformed payload (the `event: "pull_request"` field) — this is the visual proof of what the transform does.
