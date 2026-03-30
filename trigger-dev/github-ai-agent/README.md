@@ -8,9 +8,9 @@ AI-powered GitHub automation using Hookdeck for webhook routing and Trigger.dev 
 
 GitHub webhooks flow through Hookdeck (verification, routing, transformation) into Trigger.dev tasks that use Claude to automate developer workflows:
 
-- **PR review summary** — when a PR is opened, fetches the diff, generates a code review summary with Claude, and posts it as a PR comment
+- **PR review summary** — on PR **opened** or **updated** (`synchronize`), fetches the diff, asks Claude for a summary, and upserts one PR comment (body includes `<!-- ai-review-summary -->` so later runs PATCH the same comment)
 - **Issue labeler** — when an issue is created, classifies it with Claude and auto-applies labels (bug, feature, question, documentation)
-- **Deployment summary** — when code is pushed to main, summarizes what shipped with Claude and posts to Slack
+- **Deployment summary** — on **push**, summarizes commits with Claude and posts to Slack (**any branch** by default; set `GITHUB_PUSH_SUMMARY_DEFAULT_BRANCH_ONLY=true` for default-branch only)
 
 ## Demo scripts (optional)
 
@@ -28,9 +28,9 @@ Requires a **clean** `git status` for push/PR. Video script, branch cleanup, and
 
 The demo shows two ways to fan out work after the same Hookdeck ingress (older write-ups may call these **Pattern A** and **Pattern B**):
 
-**Trigger.dev task router:** One Hookdeck connection delivers **all** GitHub events to a single Trigger.dev task, `github-webhook-handler`, which verifies once and **fans out inside Trigger.dev** (`tasks.trigger` to `handle-pr`, `handle-issue`, `handle-push` based on event type). Simpler Hookdeck surface area; branching logic lives in application code.
+**Trigger.dev task router:** One Hookdeck connection delivers **all** GitHub events to a single Trigger.dev task, `github-webhook-handler`, which **fans out inside Trigger.dev** (`tasks.trigger` to `handle-pr`, `handle-issue`, `handle-push` based on event type). GitHub authenticity was already checked at the Hookdeck source. Simpler Hookdeck surface area; branching logic lives in application code.
 
-**Hookdeck connection routing:** **Multiple** Hookdeck connections share the same source; each connection uses **header filter rules** (e.g. `x-github-event`) so only matching events reach a dedicated Trigger.dev task. Fan-out happens **in Hookdeck** before Trigger. Each task verifies independently. More Hookdeck resources, but per-event-type observability, retries, and policies are separate.
+**Hookdeck connection routing:** **Multiple** Hookdeck connections share the same source; each connection uses **header filter rules** (e.g. `x-github-event`) so only matching events reach a dedicated Trigger.dev task. Fan-out happens **in Hookdeck** before Trigger. Each task runs as its own root run. More Hookdeck resources, but per-event-type observability, retries, and policies are separate.
 
 > **Setup note:** `npm run setup` / `scripts/setup-hookdeck.sh` creates **both** the task router connection and the Hookdeck-routed connections (same shared Hookdeck source `github`). A single GitHub delivery can therefore be processed **more than once** unless you disable or remove one path’s connections in Hookdeck for clean testing.
 
@@ -69,10 +69,10 @@ flowchart TB
 1. **GitHub** — Sends repo webhooks (e.g. `pull_request`, `issues`, `push`) to the URL shown after Hookdeck setup (the **Source** ingest URL).
 2. **Source: `github`** — Shared Hookdeck **source** (`GITHUB` type). Hooks are registered against this URL; Hookdeck can verify the GitHub HMAC at ingress (see **Verification chain**).
 3. **Connection: `github-to-main-handler`** — Single Hookdeck **connection** for the task router: source → transform → the one destination used for **Trigger.dev-side fan-out** (no per-event-type filters here).
-4. **Transform: `trigger-wrapper`** — Rule-level **transformation** running `hookdeck/trigger-wrapper.js`: shapes the payload for Trigger.dev HTTP triggers and sets `_hookdeck.verified` for task-side checks.
+4. **Transform: `trigger-wrapper`** — Rule-level **transformation** running `hookdeck/trigger-wrapper.js`: wraps the body as `{ payload: { event, action, … } }` for Trigger.dev HTTP triggers and copies `X-GitHub-Event` into `payload.event`.
 5. **Destination: `trigger-dev-main`** — Hookdeck **HTTP destination** pointing at Trigger.dev Production:  
    `https://api.trigger.dev/api/v1/tasks/github-webhook-handler/trigger` with **Bearer** auth using `TRIGGER_SECRET_KEY`.
-6. **Task: `github-webhook-handler`** — **Router task**: verifies the event once, then performs **Trigger.dev-side fan-out** — `tasks.trigger` to the right child task (`handle-pr`, `handle-issue`, `handle-push`) from this task.
+6. **Task: `github-webhook-handler`** — **Router task**: reads `payload.event` / `payload.action`, then performs **Trigger.dev-side fan-out** — `tasks.trigger` to the right child task (`handle-pr`, `handle-issue`, `handle-push`).
 
 **Downstream tasks:** **`handle-pr`**, **`handle-issue`**, **`handle-push`** — The three demo tasks (PR summary comment, issue labels, push → Slack). On the task router path they are started **only** by the router task, not by separate Hookdeck connections.
 
@@ -214,8 +214,9 @@ Events are verified at two levels:
 
 The demo tasks do not re-verify GitHub signatures themselves; they trust that Hookdeck accepted the event at the source.
 
-## TODO
+## Optional follow-ups (not required for the demo)
 
-- [x] **Architecture diagrams:** Mermaid diagrams for the task router vs Hookdeck connection routing are in **Architecture** above, with per-component descriptions under each diagram.
-- [ ] **Hookdeck source verification:** Revisit event-source verification end-to-end (e.g. header semantics vs transform-time context) and keep docs aligned with `hookdeck/trigger-wrapper.js`.
-- [ ] **Development environment & prod parity:** Explore what a **dev** setup would look like (Trigger.dev Development + `trigger dev`, Hookdeck project or connections, webhook routing), how to **migrate or promote** to Production, and how to keep a dev stack **effectively matching prod** (env vars, connection names, transformation code, secrets rotation). This demo is Production-only today; document or script an optional path if we add it later.
+The demo is complete for the Production path described above; the long-form article lives with Hookdeck’s **platform guides** on hookdeck.com. If you extend this repo later, consider:
+
+- **Hookdeck source verification docs** — Keep narrative aligned with `hookdeck/trigger-wrapper.js` if Hookdeck adds new headers or transform APIs.
+- **Development / staging** — This package targets Trigger.dev **Production** only; a second Hookdeck project + `tr_dev_…` + `trigger dev` is possible but not scripted here.
