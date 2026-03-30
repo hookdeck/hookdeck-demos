@@ -107,6 +107,8 @@ fi
 echo ""
 echo "=== Hookdeck connection routing (per-event) ==="
 echo ""
+# Filtered connections reference the same named transform as github-to-main-handler.
+# The name trigger-wrapper is unique in the project; code was set on the upsert above.
 
 # PR events
 echo "Creating connection: github-to-handle-pr"

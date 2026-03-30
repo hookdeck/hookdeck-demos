@@ -4,6 +4,7 @@
  * Wraps the incoming webhook payload in the { payload: { ... } } structure
  * that Trigger.dev HTTP triggers expect, and extracts:
  * - event: the GitHub event type from the X-GitHub-Event header
+ * - github_delivery_id: unique id per delivery from X-GitHub-Delivery (for idempotency)
  * - action: the action field from the original body
  *
  * Source verification (GitHub HMAC) is handled by Hookdeck at the source
@@ -25,9 +26,11 @@ function header(headers, name) {
 addHandler("transform", (request, context) => {
   request.body = {
     payload: {
+      ...request.body,
       event: header(request.headers, "x-github-event"),
       action: request.body.action,
-      ...request.body,
+      // GitHub sends a new UUID for every webhook POST; stable across Hookdeck retries of the same delivery.
+      github_delivery_id: header(request.headers, "x-github-delivery"),
     },
   };
   return request;

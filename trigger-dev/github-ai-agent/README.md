@@ -28,7 +28,7 @@ Requires a **clean** `git status` for push/PR. Video script, branch cleanup, and
 
 The demo shows two ways to fan out work after the same Hookdeck ingress (older write-ups may call these **Pattern A** and **Pattern B**):
 
-**Trigger.dev task router:** One Hookdeck connection delivers **all** GitHub events to a single Trigger.dev task, `github-webhook-handler`, which **fans out inside Trigger.dev** (`tasks.trigger` to `handle-pr`, `handle-issue`, `handle-push` based on event type). GitHub authenticity was already checked at the Hookdeck source. Simpler Hookdeck surface area; branching logic lives in application code.
+**Trigger.dev task router:** One Hookdeck connection delivers **all** GitHub events to a single Trigger.dev task, `github-webhook-handler`, which **fans out inside Trigger.dev** (`tasks.trigger` to `handle-pr`, `handle-issue`, `handle-push` based on event type). GitHub authenticity was already checked at the Hookdeck source. Child triggers use **[idempotency keys](https://trigger.dev/docs/idempotency)** scoped from GitHub’s **`X-GitHub-Delivery`** header (forwarded as `github_delivery_id` in the transform) so router retries or duplicate deliveries do not enqueue duplicate child runs. Simpler Hookdeck surface area; branching logic lives in application code.
 
 **Hookdeck connection routing:** **Multiple** Hookdeck connections share the same source; each connection uses **header filter rules** (e.g. `x-github-event`) so only matching events reach a dedicated Trigger.dev task. Fan-out happens **in Hookdeck** before Trigger. Each task runs as its own root run. More Hookdeck resources, but per-event-type observability, retries, and policies are separate.
 
@@ -184,6 +184,8 @@ This also **re-syncs** the task env vars listed in `trigger.config.ts` from `.en
 **CI:** use `npm run deploy:prod:ci` and export `ANTHROPIC_API_KEY`, `GITHUB_ACCESS_TOKEN`, etc. as job secrets instead of `--env-file`.
 
 Then re-run Hooks or events as needed; Hookdeck continues to call the same task URLs.
+
+If you change `hookdeck/trigger-wrapper.js`, push the new code to Hookdeck by re-running `npm run setup:hookdeck` (or upsert `github-to-main-handler` with fresh `--rule-transform-code`). The transformation name `trigger-wrapper` is unique in the project — that upsert updates the single shared definition; every connection that references the name picks it up automatically.
 
 ## Project structure
 
