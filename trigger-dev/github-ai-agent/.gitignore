@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.trigger/
+.hookdeck-source-url
+
+# Local planning / revision notes (not part of the published demo)
+.plan/

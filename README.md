@@ -8,6 +8,7 @@ Demos follow a `vendor/use-case/` convention. Hookdeck itself is treated as a ve
 
 ```
 hookdeck/       Hookdeck feature demos
+trigger-dev/    Trigger.dev integration demos
 stripe/         Stripe integration demos
 shopify/        Shopify integration demos
 deepgram/       Deepgram integration demos
@@ -26,6 +27,12 @@ _shared/        Shared utilities used across demos
 | [general](hookdeck/general/) | Next.js app for receiving and verifying webhooks from multiple providers |
 | [session-filters](hookdeck/session-filters/) | CLI session filters demo |
 | [transformation-reordering](hookdeck/transformation-reordering/) | Transformation and filter rule reordering |
+
+### Trigger.dev
+
+| Demo | Description |
+|------|-------------|
+| [github-ai-agent](trigger-dev/github-ai-agent/) | GitHub webhooks → Hookdeck → Trigger.dev: Claude PR reviews, issue labels, push summaries (task router vs Hookdeck routing) |
 
 ### Stripe
 
