@@ -106,7 +106,7 @@ Fan-out is **in Hookdeck**: one ingress on the source, then **parallel connectio
 4. **Connection: `github-to-handle-issue`** — Filter **`x-github-event` = `issues`** → dedicated issue path.
 5. **Connection: `github-to-handle-push`** — Filter **`x-github-event` = `push`** → dedicated push path.
 6. **Destinations (`trigger-dev-pr`, `trigger-dev-issues`, `trigger-dev-push`)** — Three HTTP destinations to Trigger.dev task trigger URLs: `/handle-pr/trigger`, `/handle-issue/trigger`, `/handle-push/trigger`, each with Bearer `TRIGGER_SECRET_KEY`.
-7. **Tasks (`handle-pr`, `handle-issue`, `handle-push`)** — Each task’s HTTP trigger is called **directly** by Hookdeck after **connection + filter** fan-out — no `github-webhook-handler` on this path. **Each** runs **`verifyHookdeckEvent()`** independently.
+7. **Tasks (`handle-pr`, `handle-issue`, `handle-push`)** — Each task’s HTTP trigger is called **directly** by Hookdeck after **connection + filter** fan-out — no `github-webhook-handler` on this path. Task code assumes only Hookdeck (with your Bearer token) can reach those URLs; GitHub authenticity was already enforced at the Hookdeck source.
 
 ## Prerequisites
 
@@ -194,7 +194,6 @@ trigger/
     ai.ts                      Claude helper (Anthropic SDK)
     github.ts                  GitHub API helpers (fetch-based)
     slack.ts                   Slack incoming webhook helper
-    verify-hookdeck.ts         Event verification utility
   github-webhook-handler.ts    Trigger.dev task router
   handle-pr.ts                 PR code review summary
   handle-issue.ts              Issue labeler
@@ -208,16 +207,15 @@ scripts/
 
 ## Verification chain
 
-Events are verified at three levels:
+Events are verified at two levels:
 
-1. **Hookdeck source verification** — validates the GitHub HMAC signature (`X-Hub-Signature-256`) at ingress
-2. **Trigger.dev destination auth** — Bearer token authenticates Hookdeck to the Trigger.dev API
-3. **Task-level verification** — `verifyHookdeckEvent()` confirms the `_hookdeck.verified` flag injected by the transformation
+1. **Hookdeck source verification** — validates the GitHub HMAC signature (`X-Hub-Signature-256`) at ingress before the transform or destination runs.
+2. **Trigger.dev destination auth** — Bearer token (`TRIGGER_SECRET_KEY`) so only callers that know the secret can invoke your task trigger URLs.
 
-On the **task router** path, verification happens once in the router task. With **Hookdeck connection routing**, each leaf task verifies independently.
+The demo tasks do not re-verify GitHub signatures themselves; they trust that Hookdeck accepted the event at the source.
 
 ## TODO
 
 - [x] **Architecture diagrams:** Mermaid diagrams for the task router vs Hookdeck connection routing are in **Architecture** above, with per-component descriptions under each diagram.
-- [ ] **Hookdeck source verification:** Revisit event-source verification end-to-end (e.g. `x-hookdeck-verified` vs transform-time `context.connection.source.verification`, `_hookdeck.verified` semantics, and docs alignment). See `hookdeck/trigger-wrapper.js` and `trigger/lib/verify-hookdeck.ts`.
+- [ ] **Hookdeck source verification:** Revisit event-source verification end-to-end (e.g. header semantics vs transform-time context) and keep docs aligned with `hookdeck/trigger-wrapper.js`.
 - [ ] **Development environment & prod parity:** Explore what a **dev** setup would look like (Trigger.dev Development + `trigger dev`, Hookdeck project or connections, webhook routing), how to **migrate or promote** to Production, and how to keep a dev stack **effectively matching prod** (env vars, connection names, transformation code, secrets rotation). This demo is Production-only today; document or script an optional path if we add it later.

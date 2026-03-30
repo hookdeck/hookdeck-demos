@@ -72,23 +72,39 @@ export async function postComment(
   }
 }
 
-/** Find an existing comment on a PR/issue that contains a given marker string. */
+/** List all issue comments (paginated). */
+async function listAllIssueComments(
+  owner: string,
+  repo: string,
+  issueNumber: number
+): Promise<Array<{ id: number; body: string }>> {
+  const all: Array<{ id: number; body: string }> = [];
+  let page = 1;
+  const perPage = 100;
+  for (;;) {
+    const response = await fetch(
+      `${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=${perPage}&page=${page}`,
+      { headers: headers() }
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch comments: ${response.status} ${response.statusText}`);
+    }
+    const batch = (await response.json()) as Array<{ id: number; body: string }>;
+    all.push(...batch);
+    if (batch.length < perPage) break;
+    page += 1;
+  }
+  return all;
+}
+
+/** Find the first issue/PR comment whose body contains the marker (paginated list, oldest first). */
 export async function findExistingComment(
   owner: string,
   repo: string,
   issueNumber: number,
   marker: string
 ): Promise<{ id: number } | null> {
-  const response = await fetch(
-    `${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`,
-    { headers: headers() }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch comments: ${response.status} ${response.statusText}`);
-  }
-
-  const comments = await response.json() as Array<{ id: number; body: string }>;
+  const comments = await listAllIssueComments(owner, repo, issueNumber);
   const found = comments.find((c) => c.body.includes(marker));
   return found ? { id: found.id } : null;
 }
