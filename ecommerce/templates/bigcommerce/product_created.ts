@@ -15,7 +15,8 @@ export default () => {
 
   return {
     headers: {
-      "x-bc-webhook-signature": "U8JyYKUIIcMCwrd7adE0LhZbvnCt/zzTdHfkHkJ6Xns=",
+      "webhook-id": String(randomId()),
+      "webhook-timestamp": String(Math.floor(Date.now() / 1000)),
     },
     body: {
       producer: randomFromArray(producers),

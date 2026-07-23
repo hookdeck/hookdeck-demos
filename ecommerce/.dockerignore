@@ -1,0 +1,8 @@
+.DS_Store
+.env
+.git
+node_modules
+README.md
+scripts
+terraform
+**/*.test.ts

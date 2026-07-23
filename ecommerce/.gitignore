@@ -1,0 +1,4 @@
+# Terraform state is scoped by API-key hash and must remain local.
+terraform/.state/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.*

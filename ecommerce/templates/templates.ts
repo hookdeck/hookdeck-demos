@@ -18,14 +18,16 @@ const TEMPLATES = {
     {
       data: ShopifyOrderCreated,
       name: "order.created",
-      base_rate_seconds: 2,
+      base_rate_seconds: 5,
       signature_header: "x-shopify-hmac-sha256",
+      traffic_profile: "shopify-delivery-groups",
     },
     {
       data: ShopifyOrderUpdated,
       name: "order.updated",
       base_rate_seconds: 1,
       signature_header: "x-shopify-hmac-sha256",
+      traffic_profile: "shopify-delivery-groups",
     },
     {
       data: ShopifyProductCreated,
@@ -45,25 +47,25 @@ const TEMPLATES = {
       data: BigcommerceOrderCreated,
       name: "order.created",
       base_rate_seconds: 2,
-      signature_header: "x-bc-webhook-signature",
+      signature_header: "webhook-signature",
     },
     {
       data: BigcommerceOrderUpdated,
       name: "order.updated",
       base_rate_seconds: 1,
-      signature_header: "x-bc-webhook-signature",
+      signature_header: "webhook-signature",
     },
     {
       data: BigcommerceProductCreated,
       name: "product.created",
       base_rate_seconds: 1,
-      signature_header: "x-bc-webhook-signature",
+      signature_header: "webhook-signature",
     },
     {
       data: BigcommerceProductUpdated,
       name: "products.updated",
       base_rate_seconds: 1,
-      signature_header: "x-bc-webhook-signature",
+      signature_header: "webhook-signature",
     },
   ],
   woocommerce: [

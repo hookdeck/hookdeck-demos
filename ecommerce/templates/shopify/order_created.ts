@@ -1,4 +1,9 @@
+import { SHOPIFY_STORE_DOMAINS } from "../../traffic/shopify-delivery-groups";
+
 export default () => {
+  const randomFromArray = <T,>(arr: readonly T[]) =>
+    arr[Math.floor(Math.random() * arr.length)];
+
   // Helper function to generate random prices
   const generatePrice = (min: number, max: number) => (Math.random() * (max - min) + min).toFixed(2);
   
@@ -15,7 +20,7 @@ export default () => {
       "user-agent": "Shopify/1.0.0",
       "x-shopify-api-version": "2024-10",
       "x-shopify-hmac-sha256": "U8JyYKUIIcMCwrd7adE0LhZbvnCt/zzTdHfkHkJ6Xns=",
-      "x-shopify-shop-domain": "shop.myshopify.com",
+      "x-shopify-shop-domain": randomFromArray(SHOPIFY_STORE_DOMAINS),
       "x-shopify-test": "true",
       "x-shopify-topic": "orders/create",
       "x-shopify-triggered-at": new Date().toISOString(),

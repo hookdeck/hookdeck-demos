@@ -1,29 +1,46 @@
 import TEMPLATES from "./templates/templates";
+import {
+  poissonDelaySeconds,
+  ShopifyDeliveryGroupTraffic,
+} from "./traffic/shopify-delivery-groups";
 
-const API_VERSION = "2024-09-01";
+const API_VERSION = "2025-07-01";
 
-const HOOKDECK_API_KEY = "4emxvbpbks0w8j75tu4iu87twsdu649u8qis9ggxmn30wfxl0m";
+const HOOKDECK_API_KEY =
+  Bun.env.HOOKDECK_API_KEY ?? Bun.env.TF_VAR_hookdeck_api_key;
 
-const API_URL = "https://api.hookdeck.com";
+const API_URL = Bun.env.HOOKDECK_API_URL ?? Bun.env.TF_VAR_hookdeck_api_url;
+
+if (!HOOKDECK_API_KEY) {
+  throw new Error(
+    "HOOKDECK_API_KEY or TF_VAR_hookdeck_api_key is not defined in your .env file.",
+  );
+}
+
+if (!API_URL) {
+  throw new Error(
+    "HOOKDECK_API_URL or TF_VAR_hookdeck_api_url is not defined in your .env file.",
+  );
+}
 
 const VARIANCE_PERCENTAGE_CHANGE = 0.5;
+
+type TrafficProfile = "shopify-delivery-groups";
 
 interface Template {
   data: () => { headers: Record<string, string>; body: any };
   base_rate_seconds: number;
   name: string;
   signature_header: string;
+  traffic_profile?: TrafficProfile;
 }
 
-const response = await fetch(
-  `${API_URL}/${API_VERSION}/sources`,
-  {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${HOOKDECK_API_KEY}`,
-    },
-  }
-);
+const response = await fetch(`${API_URL}/${API_VERSION}/sources`, {
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${HOOKDECK_API_KEY}`,
+  },
+});
 
 const sources = (await response.json()).models;
 
@@ -32,7 +49,7 @@ const sources_by_name = sources.reduce(
     acc[source.name] = source;
     return acc;
   },
-  {}
+  {},
 );
 
 async function sendRequest(
@@ -41,7 +58,7 @@ async function sendRequest(
   data: {
     headers: Record<string, string>;
     body: any;
-  }
+  },
 ) {
   try {
     const { headers, body } = data;
@@ -51,9 +68,16 @@ async function sendRequest(
       headers: {
         ...headers,
         "Content-Type": "application/json",
-        [signature_header]: new Bun.CryptoHasher("sha256", "secret-key")
-          .update(body_string)
-          .digest("base64"),
+        [signature_header]:
+          source === "bigcommerce"
+            ? `v1,${new Bun.CryptoHasher("sha256", "secret-key")
+                .update(
+                  `${headers["webhook-id"]}.${headers["webhook-timestamp"]}.${body_string}`,
+                )
+                .digest("base64")}`
+            : new Bun.CryptoHasher("sha256", "secret-key")
+                .update(body_string)
+                .digest("base64"),
       },
       body: body_string,
     });
@@ -71,6 +95,17 @@ async function sleep(seconds: number) {
 }
 
 async function processTemplates() {
+  const allTemplates = Object.values(TEMPLATES).flat() as Template[];
+  const shopifyDeliveryGroupTemplates = allTemplates.filter(
+    (template) => template.traffic_profile === "shopify-delivery-groups",
+  );
+  const shopifyDeliveryGroupTraffic = new ShopifyDeliveryGroupTraffic(
+    shopifyDeliveryGroupTemplates.reduce(
+      (rate, template) => rate + template.base_rate_seconds,
+      0,
+    ),
+  );
+
   Object.entries(TEMPLATES).forEach(async ([platform, templates]) => {
     console.log(`Processing ${platform} templates...`);
 
@@ -81,16 +116,32 @@ async function processTemplates() {
     }
 
     (templates as Template[]).forEach(async (template) => {
+      if (template.traffic_profile === "shopify-delivery-groups") {
+        while (true) {
+          const traffic = shopifyDeliveryGroupTraffic.next();
+          const data = template.data();
+          data.headers["x-shopify-shop-domain"] = traffic.store;
+
+          sendRequest(source.name, template.signature_header, data);
+          await sleep(
+            poissonDelaySeconds(
+              template.base_rate_seconds * traffic.rateMultiplier,
+            ),
+          );
+        }
+      }
+
       let variance = 0;
 
       const updateVariance = async () => {
-        // Sleep between 1 and 120 seconds
-        await sleep(Math.floor(Math.random() * 120) + 1);
-        variance = Math.random() * VARIANCE_PERCENTAGE_CHANGE;
-        updateVariance();
+        while (true) {
+          // Sleep between 1 and 120 seconds
+          await sleep(Math.floor(Math.random() * 120) + 1);
+          variance = Math.random() * VARIANCE_PERCENTAGE_CHANGE;
+        }
       };
 
-      updateVariance();
+      void updateVariance();
 
       while (true) {
         const delayBetweenRequests =

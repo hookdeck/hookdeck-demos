@@ -2,6 +2,15 @@
   "name": "demo-setup",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "start": "bun run index.ts",
+    "tf": "bun run scripts/terraform.ts",
+    "tf:init": "bun run scripts/terraform.ts init",
+    "tf:plan": "bun run scripts/terraform.ts plan",
+    "tf:apply": "bun run scripts/terraform.ts apply",
+    "tf:destroy": "bun run scripts/terraform.ts destroy",
+    "tf:state:migrate": "bun run scripts/terraform.ts migrate"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
