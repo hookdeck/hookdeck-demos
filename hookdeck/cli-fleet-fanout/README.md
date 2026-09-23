@@ -41,6 +41,12 @@ Hookdeck. Groups and hosts at the top, then the sources and connections that
 `npm run setup` upserts exactly as written:
 
 ```yaml
+filters:
+  group-a-repos:                               # the body rule, named once
+    repository:
+      full_name:
+        $in: [demo-org/service-api, demo-org/service-worker]
+
 connections:
   - name: fleet-demo-group-a-host-01           # the Hookdeck connection
     source: fleet-demo-per-machine             # the Hookdeck source
@@ -49,13 +55,14 @@ connections:
       type: CLI
       path: /webhooks/scm                      # where the machine serves
     hosts: [{ host: group-a-host-01, port: 4101 }]
-    filter:                                    # why this machine gets the event
-      repository: { full_name: { $in: [demo-org/service-api, demo-org/service-worker] } }
+    filter: group-a-repos                      # why this machine gets the event
 ```
 
-Three connections carry the same filter, which is what makes all three
-`group-a` hosts receive the same events. `group-b` is the one-to-one case - a
-group of one, expressed in exactly the same shape.
+Three connections name the same filter, which is what makes all three `group-a`
+hosts receive the same events - and naming it rather than repeating it means
+that shared-ness is visible instead of something you have to diff for. A
+repository appears in exactly one place in the file. `group-b` is the
+one-to-one case: a group of one, expressed in the same shape.
 
 ## Run it
 

@@ -14,6 +14,12 @@ export interface MachineSpec {
 export interface GroupSpec {
   name: string;
   description: string;
+  /** Name of the entry in `filters`. */
+  filter: string;
+  /**
+   * Repositories this group receives, read out of its filter. Derived rather
+   * than declared, so a repository is named in exactly one place.
+   */
   repos: string[];
   hosts: string[];
 }
@@ -45,14 +51,30 @@ export interface ConnectionSpec {
   source: string;
   destination: ConnectionDestination;
   hosts: ConnectionHost[];
+  /** Name of the entry in `filters`; shared by every connection in a group. */
+  filterName: string;
+  /** The filter itself, resolved from `filterName`. */
   filter: ConnectionFilter;
 }
 
 export interface FleetSpec {
   prefix: string;
+  filters: Record<string, ConnectionFilter>;
   groups: GroupSpec[];
   sources: SourceSpec[];
   connections: ConnectionSpec[];
+}
+
+/**
+ * fleet.yaml as written: groups and connections name a filter rather than
+ * repeating it. Resolved into FleetSpec on load.
+ */
+interface RawFleetSpec {
+  prefix: string;
+  filters: Record<string, ConnectionFilter>;
+  groups: (Omit<GroupSpec, "repos"> & { filter: string })[];
+  sources: SourceSpec[];
+  connections: (Omit<ConnectionSpec, "filter" | "filterName"> & { filter: string })[];
 }
 
 /**
@@ -95,11 +117,52 @@ let cached: FleetSpec | undefined;
 
 export function fleet(): FleetSpec {
   if (!cached) {
-    cached = parseYaml(readFileSync(resolve(ROOT, "fleet.yaml"), "utf8")) as FleetSpec;
+    const raw = parseYaml(readFileSync(resolve(ROOT, "fleet.yaml"), "utf8")) as RawFleetSpec;
+    cached = resolveFleet(raw);
     validateFleet(cached);
   }
   return cached;
 }
+
+/** Look up a named filter, failing loudly rather than silently matching nothing. */
+function filterByName(raw: RawFleetSpec, name: string, usedBy: string): ConnectionFilter {
+  const found = raw.filters?.[name];
+  if (!found) {
+    throw new Error(
+      `${usedBy} uses unknown filter "${name}". Known filters: ${Object.keys(raw.filters ?? {}).join(", ") || "(none)"}.`,
+    );
+  }
+  return found;
+}
+
+/**
+ * Expand the filter names into the filters themselves, and derive each group's
+ * repository list from its filter so the repositories are declared once.
+ */
+function resolveFleet(raw: RawFleetSpec): FleetSpec {
+  return {
+    prefix: raw.prefix,
+    filters: raw.filters ?? {},
+    sources: raw.sources,
+    groups: raw.groups.map((group) => ({
+      ...group,
+      repos: reposOf(filterByName(raw, group.filter, `Group ${group.name}`)),
+    })),
+    connections: raw.connections.map((connection) => ({
+      ...connection,
+      filterName: connection.filter,
+      filter: filterByName(raw, connection.filter, `Connection ${connection.name}`),
+    })),
+  };
+}
+
+/**
+ * The repositories a filter matches. The sender and the visualization offer
+ * these as choices, so this assumes the demo's filter shape rather than
+ * handling arbitrary Hookdeck filter syntax.
+ */
+export const reposOf = (filter: ConnectionFilter): string[] =>
+  filter.repository?.full_name?.$in ?? [];
 
 function validateFleet(spec: FleetSpec): void {
   const hosts = new Set(spec.groups.flatMap((g) => g.hosts));
