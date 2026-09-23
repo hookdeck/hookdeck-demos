@@ -17,19 +17,22 @@
     { name: "group-a-host-03", agent: "host 03" },
   ];
 
+  // A GIF cannot be scrubbed, so whatever is held longest is what people
+  // actually see. The failure is the point, so it holds longest: the healthy
+  // warm-up is only long enough to establish the fan-out.
   const SCRIPTED_EVENTS = [
-    { color: "#6ea8fe", label: "push · service-api", start: 0.45, dur: 1.65 },
-    { color: "#f0b429", label: "push · service-worker", start: 2.35, dur: 1.65 },
-    { color: "#5dcaa5", label: "push · service-api", start: 5.25, dur: 1.65 },
+    { color: "#6ea8fe", label: "push · service-api", start: 0.4, dur: 1.5 },
+    { color: "#f0b429", label: "push · service-worker", start: 1.85, dur: 1.5 },
+    { color: "#5dcaa5", label: "push · service-api", start: 4.4, dur: 1.5 },
   ];
 
-  const DROP_START = 4.25;
-  const DROP_END = 4.95;
-  const CALLOUT_AT = 7.15;
-  const RISE_START = 8.5;
-  const RISE_END = 9.15;
-  const RETRY_START = 9.55;
-  const RETRY_DUR = 1.65;
+  const DROP_START = 3.3;
+  const DROP_END = 3.95;
+  const CALLOUT_AT = 5.6;
+  const RISE_START = 10.4;
+  const RISE_END = 11.05;
+  const RETRY_START = 11.45;
+  const RETRY_DUR = 1.55;
 
   const C = {
     bg: "#12151c",
@@ -146,8 +149,11 @@
           calloutTone = "bad";
         }
       } else if (t >= RISE_END) {
-        callout = "host 03 is back · nothing to retry";
-        calloutTone = "ok";
+        // The host being back does not resolve anything here: no record was
+        // ever made, so there is nothing to aim a retry at. Ending the loop on
+        // a green "resolved" line would say the opposite of the point.
+        callout = "host 03 is back · nothing records what it missed";
+        calloutTone = "bad";
       } else {
         callout = "delivered · nothing notes the miss";
         calloutTone = "ok";
@@ -554,25 +560,26 @@
 
   function renderFleet(svg, scene, state) {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
-    const laid = scene === "per-machine" ? layoutMachines(state.groups) : layoutGroups(state.groups);
+    const connected = state.connections !== false;
+    const laid = connected
+      ? scene === "per-machine"
+        ? layoutMachines(state.groups)
+        : layoutGroups(state.groups)
+      : null;
     const title = scene === "per-machine" ? "Connection per machine" : "Connection per group";
-    const subtitle =
-      state.connections === false
-        ? "No connections"
-        : scene === "per-machine"
-          ? "Each line is its own connection"
-          : "One connection. Multiple CLI sessions.";
-    paintFrame(svg, laid.height, title);
+    const subtitle = connected
+      ? scene === "per-machine"
+        ? "Each line is its own connection"
+        : "One connection. Multiple CLI sessions."
+      : "No connections";
+    paintFrame(svg, laid ? laid.height : 96, title);
     text(svg, 28, 36, title, font(18, { fill: C.text, "font-weight": 650 }));
     text(svg, 28, 58, subtitle, font(13, { fill: C.muted }));
+    if (!laid) return;
     drawLegend(svg, state.legend || []);
     drawSource(svg, 28, laid.sourceY, laid.sourceW, laid.sourceH);
-    if (state.connections !== false) {
-      if (scene === "per-machine") drawFleetMachines(svg, state, laid);
-      else drawFleetGroups(svg, state, laid);
-    } else {
-      drawFleetNamesOnly(svg, laid);
-    }
+    if (scene === "per-machine") drawFleetMachines(svg, state, laid);
+    else drawFleetGroups(svg, state, laid);
     if (state.callout) drawCallout(svg, state.callout, state.calloutTone || "pending", laid.calloutY);
   }
 
@@ -647,17 +654,6 @@
       calloutY,
       height: calloutY + 72 + 24,
     };
-  }
-
-  function drawFleetNamesOnly(svg, laid) {
-    for (const block of laid.blocks) {
-      text(svg, laid.x1 + 18, block.labelY + 14, block.name, font(12, { fill: C.faint }));
-      for (const lane of block.lanes) {
-        if (!lane.name) continue;
-        const y = lane.y || lane.lineY;
-        text(svg, laid.x1 + 18, y + 4, lane.name, font(12, { fill: C.muted }));
-      }
-    }
   }
 
   function drawFleetMachines(svg, state, laid) {
