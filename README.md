@@ -21,6 +21,7 @@ _shared/        Shared utilities used across demos
 
 | Demo | Description |
 |------|-------------|
+| [cli-fleet-fanout](hookdeck/cli-fleet-fanout/) | Fan out webhooks to a fleet of machines on a private network with CLI destinations: connection-per-machine vs connection-per-group |
 | [cli-overview](hookdeck/cli-overview/) | Overview of the Hookdeck CLI capabilities |
 | [deduplication](hookdeck/deduplication/) | Event deduplication with payload-based and ID-based modes |
 | [demo-scripts](hookdeck/demo-scripts/) | Scripts for automating demo setup and event triggering |

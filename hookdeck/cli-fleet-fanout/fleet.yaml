@@ -1,0 +1,57 @@
+# Fleet definition for both approaches.
+#
+# The scenario, generalized: an organization runs machines on a private network
+# with no inbound route from the internet - CI agents, deployment targets,
+# on-prem services, anything. Webhooks have to reach them.
+#
+# The machines are arranged in groups, and EVERY machine in a group must
+# receive EVERY event matching that group. They are peers, not workers sharing
+# a queue: the same event goes to all of them. Some groups are a single machine
+# that receives only its own repositories' events.
+#
+# This file is the source of truth for both approaches. In production it is the
+# file you keep in source control; a machine reads its own entry at launch and
+# ensures its Hookdeck connection exists before it starts listening.
+#
+# Naming: a machine is <group>-host-<nn>, so the name states which group it
+# belongs to and which machine it is. Under approach 1 the connection is named
+# after the machine (fleet-demo-group-a-host-01); under approach 2 it is named
+# after the group (fleet-demo-group-a), because that is genuinely all Hookdeck
+# knows about.
+
+# Every Hookdeck resource this demo creates is named with this prefix so that
+# teardown can find them and nothing else in the project is touched.
+prefix: fleet-demo
+
+# Path the local service listens on. Use whatever yours does. Set it on the
+# connection with --destination-cli-path, never with `listen --path`, which
+# writes the path to the server and persists it.
+cliPath: /webhooks/scm
+
+# Two separate sources so both approaches can run side by side against the same
+# webhook traffic without interfering with each other.
+sources:
+  perMachine: fleet-demo-per-machine
+  perGroup: fleet-demo-per-group
+
+groups:
+  # The core requirement: three peer machines that must all receive every event
+  # for this group's repositories.
+  - name: group-a
+    description: Three peer machines; all three must receive every event for the group's repos.
+    repos:
+      - demo-org/service-api
+      - demo-org/service-worker
+    machines:
+      - { name: group-a-host-01, perMachinePort: 4101, perGroupPort: 4201 }
+      - { name: group-a-host-02, perMachinePort: 4102, perGroupPort: 4202 }
+      - { name: group-a-host-03, perMachinePort: 4103, perGroupPort: 4203 }
+
+  # The one-to-one case: specific webhooks go to one specific machine and no
+  # other. A group of one, so the same config shape covers it.
+  - name: group-b
+    description: A single dedicated machine that receives only its own repository's events.
+    repos:
+      - demo-org/release-tooling
+    machines:
+      - { name: group-b-host-01, perMachinePort: 4104, perGroupPort: 4204 }

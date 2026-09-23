@@ -1,0 +1,28 @@
+{
+  "name": "hookdeck-cli-fleet-fanout-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fan out webhooks to a fleet of machines on a private network using Hookdeck CLI destinations. Two approaches, side by side.",
+  "scripts": {
+    "setup": "tsx shared/src/setup.ts",
+    "teardown": "tsx shared/src/teardown.ts",
+    "fleet": "tsx shared/src/fleet.ts",
+    "send": "tsx shared/src/send-webhook.ts",
+    "recover": "tsx per-machine/src/recover.ts",
+    "group-recovery-problem": "tsx per-group/src/recovery-problem.ts",
+    "inspect": "tsx shared/src/inspect.ts",
+    "scenario": "tsx shared/src/scenario.ts",
+    "ensure:machine": "tsx per-machine/src/ensure-connection.ts",
+    "ensure:group": "tsx per-group/src/ensure-group.ts"
+  },
+  "dependencies": {
+    "hookdeck-cli": "^2.6.0",
+    "yaml": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.9.2"
+  }
+}

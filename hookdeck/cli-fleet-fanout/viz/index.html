@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fleet fan-out</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; background: #0c0e13; color: #e8eaef; }
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      body.capture {
+        width: 960px;
+        height: 520px;
+        overflow: hidden;
+        background: #12151c;
+      }
+      body.capture svg { display: block; }
+      #app.scripted {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        padding: 24px;
+        align-items: center;
+      }
+      #app.live { max-width: 1240px; margin: 0 auto; padding: 20px 20px 56px; }
+      #app.live h1 { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+      .lede { color: #939bab; margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
+      .toolbar, .presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      select, button {
+        background: #1a1e28;
+        color: #e8eaef;
+        border: 1px solid #2a3142;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font: inherit;
+        font-size: 13px;
+      }
+      button { cursor: pointer; }
+      button:hover { border-color: #42597d; }
+      button.primary { background: #17352c; border-color: #3f6e5e; }
+      button.danger { color: #f09196; }
+      button:disabled { opacity: 0.5; cursor: wait; }
+      .scenes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+      @media (max-width: 1100px) { .scenes { grid-template-columns: 1fr; } }
+      .scene-wrap svg { width: 100%; height: auto; display: block; }
+      .machines { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; }
+      .machine {
+        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        font-size: 13px; color: #c5cad3;
+      }
+      .machine .name { min-width: 7.5rem; }
+      .pill {
+        font-size: 11px; border-radius: 999px; padding: 2px 8px;
+        border: 1px solid #2a3142; color: #939bab;
+      }
+      .pill.up { color: #8fd4ae; border-color: #3f6e5e; }
+      .pill.down { color: #f09196; border-color: #8a4b55; }
+      .group-label { margin: 14px 0 0; font-size: 12px; color: #6b7384; letter-spacing: 0.04em; }
+      .status { min-height: 1.2em; color: #f09196; font-size: 13px; margin: 0 0 12px; }
+      .panel { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="./scene.js"></script>
+    <script>
+      (function () {
+        const viz = window.FleetViz;
+        const params = new URLSearchParams(location.search);
+        const scene = params.get("scene");
+        const tRaw = params.get("t");
+        const app = document.getElementById("app");
+
+        if ((scene === "per-machine" || scene === "per-group") && tRaw != null) {
+          document.body.classList.add("capture");
+          app.remove();
+          const svg = viz.createSvg();
+          document.body.appendChild(svg);
+          const t = Number(tRaw);
+          viz.render(svg, scene, viz.scriptedState(scene, Number.isFinite(t) ? t : 0));
+          return;
+        }
+
+        fetch("/api/state")
+          .then((res) => {
+            if (!res.ok) throw new Error("not live");
+            return res.json();
+          })
+          .then((state) => startLive(state))
+          .catch(() => startScripted());
+
+        function startScripted() {
+          app.className = "scripted";
+          const views = ["per-machine", "per-group"].map((name) => {
+            const svg = viz.createSvg();
+            app.appendChild(svg);
+            return { name, svg };
+          });
+          const started = performance.now();
+          function frame(now) {
+            const t = ((now - started) / 1000) % viz.DURATION;
+            for (const view of views) {
+              viz.render(view.svg, view.name, viz.scriptedState(view.name, t));
+            }
+            requestAnimationFrame(frame);
+          }
+          requestAnimationFrame(frame);
+        }
+
+        function startLive(initial) {
+          app.className = "live";
+          let snapshot = initial;
+          let error = "";
+          let busy = false;
+          const svgs = {};
+
+          app.innerHTML = "";
+          const h1 = document.createElement("h1");
+          h1.textContent = "Fleet fan-out";
+          const lede = document.createElement("p");
+          lede.className = "lede";
+          lede.textContent =
+            "Send a webhook and watch it move. Session edges light from each machine's log. The request record is what Hookdeck stored.";
+          const status = document.createElement("p");
+          status.className = "status";
+          const presets = document.createElement("div");
+          presets.className = "presets";
+          const toolbar = document.createElement("div");
+          toolbar.className = "toolbar";
+          const scenes = document.createElement("div");
+          scenes.className = "scenes";
+          app.append(h1, lede, status, presets, toolbar, scenes);
+
+          const repo = document.createElement("select");
+          const eventType = document.createElement("select");
+          for (const name of ["push", "pull_request", "workflow_run"]) {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = name;
+            eventType.appendChild(option);
+          }
+
+          function button(label, className, onClick) {
+            const node = document.createElement("button");
+            node.type = "button";
+            node.textContent = label;
+            if (className) node.className = className;
+            node.addEventListener("click", onClick);
+            return node;
+          }
+
+          presets.append(
+            button("All machines up", "", () => fleetBoth("up")),
+            button("Crash build-a-03 on both", "danger", () => crashDemo()),
+          );
+
+          toolbar.append(
+            repo,
+            eventType,
+            button("Send to both", "primary", () => send("both")),
+            button("Send per-machine", "", () => send("per-machine")),
+            button("Send per-group", "", () => send("per-group")),
+          );
+
+          for (const name of ["per-machine", "per-group"]) {
+            const wrap = document.createElement("div");
+            wrap.className = "scene-wrap";
+            const svg = viz.createSvg();
+            svgs[name] = svg;
+            const controls = document.createElement("div");
+            controls.className = "panel";
+            controls.dataset.approach = name;
+            wrap.append(svg, controls);
+            scenes.appendChild(wrap);
+          }
+
+          function paint() {
+            status.textContent = error || snapshot.error || "";
+            fillRepos();
+            for (const name of ["per-machine", "per-group"]) {
+              viz.render(svgs[name], name, viewState(name, snapshot));
+            }
+            paintControls();
+            for (const node of app.querySelectorAll("button, select")) node.disabled = busy;
+          }
+
+          function fillRepos() {
+            const selected = repo.value;
+            const repos = [];
+            for (const group of snapshot.groups || []) {
+              for (const item of group.repos || []) {
+                if (!repos.includes(item)) repos.push(item);
+              }
+            }
+            if (!repos.length) repos.push("demo-org/service-api");
+            repo.replaceChildren();
+            for (const item of repos) {
+              const option = document.createElement("option");
+              option.value = item;
+              option.textContent = item;
+              repo.appendChild(option);
+            }
+            if (repos.includes(selected)) repo.value = selected;
+          }
+
+          function paintControls() {
+            for (const name of ["per-machine", "per-group"]) {
+              const panel = scenes.querySelector('[data-approach="' + name + '"]');
+              panel.replaceChildren();
+              const machines = (snapshot.approaches && snapshot.approaches[name]) || [];
+              let lastGroup = "";
+              for (const machine of machines) {
+                if (machine.group !== lastGroup) {
+                  lastGroup = machine.group;
+                  const label = document.createElement("div");
+                  label.className = "group-label";
+                  label.textContent = machine.group;
+                  panel.appendChild(label);
+                }
+                const row = document.createElement("div");
+                row.className = "machine";
+                const title = document.createElement("span");
+                title.className = "name";
+                title.textContent = machine.name;
+                const pill = document.createElement("span");
+                pill.className = "pill " + (machine.up ? "up" : "down");
+                pill.textContent = machine.up ? "up" : "down";
+                row.append(
+                  title,
+                  pill,
+                  button("Up", "", () => fleet(name, "up", [machine.name])),
+                  button("Down", "", () => fleet(name, "down", [machine.name])),
+                  button("Crash", "danger", () => fleet(name, "crash", [machine.name])),
+                );
+                panel.appendChild(row);
+              }
+            }
+          }
+
+          function viewState(name, data) {
+            const rows = ((data.approaches && data.approaches[name]) || []).filter((m) =>
+              viz.MACHINES.some((known) => known.name === m.name),
+            );
+            const machines = viz.MACHINES.map((spec) => {
+              const row = rows.find((m) => m.name === spec.name);
+              const up = row ? row.up : false;
+              return { name: spec.name, agent: spec.agent, up, presence: up ? 1 : 0 };
+            });
+            const deliveries = (data.deliveries || []).filter((d) => d.approach === name).slice(-4);
+            const now = Date.now();
+            const events = deliveries.map((delivery) => ({
+              id: delivery.delivery,
+              color: delivery.color,
+              label: delivery.label,
+              lanes: lanesFor(delivery, now),
+            }));
+            const latest = deliveries[deliveries.length - 1];
+            return {
+              machines,
+              events,
+              callout: latest ? latest.callout : null,
+              calloutTone: latest ? latest.calloutTone : null,
+              legend: deliveries.map((d) => ({ color: d.color, label: d.label })),
+            };
+          }
+
+          function lanesFor(delivery, now) {
+            const age = Math.max(0, (now - Date.parse(delivery.sentAt)) / 1000);
+            const travel = 1.6;
+            const raw = Math.min(1, age / travel);
+            const lanes = [];
+            for (const spec of viz.MACHINES) {
+              const machine = spec.name;
+              if (!(delivery.targets || []).includes(machine)) continue;
+              const local = (delivery.local || []).includes(machine);
+              const recorded = (delivery.hookdeckLanes || []).find((lane) => lane.machine === machine);
+              if (recorded && recorded.outcome === "disconnected") {
+                lanes.push({ machine, progress: 0.58, outcome: "disconnected" });
+                continue;
+              }
+              if (local || (recorded && recorded.outcome === "delivered")) {
+                const progress = raw >= 1 ? 1 : smoothTo(raw);
+                if (progress < 1) lanes.push({ machine, progress, outcome: "inflight" });
+                else lanes.push({ machine, progress: 1, outcome: "delivered" });
+                continue;
+              }
+              const wasUp = (delivery.upAtSend || []).includes(machine);
+              if (!wasUp) continue;
+              const held = Math.min(raw, 0.92);
+              lanes.push({
+                machine,
+                progress: smoothTo(held / 0.92) * 0.92,
+                outcome: "inflight",
+              });
+            }
+            return lanes;
+          }
+
+          function smoothTo(u) {
+            const x = Math.max(0, Math.min(1, u));
+            return x * x * (3 - 2 * x);
+          }
+
+          async function fleet(approach, action, machines) {
+            await act({ approach, action, machines });
+          }
+
+          async function fleetBoth(action) {
+            await act({ approach: "per-machine", action, machines: [] });
+            await act({ approach: "per-group", action, machines: [] });
+          }
+
+          async function crashDemo() {
+            await act({ approach: "per-machine", action: "crash", machines: ["build-a-03"] });
+            await act({ approach: "per-group", action: "crash", machines: ["build-a-03"] });
+          }
+
+          async function send(approach) {
+            await actSend({ approach, repo: repo.value, event: eventType.value });
+          }
+
+          async function act(body) {
+            busy = true;
+            error = "";
+            paint();
+            try {
+              const res = await fetch("/api/fleet", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
+          async function actSend(body) {
+            busy = true;
+            error = "";
+            paint();
+            try {
+              const res = await fetch("/api/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
+          paint();
+          requestAnimationFrame(function tick() {
+            for (const name of ["per-machine", "per-group"]) {
+              viz.render(svgs[name], name, viewState(name, snapshot));
+            }
+            requestAnimationFrame(tick);
+          });
+          setInterval(async () => {
+            if (busy) return;
+            try {
+              const res = await fetch("/api/state");
+              if (!res.ok) return;
+              snapshot = await res.json();
+              error = "";
+              paint();
+            } catch {
+              /* keep the last good snapshot while a poll fails */
+            }
+          }, 1000);
+        }
+      })();
+    </script>
+  </body>
+</html>
