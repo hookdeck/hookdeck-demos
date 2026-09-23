@@ -6,41 +6,27 @@
 # them and nothing else in the project is touched.
 prefix: fleet-demo
 
-# Filters -------------------------------------------------------------------
-# The body rule stored on a connection (--rule-filter-body). Named once and
-# referenced, so that three connections sharing `group-a-repos` is visibly the
-# reason all three group-a machines get the same events. It is also the only
-# place a repository is named.
+# Groups --------------------------------------------------------------------
+# A group is a filter: the body rule stored on a connection
+# (--rule-filter-body), naming the repositories its machines receive.
+#
+# There is no separate list of groups. The machines in a group are simply the
+# machines whose connections share this filter, which is what "these machines
+# receive the same events" means. Declaring it twice would only let the two
+# drift apart.
 filters:
-  group-a-repos:
+  group-a:
     repository:
       full_name:
         $in:
           - demo-org/service-api
           - demo-org/service-worker
 
-  group-b-repos:
+  group-b:
     repository:
       full_name:
         $in:
           - demo-org/release-tooling
-
-# The fleet: who must receive what ------------------------------------------
-groups:
-  - name: group-a
-    description: Three peer hosts. Every one must receive every event for these repositories.
-    filter: group-a-repos
-    hosts:
-      - group-a-host-01
-      - group-a-host-02
-      - group-a-host-03
-
-  # The one-to-one case is just a group of one, so the same shape covers it.
-  - name: group-b
-    description: One host. Only its own repository's events.
-    filter: group-b-repos
-    hosts:
-      - group-b-host-01
 
 # Sources -------------------------------------------------------------------
 # Two, so both models can run side by side against the same traffic.
@@ -64,25 +50,25 @@ connections:
     source: fleet-demo-per-machine
     destination: { name: fleet-demo-group-a-host-01, type: CLI, path: /webhooks/scm }
     hosts: [{ host: group-a-host-01, port: 4101 }]
-    filter: group-a-repos
+    filter: group-a
 
   - name: fleet-demo-group-a-host-02
     source: fleet-demo-per-machine
     destination: { name: fleet-demo-group-a-host-02, type: CLI, path: /webhooks/scm }
     hosts: [{ host: group-a-host-02, port: 4102 }]
-    filter: group-a-repos
+    filter: group-a
 
   - name: fleet-demo-group-a-host-03
     source: fleet-demo-per-machine
     destination: { name: fleet-demo-group-a-host-03, type: CLI, path: /webhooks/scm }
     hosts: [{ host: group-a-host-03, port: 4103 }]
-    filter: group-a-repos
+    filter: group-a
 
   - name: fleet-demo-group-b-host-01
     source: fleet-demo-per-machine
     destination: { name: fleet-demo-group-b-host-01, type: CLI, path: /webhooks/scm }
     hosts: [{ host: group-b-host-01, port: 4104 }]
-    filter: group-b-repos
+    filter: group-b
 
   # --- one connection per group (the alternative) ------------------------
   - name: fleet-demo-group-a
@@ -92,10 +78,10 @@ connections:
       - { host: group-a-host-01, port: 4201 }
       - { host: group-a-host-02, port: 4202 }
       - { host: group-a-host-03, port: 4203 }
-    filter: group-a-repos
+    filter: group-a
 
   - name: fleet-demo-group-b
     source: fleet-demo-per-group
     destination: { name: fleet-demo-group-b, type: CLI, path: /webhooks/scm }
     hosts: [{ host: group-b-host-01, port: 4204 }]
-    filter: group-b-repos
+    filter: group-b

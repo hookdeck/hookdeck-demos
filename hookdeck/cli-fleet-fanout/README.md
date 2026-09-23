@@ -42,7 +42,7 @@ Hookdeck. Groups and hosts at the top, then the sources and connections that
 
 ```yaml
 filters:
-  group-a-repos:                               # the body rule, named once
+  group-a:                                     # a group IS a filter
     repository:
       full_name:
         $in: [demo-org/service-api, demo-org/service-worker]
@@ -55,14 +55,13 @@ connections:
       type: CLI
       path: /webhooks/scm                      # where the machine serves
     hosts: [{ host: group-a-host-01, port: 4101 }]
-    filter: group-a-repos                      # why this machine gets the event
+    filter: group-a                            # why this machine gets the event
 ```
 
-Three connections name the same filter, which is what makes all three `group-a`
-hosts receive the same events - and naming it rather than repeating it means
-that shared-ness is visible instead of something you have to diff for. A
-repository appears in exactly one place in the file. `group-b` is the
-one-to-one case: a group of one, expressed in the same shape.
+Three connections name the same filter, and that *is* the group - the machines
+receiving the same events are the machines sharing a filter. Nothing declares
+group membership separately, and a repository appears in exactly one place.
+`group-b` is the one-to-one case: one connection on that filter, same shape.
 
 ## Run it
 

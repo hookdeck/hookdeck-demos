@@ -11,15 +11,14 @@ export interface MachineSpec {
   name: string;
 }
 
+/**
+ * A group is not declared. It is the set of hosts whose connections share a
+ * filter, which is exactly what "these machines receive the same events" means.
+ * Derived from `connections`, so nothing states it twice.
+ */
 export interface GroupSpec {
+  /** The filter name, which is the group's identity. */
   name: string;
-  description: string;
-  /** Name of the entry in `filters`. */
-  filter: string;
-  /**
-   * Repositories this group receives, read out of its filter. Derived rather
-   * than declared, so a repository is named in exactly one place.
-   */
   repos: string[];
   hosts: string[];
 }
@@ -69,7 +68,6 @@ export interface FleetSpec {
 interface RawFleetSpec {
   prefix: string;
   filters: Record<string, ConnectionFilter>;
-  groups: (Omit<GroupSpec, "repos"> & { filter: string })[];
   sources: SourceSpec[];
   connections: (Omit<ConnectionSpec, "filter"> & { filter: string })[];
 }
@@ -132,21 +130,28 @@ function filterByName(raw: RawFleetSpec, name: string, usedBy: string): Connecti
   return found;
 }
 
-/**
- * Expand the filter names into the filters themselves, and derive each group's
- * repository list from its filter so the repositories are declared once.
- */
+/** Expand the filter names, then derive the groups from what shares a filter. */
 function resolveFleet(raw: RawFleetSpec): FleetSpec {
+  const connections = raw.connections.map((connection) => ({
+    ...connection,
+    filter: filterByName(raw, connection.filter, `Connection ${connection.name}`),
+  }));
+
+  const hostsByFilter = new Map<string, string[]>();
+  for (const connection of raw.connections) {
+    const hosts = hostsByFilter.get(connection.filter) ?? [];
+    for (const { host } of connection.hosts) if (!hosts.includes(host)) hosts.push(host);
+    hostsByFilter.set(connection.filter, hosts);
+  }
+
   return {
     prefix: raw.prefix,
     sources: raw.sources,
-    groups: raw.groups.map((group) => ({
-      ...group,
-      repos: reposOf(filterByName(raw, group.filter, `Group ${group.name}`)),
-    })),
-    connections: raw.connections.map((connection) => ({
-      ...connection,
-      filter: filterByName(raw, connection.filter, `Connection ${connection.name}`),
+    connections,
+    groups: [...hostsByFilter].map(([name, hosts]) => ({
+      name,
+      hosts,
+      repos: reposOf(filterByName(raw, name, `Group ${name}`)),
     })),
   };
 }
@@ -160,7 +165,6 @@ const reposOf = (filter: ConnectionFilter): string[] =>
   filter.repository?.full_name?.$in ?? [];
 
 function validateFleet(spec: FleetSpec): void {
-  const hosts = new Set(spec.groups.flatMap((g) => g.hosts));
   const sources = new Set(spec.sources.map((s) => s.name));
   for (const connection of spec.connections) {
     if (!sources.has(connection.source)) {
@@ -172,14 +176,17 @@ function validateFleet(spec: FleetSpec): void {
     if (!connection.destination.path?.startsWith("/")) {
       throw new Error(`Connection ${connection.name} needs a destination path starting with /.`);
     }
-    const groups = new Set(connection.hosts.map((h) => {
-      if (!hosts.has(h.host)) {
-        throw new Error(`Connection ${connection.name} listens with unknown host ${h.host}.`);
+  }
+
+  // A host belongs to one group, so it must not appear under two filters.
+  for (const group of spec.groups) {
+    for (const host of group.hosts) {
+      const others = spec.groups.filter((g) => g !== group && g.hosts.includes(host));
+      if (others.length > 0) {
+        throw new Error(
+          `Host ${host} is in more than one group: ${[group, ...others].map((g) => g.name).join(", ")}.`,
+        );
       }
-      return spec.groups.find((g) => g.hosts.includes(h.host))!.name;
-    }));
-    if (groups.size !== 1) {
-      throw new Error(`Connection ${connection.name} listens with hosts from more than one group.`);
     }
   }
 }
