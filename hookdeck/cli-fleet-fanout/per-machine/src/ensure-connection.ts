@@ -1,74 +1,57 @@
 /**
- * Approach 1: one connection + CLI destination per machine.
+ * One connection and CLI destination per machine.
  *
- * This is the script a machine runs at launch. It is idempotent, so it is safe
- * on every boot, on a redeploy, or when the fleet definition changes: `hookdeck
- * gateway connection upsert` creates the connection the first time and updates
- * only the properties given on later runs.
+ * Idempotent. `PUT /connections` creates the connection the first time and
+ * updates its rules and description after that. Safe on every boot.
  *
  *   npm run ensure:machine -- group-a-host-01
  *   npm run ensure:machine -- group-a-host-01 --dry-run
  *
  * The connection must exist before `hookdeck listen` runs. If listen finds no
  * connection for a source it creates one called `cli-<source>`, and every later
- * listen on that source attaches to that one instead - which would silently
- * collapse approach 1 into approach 2.
+ * listen on that source attaches to that one instead.
  */
-import {
-  connectionName,
-  env,
-  fleet,
-  groupOf,
-  machine,
-  repoFilter,
-  sourceName,
-} from "../../shared/src/config.js";
-import { cli, ciLogin } from "../../shared/src/hookdeck.js";
+import { connectionFor, env, fleet, groupOf } from "../../shared/src/config.js";
+import { upsertConnection } from "../../shared/src/hookdeck.js";
 
-export function ensureMachineConnection(
+export async function ensureMachineConnection(
   machineName: string,
   opts: { dryRun?: boolean; quiet?: boolean } = {},
-): string {
-  const spec = machine(machineName);
+): Promise<string> {
   const group = groupOf(machineName);
-  const name = connectionName("per-machine", spec.name);
+  const conn = connectionFor("per-machine", machineName);
+  const sourceType = fleet().sources.find((s) => s.name === conn.source)?.type;
+  if (!sourceType) throw new Error(`Unknown source ${conn.source} in fleet.yaml.`);
 
-  const args = [
-    "gateway",
-    "connection",
-    "upsert",
-    name,
-    "--source-name",
-    sourceName("per-machine"),
-    // A real provider source type, so signature verification runs exactly as it
-    // would in production rather than being skipped.
-    "--source-type",
-    "GITHUB",
-    "--source-webhook-secret",
-    env("GITHUB_WEBHOOK_SECRET"),
-    "--destination-name",
-    name,
-    "--destination-type",
-    "CLI",
-    // Set the CLI path here, on the connection. Never with `listen --path`,
-    // which writes the path to the server and persists it.
-    "--destination-cli-path",
-    fleet().cliPath,
-    // Every machine in a group carries the same filter, so all of them match
-    // the same events. A group of one is how the one-to-one case is expressed.
-    "--rule-filter-body",
-    repoFilter(group.repos),
-    "--description",
-    `${group.name} :: ${spec.name}`,
-    ...(opts.dryRun ? ["--dry-run"] : []),
-  ];
+  const description = `${group.name} :: ${machineName}`;
+  if (opts.dryRun) {
+    console.log(`PUT /connections ${conn.name}`);
+    console.log(`  source ${conn.source} ${sourceType}`);
+    console.log(`  destination ${conn.destination.name} ${conn.destination.type} ${conn.destination.path}`);
+    console.log(`  filter ${JSON.stringify(conn.filter)}`);
+    return conn.name;
+  }
 
-  const out = cli(args, { quiet: opts.quiet });
-  if (!opts.quiet) process.stdout.write(out.endsWith("\n") ? out : `${out}\n`);
-  return name;
+  const result = await upsertConnection({
+    name: conn.name,
+    description,
+    sourceName: conn.source,
+    sourceType,
+    destinationName: conn.destination.name,
+    destinationType: conn.destination.type,
+    destinationPath: conn.destination.path,
+    filter: conn.filter,
+    webhookSecret: env("GITHUB_WEBHOOK_SECRET"),
+  });
+  if (!opts.quiet) {
+    console.log(`PUT /connections ${conn.name} -> ${result.id}`);
+    if (result.source) console.log(`  source ${result.source.name} (${result.source.id})`);
+    if (result.destination) console.log(`  destination ${result.destination.name} (${result.destination.id})`);
+  }
+  return conn.name;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const machineName = args.find((a) => !a.startsWith("--"));
@@ -76,10 +59,14 @@ function main(): void {
     console.error("usage: npm run ensure:machine -- <machine-name> [--dry-run]");
     process.exit(2);
   }
-  ciLogin();
-  const name = ensureMachineConnection(machineName, { dryRun });
+  const name = await ensureMachineConnection(machineName, { dryRun });
   console.log(`\nConnection ${name} ensured for ${machineName}.`);
   console.log(`Next: npm run fleet -- up per-machine ${machineName}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

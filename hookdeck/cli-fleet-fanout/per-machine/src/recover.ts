@@ -25,10 +25,10 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { connectionName, runDir } from "../../shared/src/config.js";
 import {
-  ciLogin,
   listEventsForRequest,
   listIgnoredEventsForRequest,
   listRequests,
@@ -38,6 +38,20 @@ import {
 } from "../../shared/src/hookdeck.js";
 
 const CAUSE = "CLI_DISCONNECTED";
+
+async function readApi<T>(fn: () => Promise<T>): Promise<T> {
+  let delay = 500;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("429") || attempt >= 4) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay *= 2;
+    }
+  }
+}
 
 /**
  * A machine that was down can miss events in two different ways, and they need
@@ -84,25 +98,23 @@ function defaultSince(machineName: string): string {
   return new Date(Date.now() - 60 * 60 * 1000).toISOString();
 }
 
-async function main(): Promise<void> {
-  const { values, positionals } = parseArgs({
-    allowPositionals: true,
-    options: {
-      since: { type: "string" },
-      "dry-run": { type: "boolean", default: false },
-      force: { type: "boolean", default: false },
-    },
-  });
-  const machineName = positionals[0];
-  if (!machineName) {
-    console.error("usage: npm run recover -- <machine-name> [--since <iso>] [--dry-run] [--force]");
-    process.exit(2);
-  }
-  const dryRun = values["dry-run"];
-  const force = values.force;
-  const since = values.since ?? defaultSince(machineName);
+export interface RecoverResult {
+  missed: string[];
+  failedEvents: string[];
+}
 
-  ciLogin();
+/**
+ * Replay what this machine missed onto its own connection. Safe to call when
+ * the machine has just attached: requests that already have a successful event
+ * on this connection are skipped, so a second run does not duplicate them.
+ */
+export async function recoverMachine(
+  machineName: string,
+  opts: { since?: string; dryRun?: boolean; force?: boolean } = {},
+): Promise<RecoverResult> {
+  const dryRun = opts.dryRun ?? false;
+  const force = opts.force ?? false;
+  const since = opts.since ?? defaultSince(machineName);
   const state = setupState();
   const connName = connectionName("per-machine", machineName);
   const connection = state.connections[connName];
@@ -114,7 +126,7 @@ async function main(): Promise<void> {
   console.log(`Recovering ${machineName}`);
   console.log(`  connection ${connName} (${connection.id})`);
   console.log(`  source     ${source.name} (${source.id})`);
-  console.log(`  since      ${since}${values.since ? "" : " (from last run)"}\n`);
+  console.log(`  since      ${since}${opts.since ? "" : " (from last run)"}\n`);
 
   const requests: HookdeckRequest[] = (
     await listRequests({ source_id: source.id, created_at_gte: since, limit: 250, dir: "asc" })
@@ -124,11 +136,19 @@ async function main(): Promise<void> {
   const missed: string[] = [];          // no event was ever created
   const failedEvents: string[] = [];    // event exists but delivery failed
   const alreadyDelivered: string[] = [];
+  let skipped = 0;
 
   for (const request of requests) {
-    const events = (await listEventsForRequest(request.id)).models.filter(
-      (e) => e.webhook_id === connection.id,
-    );
+    let events;
+    try {
+      events = (await readApi(() => listEventsForRequest(request.id))).models.filter(
+        (e) => e.webhook_id === connection.id,
+      );
+    } catch (err) {
+      skipped += 1;
+      console.log(`  skipped ${request.id}: ${err instanceof Error ? err.message : err}`);
+      continue;
+    }
 
     // Case 1: an event exists for this connection. If it failed, retry the
     // event itself rather than the request - retrying the request would create
@@ -146,10 +166,21 @@ async function main(): Promise<void> {
 
     // Case 2: no event for this connection. Only our own cause counts - a
     // FILTERED ignored event means the connection correctly did not want it.
-    const ignored = (await listIgnoredEventsForRequest(request.id)).models.filter(
-      (e) => e.webhook_id === connection.id && e.cause === CAUSE,
-    );
+    let ignored;
+    try {
+      ignored = (await readApi(() => listIgnoredEventsForRequest(request.id))).models.filter(
+        (e) => e.webhook_id === connection.id && e.cause === CAUSE,
+      );
+    } catch (err) {
+      skipped += 1;
+      console.log(`  skipped ${request.id}: ${err instanceof Error ? err.message : err}`);
+      continue;
+    }
     if (ignored.length > 0) missed.push(request.id);
+  }
+
+  if (skipped > 0) {
+    console.log(`  ${skipped} request(s) skipped after repeated rate limits`);
   }
 
   console.log(`  ${missed.length} request(s) never created an event (${CAUSE})`);
@@ -163,6 +194,7 @@ async function main(): Promise<void> {
 
   if (missed.length === 0 && failedEvents.length === 0) {
     console.log("\nNothing to recover.");
+    return { missed, failedEvents };
   } else if (dryRun) {
     console.log("\nDry run. Would run:");
     for (const id of missed) {
@@ -182,20 +214,56 @@ async function main(): Promise<void> {
       const created = (result.events ?? []).map((e) => e.id).join(", ");
       console.log(`  retried request ${id} -> event(s) ${created || "(none reported)"}`);
     }
-    mkdirSync(runDir(), { recursive: true });
-    writeFileSync(
-      statePath(machineName),
-      `${JSON.stringify({ machine: machineName, lastRunAt: startedAt, recovered: missed, retriedEvents: failedEvents }, null, 2)}\n`,
-    );
+    if (skipped === 0) {
+      mkdirSync(runDir(), { recursive: true });
+      writeFileSync(
+        statePath(machineName),
+        `${JSON.stringify({ machine: machineName, lastRunAt: startedAt, recovered: missed, retriedEvents: failedEvents }, null, 2)}\n`,
+      );
+    }
     console.log(
       `\nRecovered ${missed.length + failedEvents.length} event(s) for ${machineName} only ` +
         `(${failedEvents.length} failed event(s), ${missed.length} never created).`,
     );
-    console.log(`Watermark written to run/recover.${machineName}.json`);
+    console.log(
+      skipped === 0
+        ? `Watermark written to run/recover.${machineName}.json`
+        : "Watermark left unchanged because some requests could not be read.",
+    );
   }
+  return { missed, failedEvents };
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: {
+      since: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
+    },
+  });
+  const machineName = positionals[0];
+  if (!machineName) {
+    console.error("usage: npm run recover -- <machine-name> [--since <iso>] [--dry-run] [--force]");
+    process.exit(2);
+  }
+  await recoverMachine(machineName, {
+    since: values.since,
+    dryRun: values["dry-run"],
+    force: values.force,
+  });
+}
+
+function launchedAsCli(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(resolve(entry)).href;
+}
+
+if (launchedAsCli()) {
+  main().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

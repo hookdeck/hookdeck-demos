@@ -1,4 +1,4 @@
-# Approach 1: one connection + CLI destination per machine
+# Connection per machine
 
 One source. One connection and one CLI destination per machine. Machines in the
 same group carry the same body filter, so all of them match the same events and
@@ -20,13 +20,13 @@ Hookdeck does not expose CLI sessions in the dashboard or the API. Modeling
 each machine as its own connection is what makes the fleet visible: the
 connection *is* the machine.
 
-That gives three things approach 2 cannot:
+That gives three things a connection per group cannot:
 
 1. **You can see which machines are configured**, and each one's delivery
    history is its own.
 2. **A miss is recorded.** When a machine is down, the request gets a
    `CLI_DISCONNECTED` ignored event against that machine's connection. When one
-   machine is down and its peers are up, approach 2 records nothing at all.
+   machine is down and its peers are up, a connection per group records nothing at all.
 3. **Recovery targets one machine.** A retry can be scoped to a single
    connection, so the machine that missed catches up and its peers see no
    duplicate.
@@ -53,8 +53,8 @@ npm run ensure:machine -- group-a-host-01
 npm run fleet -- up per-machine group-a-host-01
 ```
 
-It runs one `hookdeck gateway connection upsert`, which creates the connection
-the first time and afterward updates only the properties it is given. The
+It runs one `PUT /connections`, which creates the connection the first time
+and afterward updates the rules and description. The
 connection must exist before `listen` runs - see the note about `cli-<source>`
 in the root README.
 
@@ -62,6 +62,9 @@ In production this is the machine's launch script: read its entry from
 `fleet.yaml`, upsert, then exec `hookdeck listen`.
 
 ## Recovery
+
+Coming back up runs this once `hookdeck listen` reports that it is connected.
+The same recovery can be run by hand:
 
 ```bash
 npm run recover -- group-a-host-01 --dry-run

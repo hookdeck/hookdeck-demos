@@ -73,10 +73,10 @@ async function main(): Promise<void> {
   //    us this, which is the point.
   console.log(`\nWhat each machine in ${groupName} received (from its own log):\n`);
   const byMachine = new Map<string, Set<string>>();
-  for (const m of spec.machines) {
-    const deliveries = new Set(received(m.name).map((r) => r.delivery ?? "?"));
-    byMachine.set(m.name, deliveries);
-    console.log(`  ${m.name.padEnd(14)} ${deliveries.size} delivery/deliveries`);
+  for (const name of spec.hosts) {
+    const deliveries = new Set(received(name).map((r) => r.delivery ?? "?"));
+    byMachine.set(name, deliveries);
+    console.log(`  ${name.padEnd(14)} ${deliveries.size} delivery/deliveries`);
   }
 
   const union = new Set([...byMachine.values()].flatMap((s) => [...s]));
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   console.log(
     `\nWhat Hookdeck recorded for connection ${connName} across ${requests.length} request(s):\n` +
       `  There is one connection for the whole group, so a request delivered to\n` +
-      `  two of ${spec.machines.length} machines is indistinguishable from one delivered to all of them.\n` +
+      `  two of ${spec.hosts.length} machines is indistinguishable from one delivered to all of them.\n` +
       `  Nothing above can be derived from the Hookdeck API - it came from the machines' logs.\n`,
   );
 
@@ -134,15 +134,15 @@ async function main(): Promise<void> {
   await new Promise((r) => setTimeout(r, 5000));
 
   let duplicates = 0;
-  for (const m of spec.machines) {
-    const now = received(m.name);
+  for (const name of spec.hosts) {
+    const now = received(name);
     const seen = new Map<string, number>();
     for (const r of now) seen.set(r.delivery ?? "?", (seen.get(r.delivery ?? "?") ?? 0) + 1);
     const dupes = [...seen.values()].filter((n) => n > 1).length;
     duplicates += dupes;
-    const wasBehind = (before.get(m.name)?.size ?? 0) < union.size;
+    const wasBehind = (before.get(name)?.size ?? 0) < union.size;
     console.log(
-      `  ${m.name.padEnd(14)} ${now.length} total delivery/deliveries, ${dupes} duplicated` +
+      `  ${name.padEnd(14)} ${now.length} total delivery/deliveries, ${dupes} duplicated` +
         `${wasBehind ? "  <- this is the machine that was behind" : ""}`,
     );
   }

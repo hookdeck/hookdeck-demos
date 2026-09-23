@@ -4,7 +4,8 @@
  * A machine is a supervisor process that owns two things:
  *
  *   1. A local HTTP server on the machine's port, standing in for the CI
- *      server. It serves POST <cliPath> and records every delivery.
+ *      server. It serves POST at the connection's destination path and records
+ *      every delivery.
  *   2. A `hookdeck listen` child process forwarding that connection's events
  *      to the local server.
  *
@@ -26,15 +27,16 @@ import { createServer } from "node:http";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
+  connectionFor,
   connectionName,
   eventLogPath,
-  fleet,
   logPath,
   portOf,
   sourceName,
   type Approach,
 } from "./config.js";
-import { configFlag, hookdeckBin } from "./hookdeck.js";
+import { ciLogin, hookdeckBin, listenerConfigPath } from "./hookdeck.js";
+import { recoverMachine } from "../../per-machine/src/recover.js";
 
 const [rawApproach, rawName] = process.argv.slice(2);
 if (!rawApproach || !rawName) {
@@ -47,6 +49,7 @@ const name: string = rawName;
 
 const port = portOf(approach, name);
 const connection = connectionName(approach, name);
+const cliPath = connectionFor(approach, name).destination.path;
 const source = sourceName(approach);
 const humanLog = logPath(approach, name);
 const jsonLog = eventLogPath(approach, name);
@@ -142,6 +145,11 @@ const server = createServer((req, res) => {
 let listener: ChildProcess | undefined;
 
 function startListener(): void {
+  // A fresh CLI client for this listener. The event id includes the client, so
+  // sessions that share one client collapse into a single delivery.
+  const configPath = listenerConfigPath(approach, name);
+  ciLogin(configPath);
+
   const args = [
     "listen",
     String(port),
@@ -160,15 +168,16 @@ function startListener(): void {
   ];
   log(`EXEC hookdeck ${args.join(" ")}`);
 
-  // configFlag keeps the demo's CLI credentials out of ~/.config/hookdeck.
-  const child = spawn(hookdeckBin(), [...args, ...configFlag()], {
+  const child = spawn(hookdeckBin(), [...args, "--hookdeck-config", configPath], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   listener = child;
 
   const pipe = (prefix: string) => (buf: Buffer) => {
     for (const line of buf.toString("utf8").split("\n")) {
-      if (line.trim()) log(`${prefix} ${line.trimEnd()}`);
+      if (!line.trim()) continue;
+      log(`${prefix} ${line.trimEnd()}`);
+      if (prefix === "LISTEN") maybeRecover(line);
     }
   };
   child.stdout?.on("data", pipe("LISTEN"));
@@ -185,6 +194,30 @@ function startListener(): void {
 // ---------------------------------------------------------------------------
 
 let shuttingDown = false;
+let recovering = false;
+
+/**
+ * Approach 1 records a miss against this machine's own connection, so once the
+ * session is up we can retry just that connection. Approach 2 has nothing to
+ * aim at: a retry on the group connection would also deliver to every peer
+ * that is already attached.
+ */
+function maybeRecover(line: string): void {
+  if (approach !== "per-machine" || shuttingDown || recovering) return;
+  if (!line.includes("Connected. Waiting for events")) return;
+  recovering = true;
+  // The "Connected" line is local. Give the session a moment to register
+  // before asking Hookdeck to deliver what this connection missed.
+  setTimeout(() => {
+    recoverMachine(name)
+      .catch((err: unknown) => {
+        log(`RECOVER failed: ${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => {
+        recovering = false;
+      });
+  }, 2000).unref();
+}
 
 function shutdown(signal: string): void {
   if (shuttingDown) return;
@@ -237,7 +270,7 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 server.listen(port, "127.0.0.1", () => {
   log(
     `READY machine=${name} approach=${approach} port=${port} connection=${connection} ` +
-      `source=${source} path=${fleet().cliPath}`,
+      `source=${source} path=${cliPath}`,
   );
   startListener();
 });

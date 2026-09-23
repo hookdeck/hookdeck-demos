@@ -6,12 +6,14 @@
  *   npm run setup -- --dry-run
  *
  * Resolved IDs are written to run/setup.json so the recovery and inspection
- * scripts do not have to look them up on every invocation.
+ * scripts do not have to look them up on every invocation. Listeners are then
+ * restarted so each CLI session attaches to the connection just written.
  */
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { fleet, machines, runDir, sourceName, connectionName, groupConnectionName } from "./config.js";
-import { ciLogin, listConnections, listSources, type Connection } from "./hookdeck.js";
+import { fleet, machines, runDir, sourceName, connectionName, groupConnectionName, type Approach } from "./config.js";
+import { startSessions } from "./fleet.js";
+import { listConnections, listSources, type Connection } from "./hookdeck.js";
 import { ensureMachineConnection } from "../../per-machine/src/ensure-connection.js";
 import { ensureGroupConnection } from "../../per-group/src/ensure-group.js";
 
@@ -22,27 +24,32 @@ interface SetupState {
   connections: Record<string, { id: string; name: string; approach: string }>;
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes("--dry-run");
-  const only = args.includes("--approach") ? args[args.indexOf("--approach") + 1] : undefined;
+export async function runSetup(opts: { dryRun?: boolean; only?: string } = {}): Promise<number> {
+  const dryRun = opts.dryRun ?? false;
+  const only = opts.only;
+  let ensured = 0;
 
-  ciLogin();
   const spec = fleet();
 
   if (!only || only === "per-machine") {
-    console.log("\n=== Approach 1: one connection + CLI destination per machine ===\n");
-    for (const m of machines()) ensureMachineConnection(m.name, { dryRun });
+    console.log("\n=== One connection per host ===\n");
+    for (const m of machines()) {
+      await ensureMachineConnection(m.name, { dryRun });
+      ensured += 1;
+    }
   }
 
   if (!only || only === "per-group") {
-    console.log("\n=== Approach 2: one connection + CLI destination per group ===\n");
-    for (const g of spec.groups) ensureGroupConnection(g.name, { dryRun });
+    console.log("\n=== One connection per group ===\n");
+    for (const g of spec.groups) {
+      await ensureGroupConnection(g.name, { dryRun });
+      ensured += 1;
+    }
   }
 
   if (dryRun) {
     console.log("\nDry run - nothing was created.");
-    return;
+    return ensured;
   }
 
   // Resolve IDs once and cache them. A run limited to one approach must merge
@@ -95,9 +102,36 @@ async function main(): Promise<void> {
       `  npm run send -- --approach per-machine --repo ${spec.groups[0]?.repos[0]}\n`,
   );
   console.log(`Resolved IDs written to run/setup.json`);
+
+  const started: Approach[] = [];
+  if (!only || only === "per-machine") started.push("per-machine");
+  if (!only || only === "per-group") started.push("per-group");
+  console.log("\n=== CLI sessions ===\n");
+  startSessions(started);
+
+  return ensured;
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+/** Drop cached connection ids after they have been deleted. Source URLs stay. */
+export function clearCachedConnections(): void {
+  const statePath = resolve(runDir(), "setup.json");
+  if (!existsSync(statePath)) return;
+  const previous = JSON.parse(readFileSync(statePath, "utf8")) as SetupState;
+  previous.connections = {};
+  previous.generatedAt = new Date().toISOString();
+  writeFileSync(statePath, `${JSON.stringify(previous, null, 2)}\n`);
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const dryRun = args.includes("--dry-run");
+  const only = args.includes("--approach") ? args[args.indexOf("--approach") + 1] : undefined;
+  await runSetup({ dryRun, only });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

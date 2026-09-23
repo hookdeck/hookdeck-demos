@@ -131,32 +131,27 @@ async function down(
   heading("Hookdeck's view while the machine is still down");
   npm(["inspect", "--", "--approach", approach, "--limit", "5"]);
 
-  heading(`Bring ${label} back`);
-  npm(["fleet", "--", "up", approach, ...targets]);
-  await sleep(Math.min(gap, 15), "the listener to reattach");
-
-  heading(`What ${label} received on its own while down (expect nothing)`);
+  heading(`What ${label} has received so far, before it comes back`);
   for (const t of targets) run("bash", ["-lc", `grep -c RECV logs/${approach}.${t}.log || true`]);
 
+  heading(`Bring ${label} back`);
+  npm(["fleet", "--", "up", approach, ...targets]);
+
   if (approach === "per-machine") {
-    heading("Recovery: dry run first");
-    for (const t of targets) npm(["recover", "--", t, "--since", sinceArg(), "--dry-run"]);
+    heading("Coming back runs recovery against that machine's own connection");
+    await sleep(Math.min(gap, 20), "startup recovery to deliver");
 
-    heading("Recovery: for real, aimed at only that machine's connection");
-    for (const t of targets) npm(["recover", "--", t, "--since", sinceArg()]);
-
-    await sleep(Math.min(gap, 15), "the retried events to be delivered");
-
-    heading("Per-machine logs after recovery: the recovered machine caught up, nobody duplicated");
+    heading("Per-machine logs after coming back: the recovered machine caught up, nobody duplicated");
     run("bash", ["-lc", `for f in logs/${approach}.*.log; do echo "$f: $(grep -c RECV "$f") received"; done`]);
     run("bash", ["-lc", `grep -h RECV logs/${approach}.*.log | sort | tail -40`]);
 
     heading("Open question: does the request still list CLI_DISCONNECTED after a targeted retry?");
     npm(["inspect", "--", "--approach", approach, "--limit", "5"]);
 
-    heading("Re-run recovery immediately. If it retries again, the ignored record alone is not enough state");
+    heading("Run recovery again. Events already delivered on this connection are skipped");
     for (const t of targets) npm(["recover", "--", t, "--since", sinceArg()]);
   } else {
+    await sleep(Math.min(gap, 15), "the listener to reattach");
     heading("Approach 2 has no per-machine record of the miss");
     npm(["group-recovery-problem", "--", groupA().name]);
 
@@ -173,7 +168,7 @@ async function down(
  *    arrive during the gap is exactly what this measures.
  */
 async function downShort(approach: Approach, gap: number): Promise<void> {
-  const target = groupA().machines[0]!.name;
+  const target = groupA().hosts[0]!;
 
   heading("Start the whole fleet");
   npm(["fleet", "--", "up", approach]);
@@ -194,7 +189,11 @@ async function downShort(approach: Approach, gap: number): Promise<void> {
   npm(["fleet", "--", "up", approach, target]);
   await sleep(Math.min(gap, 30), "anything queued to arrive, if it does");
 
-  heading(`Did ${target} receive the events sent while it was down?`);
+  heading(
+    approach === "per-machine"
+      ? `Did ${target} catch up? Coming back retries what this connection missed`
+      : `Did ${target} receive the events sent while it was down?`,
+  );
   run("bash", ["-lc", `tail -20 logs/${approach}.${target}.log`]);
 
   heading("Hookdeck's view: delivered, or CLI_DISCONNECTED?");
@@ -206,7 +205,7 @@ async function downShort(approach: Approach, gap: number): Promise<void> {
 
 /** 5. Clean shutdown drops the session immediately; a crash holds it. */
 async function shutdownVsCrash(approach: Approach, gap: number): Promise<void> {
-  const [clean, crashed] = [groupA().machines[0]!.name, groupA().machines[1]!.name];
+  const [clean, crashed] = [groupA().hosts[0]!, groupA().hosts[1]!];
 
   heading("Start the whole fleet");
   npm(["fleet", "--", "up", approach]);
@@ -250,7 +249,7 @@ const SCENARIOS: Record<string, { summary: string; run: (a: Approach, gap: numbe
   },
   "down-long": {
     summary: "One machine crashes and stays down past the grace window, then recovers what it missed",
-    run: (a, gap) => down(a, gap, [groupA().machines[0]!.name], groupA().machines[0]!.name, PAST_GRACE),
+    run: (a, gap) => down(a, gap, [groupA().hosts[0]!], groupA().hosts[0]!, PAST_GRACE),
   },
   "down-short": {
     summary: "One machine crashes and returns inside the grace window - what happens to events in the gap",
@@ -259,7 +258,7 @@ const SCENARIOS: Record<string, { summary: string; run: (a: Approach, gap: numbe
   "group-down": {
     summary: "The whole group is down, then every machine recovers independently",
     run: (a, gap) =>
-      down(a, gap, groupA().machines.map((m) => m.name), groupA().name, PAST_GRACE),
+      down(a, gap, groupA().hosts, groupA().name, PAST_GRACE),
   },
   "shutdown-vs-crash": {
     summary: "Clean shutdown drops the session immediately; a crash holds it for the grace window",

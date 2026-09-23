@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
-import { ROOT, apiBase, env, runDir } from "./config.js";
+import { dirname, resolve } from "node:path";
+import { ROOT, apiBase, env, runDir, type Approach } from "./config.js";
 
 /**
  * Thin Hookdeck API client. Only the handful of endpoints this demo needs.
@@ -149,8 +149,10 @@ export const retryEvent = (eventId: string): Promise<HookdeckEvent> =>
 export const listAttemptsForEvent = (eventId: string): Promise<Page<{ id: string; error_code?: string | null; status?: string }>> =>
   api("/attempts", { query: { event_id: eventId, limit: 10 } });
 
-export const listConnections = (query: { name?: string; limit?: number } = {}): Promise<Page<Connection>> =>
-  api("/connections", { query: { name: query.name, limit: query.limit ?? 100 } });
+export const listConnections = (
+  query: { name?: string; limit?: number; next?: string } = {},
+): Promise<Page<Connection>> =>
+  api("/connections", { query: { name: query.name, limit: query.limit ?? 100, next: query.next } });
 
 export const listSources = (query: { name?: string; limit?: number } = {}): Promise<Page<Source>> =>
   api("/sources", { query: { name: query.name, limit: query.limit ?? 100 } });
@@ -158,8 +160,70 @@ export const listSources = (query: { name?: string; limit?: number } = {}): Prom
 export const listDestinations = (query: { name?: string; limit?: number } = {}): Promise<Page<Destination>> =>
   api("/destinations", { query: { name: query.name, limit: query.limit ?? 100 } });
 
+/**
+ * Create a connection or update the one with this name.
+ *
+ * Source and destination are matched by name. Rules and description are
+ * replaced. The source and destination binding on an existing connection
+ * stays as it is.
+ */
+export function upsertConnection(input: {
+  name: string;
+  description: string;
+  sourceName: string;
+  sourceType: string;
+  destinationName: string;
+  destinationType: string;
+  destinationPath: string;
+  filter: unknown;
+  webhookSecret: string;
+}): Promise<Connection & { source?: Source; destination?: Destination }> {
+  return api("/connections", {
+    method: "PUT",
+    body: {
+      name: input.name,
+      description: input.description,
+      source: {
+        name: input.sourceName,
+        type: input.sourceType,
+        config: { auth: { webhook_secret_key: input.webhookSecret } },
+      },
+      destination: {
+        name: input.destinationName,
+        type: input.destinationType,
+        config: { path: input.destinationPath },
+      },
+      rules: [{ type: "filter", body: input.filter }],
+    },
+  });
+}
+
 export const deleteConnection = (id: string): Promise<unknown> =>
   api(`/connections/${id}`, { method: "DELETE" });
+
+/** Every connection in the project, following pagination. */
+export async function listAllConnections(): Promise<Connection[]> {
+  const found: Connection[] = [];
+  let next: string | undefined;
+  for (let page = 0; page < 50; page++) {
+    const result = await listConnections({ limit: 250, next });
+    found.push(...result.models);
+    const cursor = result.pagination?.next;
+    if (!cursor || result.models.length === 0) return found;
+    next = cursor.startsWith("http") ? (new URL(cursor).searchParams.get("next") ?? undefined) : cursor;
+    if (!next) return found;
+  }
+  return found;
+}
+
+/** Delete every connection in the project. Sources and destinations stay. */
+export async function deleteAllConnections(): Promise<Connection[]> {
+  const found = await listAllConnections();
+  for (const connection of found) {
+    await deleteConnection(connection.id);
+  }
+  return found;
+}
 export const deleteSource = (id: string): Promise<unknown> =>
   api(`/sources/${id}`, { method: "DELETE" });
 export const deleteDestination = (id: string): Promise<unknown> =>
@@ -169,9 +233,16 @@ export const deleteDestination = (id: string): Promise<unknown> =>
  * Run a hookdeck CLI command. Echoes the command first so a demo viewer can
  * see exactly what is being run, and so the output can be pasted into FINDINGS.
  */
-export function cli(args: string[], opts: { quiet?: boolean; allowFailure?: boolean } = {}): string {
+export function cli(
+  args: string[],
+  opts: { quiet?: boolean; allowFailure?: boolean; configPath?: string } = {},
+): string {
   if (!opts.quiet) console.log(`$ hookdeck ${args.join(" ")}`);
-  const res = spawnSync(hookdeckBin(), [...args, ...configFlag()], { encoding: "utf8" });
+  const res = spawnSync(
+    hookdeckBin(),
+    [...args, "--hookdeck-config", opts.configPath ?? cliConfigPath()],
+    { encoding: "utf8" },
+  );
   const out = `${res.stdout ?? ""}${res.stderr ?? ""}`;
   if (res.status !== 0 && !opts.allowFailure) {
     throw new Error(`hookdeck ${args.join(" ")} failed (${res.status}):\n${out}`);
@@ -186,6 +257,10 @@ export function cli(args: string[], opts: { quiet?: boolean; allowFailure?: bool
  * interactively.
  */
 export const cliConfigPath = (): string => resolve(runDir(), "hookdeck-cli.toml");
+
+/** One CLI client per listener. Sessions that share a client collapse to one event. */
+export const listenerConfigPath = (approach: Approach, machineName: string): string =>
+  resolve(runDir(), `hookdeck-cli.${approach}.${machineName}.toml`);
 
 /**
  * The CLI is an npm dependency rather than a global install, so the demo runs
@@ -217,7 +292,8 @@ export const configFlag = (): string[] => ["--hookdeck-config", cliConfigPath()]
  * Authenticate the CLI non-interactively against the project the API key
  * belongs to. Safe to call repeatedly.
  */
-export function ciLogin(): void {
-  mkdirSync(runDir(), { recursive: true });
-  cli(["ci", "--api-key", env("HOOKDECK_API_KEY")], { quiet: true });
+export function ciLogin(configPath?: string): void {
+  const path = configPath ?? cliConfigPath();
+  mkdirSync(dirname(path), { recursive: true });
+  cli(["ci", "--api-key", env("HOOKDECK_API_KEY")], { quiet: true, configPath: path });
 }

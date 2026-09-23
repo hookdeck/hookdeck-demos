@@ -13,8 +13,10 @@ both approaches' connections created, terminal split into four panes tailing
 One sentence on the setup: machines on a private network, no inbound route,
 groups of three or four where every machine must get every event.
 
-Show `fleet.yaml` on screen. Point at group-a's three machines and group-b's
-single machine. This is the config that lives in source control.
+Show `fleet.yaml` on screen. Point at the groups and hosts first: group-a's three
+hosts, group-b's one host. Then the connections: one source, one CLI destination,
+one filter, and the hosts that listen. This is the config that lives in source
+control.
 
 Say the thing that frames everything after it: there are two ways to model this
 in Hookdeck, they look identical until a machine goes down, and that is what
@@ -32,7 +34,7 @@ Proves: fan-out to every machine in a group works, and one-to-one routing
 works. Both approaches do this, so do not dwell - this is the part they already
 expect.
 
-## 1:30 - 2:45  One machine dies (approach 1)
+## 1:30 - 2:45  One machine dies (connection per machine)
 
 `npm run fleet -- crash per-machine group-a-host-01` - say out loud that this is
 `kill -9`, not a clean stop.
@@ -49,7 +51,7 @@ Bring it back, then `npm run recover -- group-a-host-01`.
 Point at all four panes: `group-a-host-01` catches up, and the other two do not move.
 No duplicates. That is the whole pitch.
 
-## 2:45 - 3:45  The same failure under approach 2
+## 2:45 - 3:45  The same failure with a connection per group
 
 Same crash, same three pushes, against the group connection.
 
@@ -67,9 +69,9 @@ and the only available fix duplicates to everyone.
 
 ## 3:45 - 4:30  Operating it
 
-Back to `fleet.yaml`, then `per-machine/src/ensure-connection.ts`. One
-idempotent `connection upsert` on machine launch, config in source control, so
-adding a machine to a group is a pull request and a boot.
+Back to `fleet.yaml`. The connection is already written there: source, CLI
+destination, filter, and the one host that listens. `ensure-connection.ts`
+upserts that connection on boot, so adding a host is a pull request and a boot.
 
 Run `npm run ensure:machine -- group-a-host-01` twice to show it is idempotent.
 
@@ -77,7 +79,7 @@ Run `npm run ensure:machine -- group-a-host-01` twice to show it is idempotent.
 
 The honest limitation, stated plainly: a CLI destination delivers only to
 sessions attached at the time, so events arriving while a machine is down are
-not queued the way an HTTP destination would queue them. Approach 1 is what
+not queued the way an HTTP destination would queue them. A connection per machine is what
 makes that recoverable rather than silent.
 
 Then the ask: whether their groups look like `fleet.yaml`, and how they want

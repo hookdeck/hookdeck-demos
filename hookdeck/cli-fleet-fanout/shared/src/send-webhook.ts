@@ -11,6 +11,7 @@
 import { createHmac, createHash, randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { ROOT, env, fleet, runDir, type Approach } from "./config.js";
 
@@ -75,7 +76,21 @@ function payload(repo: string, event: string, delivery: string): unknown {
 const hashToHex = (s: string): string => createHash("sha1").update(s).digest("hex");
 const hashToInt = (s: string): number => parseInt(createHash("sha1").update(s).digest("hex").slice(0, 8), 16);
 
-async function send(approach: Approach, repo: string, event: string, index: number): Promise<void> {
+export interface SendResult {
+  approach: Approach;
+  repo: string;
+  event: string;
+  delivery: string;
+  status: number;
+  requestId?: string;
+}
+
+export async function send(
+  approach: Approach,
+  repo: string,
+  event: string,
+  index: number,
+): Promise<SendResult> {
   const url = setupState().sources[approach]?.url;
   if (!url) throw new Error(`No source URL for ${approach} in run/setup.json. Re-run \`npm run setup\`.`);
 
@@ -95,6 +110,14 @@ async function send(approach: Approach, repo: string, event: string, index: numb
 
   const res = await fetch(url, { method: "POST", headers, body });
   const text = await res.text();
+  let requestId: string | undefined;
+  try {
+    const parsed = JSON.parse(text) as { request_id?: unknown; id?: unknown };
+    const candidate = parsed.request_id ?? parsed.id;
+    if (typeof candidate === "string" && candidate.length > 0) requestId = candidate;
+  } catch {
+    /* The ingest response is not always JSON. Header matching still works. */
+  }
 
   mkdirSync(resolve(ROOT, "logs"), { recursive: true });
   appendFileSync(
@@ -118,6 +141,8 @@ async function send(approach: Approach, repo: string, event: string, index: numb
     `SENT ${approach.padEnd(12)} ${event.padEnd(13)} ${repo.padEnd(26)} ` +
       `delivery=${delivery} -> ${res.status}`,
   );
+
+  return { approach, repo, event, delivery, status: res.status, requestId };
 }
 
 async function main(): Promise<void> {
@@ -146,7 +171,15 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+function launchedAsCli(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(resolve(entry)).href;
+}
+
+if (launchedAsCli()) {
+  main().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

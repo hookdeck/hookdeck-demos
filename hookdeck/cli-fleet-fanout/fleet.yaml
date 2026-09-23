@@ -1,57 +1,107 @@
-# Fleet definition for both approaches.
+# The fleet, and the Hookdeck connections that deliver to it.
 #
-# The scenario, generalized: an organization runs machines on a private network
-# with no inbound route from the internet - CI agents, deployment targets,
-# on-prem services, anything. Webhooks have to reach them.
+# Groups and hosts are the machines on the private network. They are not
+# Hookdeck resources. A host must receive every event for its group's
+# repositories. Hosts in a group are peers: the same event goes to all of them.
 #
-# The machines are arranged in groups, and EVERY machine in a group must
-# receive EVERY event matching that group. They are peers, not workers sharing
-# a queue: the same event goes to all of them. Some groups are a single machine
-# that receives only its own repositories' events.
+# Sources, destinations, and connections are the Event Gateway. A source
+# receives the webhook. A connection routes that source to one CLI destination
+# and keeps the events that match its filter. A host attaches by running
+# `hookdeck listen` on a connection. `npm run setup` upserts the connections
+# written below.
 #
-# This file is the source of truth for both approaches. In production it is the
-# file you keep in source control; a machine reads its own entry at launch and
-# ensures its Hookdeck connection exists before it starts listening.
-#
-# Naming: a machine is <group>-host-<nn>, so the name states which group it
-# belongs to and which machine it is. Under approach 1 the connection is named
-# after the machine (fleet-demo-group-a-host-01); under approach 2 it is named
-# after the group (fleet-demo-group-a), because that is genuinely all Hookdeck
-# knows about.
+# Two sources exist so both connection sets can run at the same time. In
+# production there is one source and one of these sets.
 
-# Every Hookdeck resource this demo creates is named with this prefix so that
-# teardown can find them and nothing else in the project is touched.
 prefix: fleet-demo
 
-# Path the local service listens on. Use whatever yours does. Set it on the
-# connection with --destination-cli-path, never with `listen --path`, which
-# writes the path to the server and persists it.
-cliPath: /webhooks/scm
-
-# Two separate sources so both approaches can run side by side against the same
-# webhook traffic without interfering with each other.
-sources:
-  perMachine: fleet-demo-per-machine
-  perGroup: fleet-demo-per-group
-
 groups:
-  # The core requirement: three peer machines that must all receive every event
-  # for this group's repositories.
   - name: group-a
-    description: Three peer machines; all three must receive every event for the group's repos.
+    description: Three peer hosts. Every one must receive every event for these repositories.
     repos:
       - demo-org/service-api
       - demo-org/service-worker
-    machines:
-      - { name: group-a-host-01, perMachinePort: 4101, perGroupPort: 4201 }
-      - { name: group-a-host-02, perMachinePort: 4102, perGroupPort: 4202 }
-      - { name: group-a-host-03, perMachinePort: 4103, perGroupPort: 4203 }
+    hosts:
+      - group-a-host-01
+      - group-a-host-02
+      - group-a-host-03
 
-  # The one-to-one case: specific webhooks go to one specific machine and no
-  # other. A group of one, so the same config shape covers it.
   - name: group-b
-    description: A single dedicated machine that receives only its own repository's events.
+    description: One host. Only its own repository's events.
     repos:
       - demo-org/release-tooling
-    machines:
-      - { name: group-b-host-01, perMachinePort: 4104, perGroupPort: 4204 }
+    hosts:
+      - group-b-host-01
+
+sources:
+  - name: fleet-demo-per-machine
+    type: GITHUB
+  - name: fleet-demo-per-group
+    type: GITHUB
+
+connections:
+  # One connection per host. The connection is that host, so a miss is recorded
+  # against it. One host listens.
+  #
+  # destination.path is --destination-cli-path: the path on that host that
+  # receives the delivery. Each connection sets its own.
+
+  - name: fleet-demo-group-a-host-01
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-a-host-01, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-a-host-01, port: 4101 }]
+    filter:
+      repository:
+        full_name:
+          $in: [demo-org/service-api, demo-org/service-worker]
+
+  - name: fleet-demo-group-a-host-02
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-a-host-02, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-a-host-02, port: 4102 }]
+    filter:
+      repository:
+        full_name:
+          $in: [demo-org/service-api, demo-org/service-worker]
+
+  - name: fleet-demo-group-a-host-03
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-a-host-03, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-a-host-03, port: 4103 }]
+    filter:
+      repository:
+        full_name:
+          $in: [demo-org/service-api, demo-org/service-worker]
+
+  - name: fleet-demo-group-b-host-01
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-b-host-01, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-b-host-01, port: 4104 }]
+    filter:
+      repository:
+        full_name:
+          $in: [demo-org/release-tooling]
+
+  # One connection per group. Every host in the group is a CLI session on that
+  # same connection. Hookdeck sees the group, not the hosts.
+
+  - name: fleet-demo-group-a
+    source: fleet-demo-per-group
+    destination: { name: fleet-demo-group-a, type: CLI, path: /webhooks/scm }
+    hosts:
+      - { host: group-a-host-01, port: 4201 }
+      - { host: group-a-host-02, port: 4202 }
+      - { host: group-a-host-03, port: 4203 }
+    filter:
+      repository:
+        full_name:
+          $in: [demo-org/service-api, demo-org/service-worker]
+
+  - name: fleet-demo-group-b
+    source: fleet-demo-per-group
+    destination: { name: fleet-demo-group-b, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-b-host-01, port: 4204 }]
+    filter:
+      repository:
+        full_name:
+          $in: [demo-org/release-tooling]

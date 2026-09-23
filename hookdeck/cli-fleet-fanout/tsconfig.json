@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["shared/src/**/*.ts", "per-machine/src/**/*.ts", "per-group/src/**/*.ts"]
+  "include": ["shared/src/**/*.ts", "per-machine/src/**/*.ts", "per-group/src/**/*.ts", "viz/**/*.ts"]
 }

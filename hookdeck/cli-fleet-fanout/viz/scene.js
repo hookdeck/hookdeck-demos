@@ -12,9 +12,9 @@
   const DURATION = 10;
 
   const MACHINES = [
-    { name: "build-a-01", agent: "CI agent 01" },
-    { name: "build-a-02", agent: "CI agent 02" },
-    { name: "build-a-03", agent: "CI agent 03" },
+    { name: "group-a-host-01", agent: "host 01" },
+    { name: "group-a-host-02", agent: "host 02" },
+    { name: "group-a-host-03", agent: "host 03" },
   ];
 
   const SCRIPTED_EVENTS = [
@@ -72,7 +72,7 @@
   }
 
   function presenceOf(name, t) {
-    if (name !== "build-a-03") return 1;
+    if (name !== "group-a-host-03") return 1;
     if (t < DROP_START) return 1;
     if (t >= DROP_END) return 0;
     return 1 - smooth((t - DROP_START) / (DROP_END - DROP_START));
@@ -91,7 +91,7 @@
       const afterDrop = index === 2;
       const lanes = [];
       for (const m of MACHINES) {
-        const missed = afterDrop && m.name === "build-a-03";
+        const missed = afterDrop && m.name === "group-a-host-03";
         if (missed && scene === "per-group") continue;
         if (missed && scene === "per-machine") {
           const stop = 0.58;
@@ -100,6 +100,7 @@
             machine: m.name,
             progress: smooth(u / stop) * stop,
             outcome: linear >= stop ? "disconnected" : "inflight",
+            cause: "CLI_DISCONNECTED",
           });
           continue;
         }
@@ -116,7 +117,7 @@
     let calloutTone = null;
     if (t >= CALLOUT_AT) {
       if (scene === "per-machine") {
-        callout = "CLI_DISCONNECTED on build-a-03";
+        callout = "CLI_DISCONNECTED on group-a-host-03";
         calloutTone = "bad";
       } else {
         callout = "delivered · nothing notes the miss";
@@ -156,11 +157,13 @@
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     const title =
-      scene === "per-machine" ? "Approach 1 · connection per machine" : "Approach 2 · connection per group";
+      scene === "per-machine" ? "Connection per machine" : "Connection per group";
     const subtitle =
-      scene === "per-machine"
-        ? "Each line is its own connection"
-        : "One connection. Sessions sit just underneath each other";
+      state.connections === false
+        ? "No connections"
+        : scene === "per-machine"
+          ? "Each line is its own connection"
+          : "One connection. Multiple CLI sessions.";
     svg.setAttribute("aria-label", title);
 
     el(svg, "rect", { width: WIDTH, height: HEIGHT, fill: C.bg });
@@ -273,6 +276,7 @@
     const x1 = sourceX + sourceW;
     const x2 = 636;
     drawSource(svg, sourceX, sourceY, sourceW, sourceH);
+    if (state.connections === false) return;
 
     lanes.forEach((y, i) => {
       const spec = MACHINES[i];
@@ -295,7 +299,8 @@
       });
 
       const delivered = deliveredColors(state, spec.name);
-      drawDotRow(svg, x2 + 150 - Math.max(0, delivered.length - 1) * 16, y, delivered, 5);
+      // First delivery keeps the right-hand slot. Later ones append to its left.
+      drawDotRow(svg, x2 + 148, y, delivered, 5);
     });
 
     state.events.forEach((event, index) => {
@@ -307,7 +312,7 @@
         const point = lanePoint(x1, x2, y, lane.progress, (index - 1) * 0);
         drawDot(svg, point.x, point.y, event.color);
         if (lane.outcome === "disconnected") {
-          text(svg, point.x, point.y + 22, "CLI_DISCONNECTED", {
+          text(svg, point.x, point.y + 22, lane.cause || "CLI_DISCONNECTED", {
             fill: C.bad,
             "text-anchor": "middle",
             "font-family": "ui-sans-serif, system-ui, sans-serif",
@@ -329,27 +334,22 @@
     const stackX = 548;
     const cardW = 230;
     const cardH = 58;
-    const peek = 14;
+    const peek = 22;
     const frontY = lineY - cardH / 2;
 
     drawSource(svg, sourceX, sourceY, sourceW, sourceH);
+    if (state.connections === false) return;
 
-    const groupPresence = Math.min(
-      ...MACHINES.map((m) => {
-        const machine = machineByName(state, m.name);
-        return machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
-      }),
-    );
-    // The connection stays up when any session is up. Dash it only when the
-    // whole group is down. A single down session does not break the line.
-    const anyUp = MACHINES.some((m) => {
-      const machine = machineByName(state, m.name);
+    // One connection, one line per CLI session, packed so they read as a single route.
+    const sessionGap = 12;
+    const sessionLineY = (index) => lineY + (index - 1) * sessionGap;
+    MACHINES.forEach((spec, i) => {
+      const machine = machineByName(state, spec.name);
       const presence = machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
-      return presence >= 0.55;
+      drawLine(svg, x1, sessionLineY(i), stackX, sessionLineY(i), presence);
     });
-    drawLine(svg, x1, lineY, stackX, lineY, anyUp ? 1 : groupPresence);
 
-    text(svg, (x1 + stackX) / 2, lineY - 14, "group-a", {
+    text(svg, (x1 + stackX) / 2, lineY - 28, "group-a", {
       fill: C.muted,
       "text-anchor": "middle",
       "font-family": "ui-sans-serif, system-ui, sans-serif",
@@ -375,14 +375,26 @@
 
       const delivered = deliveredColors(state, spec.name);
       const dotsY = i === 0 ? y + cardH / 2 : y + cardH - visibleH / 2;
-      drawDotRow(svg, stackX + cardW - 18 - Math.max(0, delivered.length - 1) * 16, dotsY, delivered, 5);
+      drawDotRow(svg, stackX + 160, dotsY, delivered, 5);
     }
 
-    state.events.forEach((event, index) => {
-      const moving = event.lanes.find((lane) => lane.outcome === "inflight" || lane.outcome === "disconnected");
-      if (!moving) return;
-      const point = lanePoint(x1, stackX, lineY, moving.progress, (index - 1) * 11);
-      drawDot(svg, point.x, point.y, event.color);
+    state.events.forEach((event) => {
+      event.lanes.forEach((lane) => {
+        if (lane.outcome !== "inflight" && lane.outcome !== "disconnected") return;
+        const laneIndex = MACHINES.findIndex((m) => m.name === lane.machine);
+        if (laneIndex < 0) return;
+        const point = lanePoint(x1, stackX, sessionLineY(laneIndex), lane.progress);
+        drawDot(svg, point.x, point.y, event.color, 5);
+        if (lane.outcome === "disconnected") {
+          text(svg, point.x, point.y + 16, lane.cause || "CLI_DISCONNECTED", {
+            fill: C.bad,
+            "text-anchor": "middle",
+            "font-family": "ui-sans-serif, system-ui, sans-serif",
+            "font-size": 11,
+            "font-weight": 650,
+          });
+        }
+      });
     });
   }
 
@@ -417,8 +429,10 @@
     return colors;
   }
 
-  function drawDotRow(svg, x, y, colors, r) {
-    colors.forEach((color, i) => drawDot(svg, x + i * 16, y, color, r));
+  function drawDotRow(svg, rightX, y, colors, r) {
+    // colors are oldest-first. The oldest stays at rightX. Each later delivery
+    // is drawn one slot to the left, so earlier dots do not move.
+    colors.forEach((color, i) => drawDot(svg, rightX - i * 16, y, color, r));
   }
 
   function drawCallout(svg, message, tone) {

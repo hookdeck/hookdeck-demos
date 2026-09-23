@@ -14,7 +14,8 @@
     "inspect": "tsx shared/src/inspect.ts",
     "scenario": "tsx shared/src/scenario.ts",
     "ensure:machine": "tsx per-machine/src/ensure-connection.ts",
-    "ensure:group": "tsx per-group/src/ensure-group.ts"
+    "ensure:group": "tsx per-group/src/ensure-group.ts",
+    "viz": "tsx viz/server.ts"
   },
   "dependencies": {
     "hookdeck-cli": "^2.6.0",

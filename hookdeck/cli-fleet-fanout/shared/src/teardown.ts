@@ -6,11 +6,13 @@
  *
  * Every resource the demo creates is named with the prefix from fleet.yaml, so
  * teardown can select on that and leave the rest of the project untouched.
- * Connections are deleted first, then the destinations and sources they used.
+ * CLI sessions are stopped first, so they drop before the connection is gone.
+ * Connections are deleted next, then the destinations and sources they used.
  */
 import { rmSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { fleet, runDir } from "./config.js";
+import { stopSessions } from "./fleet.js";
 import {
   ciLogin,
   deleteConnection,
@@ -51,6 +53,9 @@ async function main(): Promise<void> {
     console.log("\nDry run - nothing deleted.\n");
     return;
   }
+
+  console.log("\n=== Stopping CLI sessions ===\n");
+  stopSessions();
 
   console.log("");
   // Connections first: a destination or source still in use cannot be removed.

@@ -1,4 +1,4 @@
-# Approach 2: one connection + CLI destination per group
+# Connection per group
 
 One source. One connection and one CLI destination per group. Every machine in
 the group runs `hookdeck listen` against the *same* connection.
@@ -59,4 +59,4 @@ performs the group retry and counts the duplicates it causes.
 Each machine tracks the last event it received and fetches newer ones itself.
 That moves the problem into every machine: each one needs credentials, a
 watermark, and dedup logic, and the whole point of the CLI destination was to
-avoid writing that. Approach 1 gets the same result from one retry call.
+avoid writing that. A connection per machine gets the same result from one retry call.

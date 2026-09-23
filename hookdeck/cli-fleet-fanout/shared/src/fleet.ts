@@ -24,8 +24,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { ROOT, logPath, machines, portOf, connectionName, runDir, type Approach } from "./config.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { ROOT, logPath, machines, portOf, connectionName, runDir, groupOf, type Approach } from "./config.js";
 import { ciLogin } from "./hookdeck.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -72,7 +72,16 @@ function resolveTargets(args: string[]): string[] {
   return args;
 }
 
-function up(approach: Approach, names: string[]): void {
+export interface MachineStatus {
+  name: string;
+  group: string;
+  up: boolean;
+  port: number;
+  connection: string;
+  pid?: number;
+}
+
+export function up(approach: Approach, names: string[]): void {
   mkdirSync(runDir(), { recursive: true });
   ciLogin();
 
@@ -157,19 +166,67 @@ function signal(approach: Approach, names: string[], sig: "SIGTERM" | "SIGKILL")
   }
 }
 
-function status(approaches: Approach[]): void {
+export function down(approach: Approach, names: string[]): void {
+  signal(approach, names, "SIGTERM");
+}
+
+const allMachines = (): string[] => machines().map((m) => m.name);
+
+/** Clean stop. The websocket closes, so the session drops immediately. */
+export function stopSessions(approaches: Approach[] = APPROACHES): void {
+  for (const approach of approaches) down(approach, allMachines());
+}
+
+/**
+ * Stop any listener still attached to a previous connection, then start one
+ * for each machine. `up` leaves an already-running process in place, which
+ * would stay subscribed to a connection this setup just replaced.
+ */
+export function startSessions(approaches: Approach[] = APPROACHES): void {
   for (const approach of approaches) {
-    console.log(`\n${approach}`);
-    for (const m of machines()) {
+    const names = allMachines();
+    down(approach, names);
+    up(approach, names);
+  }
+}
+
+export function crash(approach: Approach, names: string[]): void {
+  signal(approach, names, "SIGKILL");
+}
+
+export function status(
+  approaches: Approach[],
+  opts: { quiet?: boolean } = {},
+): { approach: Approach; machines: MachineStatus[] }[] {
+  const rows = approaches.map((approach) => ({
+    approach,
+    machines: machines().map((m): MachineStatus => {
       const pid = readPid(approach, m.name);
       const alive = pid !== undefined && groupAlive(pid);
-      console.log(
-        `  ${alive ? "up  " : "down"} ${m.name.padEnd(12)} port=${String(portOf(approach, m.name)).padEnd(5)} ` +
-          `connection=${connectionName(approach, m.name).padEnd(28)} ${alive ? `pgid=${pid}` : ""}`,
-      );
+      return {
+        name: m.name,
+        group: groupOf(m.name).name,
+        up: alive,
+        port: portOf(approach, m.name),
+        connection: connectionName(approach, m.name),
+        pid: alive ? pid : undefined,
+      };
+    }),
+  }));
+
+  if (!opts.quiet) {
+    for (const row of rows) {
+      console.log(`\n${row.approach}`);
+      for (const m of row.machines) {
+        console.log(
+          `  ${m.up ? "up  " : "down"} ${m.name.padEnd(12)} port=${String(m.port).padEnd(5)} ` +
+            `connection=${m.connection.padEnd(28)} ${m.up ? `pgid=${m.pid}` : ""}`,
+        );
+      }
     }
+    console.log("");
   }
-  console.log("");
+  return rows;
 }
 
 function main(): void {
@@ -206,11 +263,11 @@ function main(): void {
       break;
     case "down":
       console.log(`Stopping ${names.length} machine(s) for ${approach}:`);
-      signal(approach, names, "SIGTERM");
+      down(approach, names);
       break;
     case "crash":
       console.log(`Crashing ${names.length} machine(s) for ${approach}:`);
-      signal(approach, names, "SIGKILL");
+      crash(approach, names);
       break;
     default:
       console.error(`Unknown command ${command}`);
@@ -218,4 +275,17 @@ function main(): void {
   }
 }
 
-main();
+function launchedAsCli(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(resolve(entry)).href;
+}
+
+if (launchedAsCli()) {
+  try {
+    main();
+  } catch (err: unknown) {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+}

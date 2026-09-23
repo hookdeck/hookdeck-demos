@@ -9,22 +9,50 @@ export type Approach = "per-machine" | "per-group";
 
 export interface MachineSpec {
   name: string;
-  perMachinePort: number;
-  perGroupPort: number;
 }
 
 export interface GroupSpec {
   name: string;
   description: string;
   repos: string[];
-  machines: MachineSpec[];
+  hosts: string[];
+}
+
+export interface SourceSpec {
+  name: string;
+  type: string;
+}
+
+export interface ConnectionDestination {
+  name: string;
+  type: string;
+  /** CLI path Hookdeck appends when it delivers (`--destination-cli-path`). */
+  path: string;
+}
+
+export interface ConnectionHost {
+  host: string;
+  port: number;
+}
+
+/** The body filter stored on the connection (`--rule-filter-body`). */
+export interface ConnectionFilter {
+  repository: { full_name: { $in: string[] } };
+}
+
+export interface ConnectionSpec {
+  name: string;
+  source: string;
+  destination: ConnectionDestination;
+  hosts: ConnectionHost[];
+  filter: ConnectionFilter;
 }
 
 export interface FleetSpec {
   prefix: string;
-  cliPath: string;
-  sources: { perMachine: string; perGroup: string };
   groups: GroupSpec[];
+  sources: SourceSpec[];
+  connections: ConnectionSpec[];
 }
 
 /**
@@ -66,11 +94,40 @@ export const apiBase = (): string =>
 let cached: FleetSpec | undefined;
 
 export function fleet(): FleetSpec {
-  if (!cached) cached = parseYaml(readFileSync(resolve(ROOT, "fleet.yaml"), "utf8")) as FleetSpec;
+  if (!cached) {
+    cached = parseYaml(readFileSync(resolve(ROOT, "fleet.yaml"), "utf8")) as FleetSpec;
+    validateFleet(cached);
+  }
   return cached;
 }
 
-export const machines = (): MachineSpec[] => fleet().groups.flatMap((g) => g.machines);
+function validateFleet(spec: FleetSpec): void {
+  const hosts = new Set(spec.groups.flatMap((g) => g.hosts));
+  const sources = new Set(spec.sources.map((s) => s.name));
+  for (const connection of spec.connections) {
+    if (!sources.has(connection.source)) {
+      throw new Error(`Connection ${connection.name} uses unknown source ${connection.source}.`);
+    }
+    if (connection.hosts.length === 0) {
+      throw new Error(`Connection ${connection.name} has no listening hosts.`);
+    }
+    if (!connection.destination.path?.startsWith("/")) {
+      throw new Error(`Connection ${connection.name} needs a destination path starting with /.`);
+    }
+    const groups = new Set(connection.hosts.map((h) => {
+      if (!hosts.has(h.host)) {
+        throw new Error(`Connection ${connection.name} listens with unknown host ${h.host}.`);
+      }
+      return spec.groups.find((g) => g.hosts.includes(h.host))!.name;
+    }));
+    if (groups.size !== 1) {
+      throw new Error(`Connection ${connection.name} listens with hosts from more than one group.`);
+    }
+  }
+}
+
+export const machines = (): MachineSpec[] =>
+  fleet().groups.flatMap((g) => g.hosts.map((name) => ({ name })));
 
 export function machine(name: string): MachineSpec {
   const found = machines().find((m) => m.name === name);
@@ -81,7 +138,7 @@ export function machine(name: string): MachineSpec {
 }
 
 export function groupOf(machineName: string): GroupSpec {
-  const found = fleet().groups.find((g) => g.machines.some((m) => m.name === machineName));
+  const found = fleet().groups.find((g) => g.hosts.includes(machineName));
   if (!found) throw new Error(`Unknown machine ${machineName}`);
   return found;
 }
@@ -94,35 +151,53 @@ export function group(name: string): GroupSpec {
   return found;
 }
 
-export const sourceName = (approach: Approach): string =>
-  approach === "per-machine" ? fleet().sources.perMachine : fleet().sources.perGroup;
+export const sourceName = (approach: Approach): string => {
+  const found = fleet().sources.find((s) => s.name.endsWith(approach));
+  if (!found) {
+    throw new Error(`No source in fleet.yaml ends with ${approach}.`);
+  }
+  return found.name;
+};
 
-/**
- * The connection a given machine listens on.
- *
- * per-machine: one connection per machine, so the connection name identifies
- *   the machine and Hookdeck records delivery (and misses) against it.
- * per-group:   one connection for the whole group. Every machine in the group
- *   attaches a session to the same connection, which is why Hookdeck cannot
- *   tell them apart.
- */
+/** The connection this host listens on for that source. Declared in fleet.yaml. */
+export function connectionFor(approach: Approach, machineName: string): ConnectionSpec {
+  const source = sourceName(approach);
+  const found = fleet().connections.find(
+    (c) => c.source === source && c.hosts.some((h) => h.host === machineName),
+  );
+  if (!found) {
+    throw new Error(`No connection on ${source} listens for ${machineName}.`);
+  }
+  return found;
+}
+
 export const connectionName = (approach: Approach, machineName: string): string =>
-  approach === "per-machine"
-    ? `${fleet().prefix}-${machineName}`
-    : `${fleet().prefix}-${groupOf(machineName).name}`;
+  connectionFor(approach, machineName).name;
 
-export const groupConnectionName = (groupName: string): string =>
-  `${fleet().prefix}-${groupName}`;
+export const groupConnectionName = (groupName: string): string => {
+  const hosts = new Set(group(groupName).hosts);
+  const source = sourceName("per-group");
+  const found = fleet().connections.find(
+    (c) =>
+      c.source === source &&
+      c.hosts.length === hosts.size &&
+      c.hosts.every((h) => hosts.has(h.host)),
+  );
+  if (!found) throw new Error(`No per-group connection for ${groupName}.`);
+  return found.name;
+};
 
-export const portOf = (approach: Approach, machineName: string): number =>
-  approach === "per-machine" ? machine(machineName).perMachinePort : machine(machineName).perGroupPort;
+export const portOf = (approach: Approach, machineName: string): number => {
+  const listen = connectionFor(approach, machineName).hosts.find((h) => h.host === machineName);
+  if (!listen) throw new Error(`No listen port for ${machineName} on ${approach}.`);
+  return listen.port;
+};
 
 /**
  * Connections in the same group share a filter, so every machine in the group
  * matches the same events. Hookdeck filter rules match the parsed JSON body.
  */
-export const repoFilter = (repos: string[]): string =>
-  JSON.stringify({ repository: { full_name: { $in: repos } } });
+export const repoFilter = (filter: ConnectionFilter): string => JSON.stringify(filter);
 
 export const logPath = (approach: Approach, machineName: string): string =>
   resolve(ROOT, "logs", `${approach}.${machineName}.log`);

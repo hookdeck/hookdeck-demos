@@ -27,7 +27,8 @@
       #app.live { max-width: 1240px; margin: 0 auto; padding: 20px 20px 56px; }
       #app.live h1 { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
       .lede { color: #939bab; margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
-      .toolbar, .presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      .toolbar, .presets, .views { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      button.selected { background: #243044; border-color: #6ea8fe; }
       select, button {
         background: #1a1e28;
         color: #e8eaef;
@@ -43,6 +44,9 @@
       button.danger { color: #f09196; }
       button:disabled { opacity: 0.5; cursor: wait; }
       .scenes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+      .scenes.single { grid-template-columns: 1fr; }
+      .scene-wrap.hidden { display: none; }
+      [hidden] { display: none !important; }
       @media (max-width: 1100px) { .scenes { grid-template-columns: 1fr; } }
       .scene-wrap svg { width: 100%; height: auto; display: block; }
       .machines { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; }
@@ -50,7 +54,7 @@
         display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
         font-size: 13px; color: #c5cad3;
       }
-      .machine .name { min-width: 7.5rem; }
+      .machine .name { min-width: 10.5rem; }
       .pill {
         font-size: 11px; border-radius: 999px; padding: 2px 8px;
         border: 1px solid #2a3142; color: #939bab;
@@ -59,6 +63,7 @@
       .pill.down { color: #f09196; border-color: #8a4b55; }
       .group-label { margin: 14px 0 0; font-size: 12px; color: #6b7384; letter-spacing: 0.04em; }
       .status { min-height: 1.2em; color: #f09196; font-size: 13px; margin: 0 0 12px; }
+      .status.ok { color: #8fd4ae; }
       .panel { margin-top: 8px; }
     </style>
   </head>
@@ -80,6 +85,11 @@
           document.body.appendChild(svg);
           const t = Number(tRaw);
           viz.render(svg, scene, viz.scriptedState(scene, Number.isFinite(t) ? t : 0));
+          return;
+        }
+
+        if (params.has("scripted")) {
+          startScripted();
           return;
         }
 
@@ -113,6 +123,7 @@
           app.className = "live";
           let snapshot = initial;
           let error = "";
+          let notice = "";
           let busy = false;
           const svgs = {};
 
@@ -125,13 +136,22 @@
             "Send a webhook and watch it move. Session edges light from each machine's log. The request record is what Hookdeck stored.";
           const status = document.createElement("p");
           status.className = "status";
+          const views = document.createElement("div");
+          views.className = "views";
           const presets = document.createElement("div");
           presets.className = "presets";
           const toolbar = document.createElement("div");
           toolbar.className = "toolbar";
           const scenes = document.createElement("div");
           scenes.className = "scenes";
-          app.append(h1, lede, status, presets, toolbar, scenes);
+          app.append(h1, lede, views, status, presets, toolbar, scenes);
+
+          let mode = "per-machine";
+          const viewChoice = [
+            { id: "per-machine", label: "Connection per machine" },
+            { id: "per-group", label: "Connection per group" },
+            { id: "comparison", label: "Comparison" },
+          ];
 
           const repo = document.createElement("select");
           const eventType = document.createElement("select");
@@ -151,18 +171,26 @@
             return node;
           }
 
+          const crashButton = button("Crash group-a-host-03", "danger", () => crashDemo());
+          const resetButton = button("Reset", "", () => resetDemo());
+          const machinesUpButton = button("All machines up", "", () => machinesUp());
           presets.append(
-            button("All machines up", "", () => fleetBoth("up")),
-            button("Crash build-a-03 on both", "danger", () => crashDemo()),
+            button("Setup", "", () => project("/api/setup")),
+            button("Teardown", "danger", () => {
+              if (!confirm("Delete every connection in this Hookdeck project?")) return;
+              project("/api/teardown");
+            }),
+            resetButton,
+            machinesUpButton,
+            crashButton,
           );
 
-          toolbar.append(
-            repo,
-            eventType,
-            button("Send to both", "primary", () => send("both")),
-            button("Send per-machine", "", () => send("per-machine")),
-            button("Send per-group", "", () => send("per-group")),
-          );
+          const sendButton = button("Send", "primary", () => send(mode === "comparison" ? "both" : mode));
+          toolbar.append(repo, eventType, sendButton);
+
+          for (const choice of viewChoice) {
+            views.append(button(choice.label, choice.id === mode ? "selected" : "", () => setMode(choice.id)));
+          }
 
           for (const name of ["per-machine", "per-group"]) {
             const wrap = document.createElement("div");
@@ -176,13 +204,62 @@
             scenes.appendChild(wrap);
           }
 
+          let repoKey = "";
+          let controlKey = "";
+
+          function setMode(next) {
+            mode = next;
+            for (const node of views.querySelectorAll("button")) {
+              node.classList.toggle("selected", node.textContent === labelFor(next));
+            }
+            scenes.classList.toggle("single", next !== "comparison");
+            for (const name of ["per-machine", "per-group"]) {
+              const wrap = scenes.querySelector('[data-approach="' + name + '"]')?.parentElement;
+              if (wrap) wrap.classList.toggle("hidden", next !== "comparison" && next !== name);
+            }
+            crashButton.textContent =
+              next === "comparison" ? "Crash group-a-host-03 on both" : "Crash group-a-host-03";
+          }
+
+          function labelFor(id) {
+            return viewChoice.find((choice) => choice.id === id)?.label || "";
+          }
+
+          function visibleApproaches() {
+            return mode === "comparison" ? ["per-machine", "per-group"] : [mode];
+          }
+
           function paint() {
-            status.textContent = error || snapshot.error || "";
-            fillRepos();
+            status.textContent = error || snapshot.error || notice;
+            status.classList.toggle("ok", !error && !snapshot.error && !!notice);
+            const repos = [];
+            for (const group of snapshot.groups || []) {
+              for (const item of group.repos || []) {
+                if (!repos.includes(item)) repos.push(item);
+              }
+            }
+            const nextRepoKey = repos.join("|");
+            if (nextRepoKey !== repoKey) {
+              repoKey = nextRepoKey;
+              fillRepos();
+            }
+            const nextControl = JSON.stringify({
+              approaches: snapshot.approaches || {},
+              connections: snapshot.connections || {},
+              mode,
+            });
+            if (nextControl !== controlKey) {
+              controlKey = nextControl;
+              paintControls();
+            }
+            const showFleet = visibleApproaches().some((name) => routesReady(name));
+            resetButton.hidden = !showFleet;
+            machinesUpButton.hidden = !showFleet;
+            crashButton.hidden = !showFleet;
+            toolbar.hidden = !showFleet;
             for (const name of ["per-machine", "per-group"]) {
               viz.render(svgs[name], name, viewState(name, snapshot));
             }
-            paintControls();
             for (const node of app.querySelectorAll("button, select")) node.disabled = busy;
           }
 
@@ -205,10 +282,17 @@
             if (repos.includes(selected)) repo.value = selected;
           }
 
+          function routesReady(name) {
+            const counts = snapshot.connections;
+            if (!counts || typeof counts[name] !== "number") return true;
+            return counts[name] > 0;
+          }
+
           function paintControls() {
             for (const name of ["per-machine", "per-group"]) {
               const panel = scenes.querySelector('[data-approach="' + name + '"]');
               panel.replaceChildren();
+              if (!routesReady(name)) continue;
               const machines = (snapshot.approaches && snapshot.approaches[name]) || [];
               let lastGroup = "";
               for (const machine of machines) {
@@ -243,11 +327,15 @@
             const rows = ((data.approaches && data.approaches[name]) || []).filter((m) =>
               viz.MACHINES.some((known) => known.name === m.name),
             );
+            const connected = routesReady(name);
             const machines = viz.MACHINES.map((spec) => {
               const row = rows.find((m) => m.name === spec.name);
               const up = row ? row.up : false;
               return { name: spec.name, agent: spec.agent, up, presence: up ? 1 : 0 };
             });
+            if (!connected) {
+              return { machines, events: [], callout: null, calloutTone: null, legend: [], connections: false };
+            }
             const deliveries = (data.deliveries || []).filter((d) => d.approach === name).slice(-4);
             const now = Date.now();
             const events = deliveries.map((delivery) => ({
@@ -276,18 +364,24 @@
               if (!(delivery.targets || []).includes(machine)) continue;
               const local = (delivery.local || []).includes(machine);
               const recorded = (delivery.hookdeckLanes || []).find((lane) => lane.machine === machine);
-              if (recorded && recorded.outcome === "disconnected") {
-                lanes.push({ machine, progress: 0.58, outcome: "disconnected" });
-                continue;
-              }
               if (local || (recorded && recorded.outcome === "delivered")) {
                 const progress = raw >= 1 ? 1 : smoothTo(raw);
                 if (progress < 1) lanes.push({ machine, progress, outcome: "inflight" });
                 else lanes.push({ machine, progress: 1, outcome: "delivered" });
                 continue;
               }
+              if (recorded && recorded.outcome === "disconnected") {
+                lanes.push({
+                  machine,
+                  progress: 0.58,
+                  outcome: "disconnected",
+                  cause: recorded.cause,
+                });
+                continue;
+              }
               const wasUp = (delivery.upAtSend || []).includes(machine);
-              if (!wasUp) continue;
+              const settled = delivery.calloutTone === "ok" || delivery.calloutTone === "bad";
+              if (!wasUp || (settled && raw >= 1)) continue;
               const held = Math.min(raw, 0.92);
               lanes.push({
                 machine,
@@ -303,18 +397,57 @@
             return x * x * (3 - 2 * x);
           }
 
+          async function project(path) {
+            busy = true;
+            error = "";
+            notice = "";
+            paint();
+            try {
+              const res = await fetch(path, { method: "POST" });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+              notice = typeof data.notice === "string" ? data.notice : "";
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
+          async function resetDemo() {
+            busy = true;
+            error = "";
+            notice = "";
+            paint();
+            try {
+              const res = await fetch("/api/reset", { method: "POST" });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
           async function fleet(approach, action, machines) {
             await act({ approach, action, machines });
           }
 
-          async function fleetBoth(action) {
-            await act({ approach: "per-machine", action, machines: [] });
-            await act({ approach: "per-group", action, machines: [] });
+          async function machinesUp() {
+            for (const approach of visibleApproaches()) {
+              await act({ approach, action: "up", machines: [] });
+            }
           }
 
           async function crashDemo() {
-            await act({ approach: "per-machine", action: "crash", machines: ["build-a-03"] });
-            await act({ approach: "per-group", action: "crash", machines: ["build-a-03"] });
+            for (const approach of visibleApproaches()) {
+              await act({ approach, action: "crash", machines: ["group-a-host-03"] });
+            }
           }
 
           async function send(approach) {
@@ -324,6 +457,7 @@
           async function act(body) {
             busy = true;
             error = "";
+            notice = "";
             paint();
             try {
               const res = await fetch("/api/fleet", {
@@ -345,6 +479,7 @@
           async function actSend(body) {
             busy = true;
             error = "";
+            notice = "";
             paint();
             try {
               const res = await fetch("/api/send", {
@@ -363,6 +498,7 @@
             }
           }
 
+          setMode(mode);
           paint();
           requestAnimationFrame(function tick() {
             for (const name of ["per-machine", "per-group"]) {

@@ -18,7 +18,7 @@ down.
 
 The difference is where the fan-out happens, and it decides everything else.
 
-**Approach 1 fans out at the connection layer.** Each machine has a connection
+**Connection per machine fans out at the connection layer.** Each machine has a connection
 of its own, so a connection *is* a machine. When one is down, the request names
 it:
 
@@ -37,7 +37,9 @@ flowchart LR
     class m3 down
 ```
 
-**Approach 2 fans out at the session layer.** The group has one connection and
+![Connection per machine: three connections. group-a-host-03 is down, and the request records CLI_DISCONNECTED on that connection.](viz/per-machine.gif)
+
+**Connection per group fans out at the session layer.** The group has one connection and
 the machines are indistinguishable sessions on it. When one is down, the other
 two still take delivery, so the request looks entirely healthy:
 
@@ -53,6 +55,8 @@ flowchart LR
     class m6 down
 ```
 
+![Connection per group: one connection, with CLI sessions stacked just far enough to see. The request records a normal delivery.](viz/per-group.gif)
+
 Both deliver every event to every machine that is up. Compare the two
 bold-arrowed boxes: that is the whole argument. With a connection per machine,
 the machine that missed an event is named in the request's record, so it can be
@@ -60,7 +64,7 @@ replayed to on its own. With a connection per group, the request looks fine,
 because as far as Hookdeck is concerned the destination was reachable - just not
 by every machine.
 
-| | Approach 1: connection per machine | Approach 2: connection per group |
+| | Connection per machine | Connection per group |
 |---|---|---|
 | Hookdeck resources | one connection + CLI destination per machine | one connection + CLI destination per group |
 | Fan-out to every machine | yes, one event per connection | yes, one event per attached session |
@@ -69,19 +73,19 @@ by every machine.
 | Can you replay to just the machine that missed? | yes, retry scoped to its connection | no, a retry reaches every attached session |
 | Config surface | one entry per machine, in source control | one entry per group |
 
-Approach 1 uses one connection per machine instead of one per group. That is not
+Connection per machine uses one connection per machine instead of one per group. That is not
 a price paid for the rows above - it is what produces them. A connection is the
 unit Hookdeck records delivery against, so modeling each machine as its own
 connection is what makes each machine individually visible and individually
-recoverable. Approach 2 does not save anything by collapsing them; it discards
+recoverable. Connection per group does not save anything by collapsing them; it discards
 per-machine identity and gets nothing back.
 
 Nor is it more expensive. Connections are unlimited on every plan, and billing
-is on events and per-destination throughput. Both approaches create one event
-per machine - approach 1 one per matching connection, approach 2 one per
-attached session - so the event count for a given fleet is the same either way.
+is on events and per-destination throughput. Both ways create one event
+per machine. A connection per machine creates one per matching connection, and a connection per group creates one per
+attached session, so the event count for a given fleet is the same either way.
 
-The genuine cost of approach 1 is config surface: one entry per machine to keep
+The genuine cost of a connection per machine is config surface: one entry per machine to keep
 in sync rather than one per group. That is what `fleet.yaml` plus an idempotent
 upsert on machine launch is for. See [FINDINGS.md](FINDINGS.md) for the evidence
 behind every row.
@@ -148,15 +152,13 @@ deliberately **not** in source control. Those IDs (`src_`, `web_`, `des_`) are
 generated per project, so a committed copy would be wrong for everyone but the
 person who generated it, and stale the moment anyone runs `teardown`.
 [`fleet.yaml`](fleet.yaml) is the file that belongs in source control - it is
-the declarative description of the fleet - and `npm run setup` re-derives the
+the declarative description of the fleet and its connections - and `npm run setup` re-derives the
 IDs from it in seconds against whatever project your `.env` points at. Clone,
 `.env`, `npm run setup`, and you have a working demo.
 
 ## The fleet
 
-[`fleet.yaml`](fleet.yaml) is the source of truth for both approaches. In
-production it is the file you keep in source control; a machine reads its own
-entry at launch and ensures its connection exists before it starts listening.
+[`fleet.yaml`](fleet.yaml) is the source of truth. The top of the file is the fleet: groups and the hosts that must receive their repositories' events. Below that are the Hookdeck sources and connections. A connection is one source, one CLI destination, and a body filter, plus the hosts that listen on it. `npm run setup` upserts those connections as they are written.
 
 ```
 group-a   group-a-host-01, group-a-host-02, group-a-host-03   demo-org/service-api, demo-org/service-worker
@@ -204,6 +206,16 @@ npm run fleet -- up per-group
 npm run send -- --approach both --repo demo-org/service-api
 ```
 
+## Watching it
+
+The animations above are frames of [viz/index.html](viz/index.html). The same page can drive the running fleet:
+
+```bash
+npm run viz
+```
+
+Open the printed URL. Setup upserts the connections in `fleet.yaml`, then starts a CLI session on each of them. Teardown stops those sessions first, then deletes every connection in the Hookdeck project and leaves the sources in place, so Setup can put the connections and the sessions back. With no connections the picture keeps the source and drops the routes, and the machine list and its up, down, and crash controls stay hidden. Send a push, and crash one host. Reset brings every host back up and clears the dots and the request record. A dot leaves the SCM source immediately. A session edge lights when that machine's own log records the delivery, which is the only per-machine signal a connection per group has. The request record is what the Hookdeck API stored: a connection per machine names the connection that missed, and a connection per group records a normal delivery when any session was attached.
+
 ## Seeing what Hookdeck recorded
 
 ```bash
@@ -211,15 +223,14 @@ npm run inspect -- --approach per-machine
 ```
 
 This prints, per request, what each connection did with it - delivered, or
-ignored and why. It is where the two approaches diverge most visibly: under
-approach 1 a downed machine leaves a `CLI_DISCONNECTED` row against its own
-connection, while under approach 2 there is one row for the whole group and a
+ignored and why. It is where the two models diverge most visibly: with a connection per machine, a downed machine leaves a `CLI_DISCONNECTED` row against its own
+connection, while with a connection per group there is one row for the whole group and a
 request delivered to two of three machines looks identical to one delivered to
 all three.
 
 ## Recovering missed events
 
-Only approach 1 can do this properly:
+Only a connection per machine can do this properly:
 
 ```bash
 npm run recover -- group-a-host-01 --dry-run
@@ -227,13 +238,15 @@ npm run recover -- group-a-host-01
 npm run recover -- group-a-host-01 --since 2026-09-23T10:00:00Z
 ```
 
+Bringing a per-machine host back up runs this once its CLI session connects.
 It lists the source's requests since a time bound, keeps the ones with a
-`CLI_DISCONNECTED` ignored event on that machine's connection, skips any that
-already have an event on that connection, and retries the rest scoped to that
-connection alone. The last run is recorded in `run/recover.<machine>.json` and
-used as the default `--since` next time.
+`CLI_DISCONNECTED` ignored event on that machine's connection, retries failed
+events such as `CLI_UNAVAILABLE`, skips any that already have a successful
+event on that connection, and retries the rest scoped to that connection alone.
+The last run is recorded in `run/recover.<machine>.json` and used as the
+default `--since` next time. The commands above run the same recovery by hand.
 
-For approach 2, `npm run group-recovery-problem -- group-a` demonstrates why
+For a connection per group, `npm run group-recovery-problem -- group-a` demonstrates why
 the equivalent does not exist, and `--retry` performs the group retry and
 counts the duplicates it causes.
 
@@ -254,9 +267,9 @@ npm run scenario -- shutdown-vs-crash --approach per-machine
 | Scenario | What it shows |
 |---|---|
 | `happy-path` | Every machine in group-a receives every event for the group's repos; `group-b-host-01` receives only its own repo's events |
-| `down-long` | A machine crashes and stays down past the grace window. Approach 1 records the miss and recovers it to that machine alone; approach 2 records nothing and can only duplicate |
+| `down-long` | A machine crashes and stays down past the grace window. A connection per machine records the miss and recovers it to that machine alone; a connection per group records nothing and can only duplicate |
 | `down-short` | A machine crashes and returns inside the grace window - what happens to events sent during the gap |
-| `group-down` | The whole group is down; each machine recovers independently under approach 1 |
+| `group-down` | The whole group is down; each machine recovers independently when each has its own connection |
 | `shutdown-vs-crash` | A clean shutdown drops the session immediately; a crash holds it for the grace window |
 
 `down-long`, `group-down` and `shutdown-vs-crash` wait out the ~2 minute grace
@@ -281,8 +294,8 @@ prefix, then removes `run/`. Logs are kept.
 ## Layout
 
 ```
-fleet.yaml                            the fleet: groups, machines, ports, repos
-shared/src/config.ts                  config loading and name derivation
+fleet.yaml                            groups, hosts, sources, and connections
+shared/src/config.ts                  loads fleet.yaml
 shared/src/hookdeck.ts                Hookdeck API client + CLI wrapper
 shared/src/machine.ts                 one simulated machine (stub server + listener)
 shared/src/fleet.ts                   process manager: up, down, crash, status, logs
@@ -291,18 +304,18 @@ shared/src/inspect.ts                 per-request, per-connection outcomes
 shared/src/setup.ts                   create everything, idempotently
 shared/src/teardown.ts                delete everything by prefix
 shared/src/scenario.ts                scripted scenarios + evidence capture
-per-machine/src/ensure-connection.ts  approach 1: per-machine connection upsert
-per-machine/src/recover.ts            approach 1: targeted, duplicate-free recovery
-per-group/src/ensure-group.ts         approach 2: per-group connection upsert
-per-group/src/recovery-problem.ts     approach 2: why recovery does not work
+per-machine/src/ensure-connection.ts  connection per machine: connection upsert
+per-machine/src/recover.ts            connection per machine: targeted, duplicate-free recovery
+per-group/src/ensure-group.ts         connection per group: connection upsert
+per-group/src/recovery-problem.ts     connection per group: why recovery does not work
 ```
 
 ## Things worth knowing before you change this
 
 - Create connections **before** running `listen`. If `listen` finds no
   connection for a source it creates one called `cli-<source>`, and every later
-  `listen` on that source attaches to it - silently collapsing approach 1 into
-  approach 2.
+  `listen` on that source attaches to it - silently collapsing a connection per
+  machine into a connection per group.
 - Always pass the exact connection name to `listen`. The connection argument
   also matches a substring of the CLI path, so passing `/webhooks/scm` would
   match every connection whose path contains it.

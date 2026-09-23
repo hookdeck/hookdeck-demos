@@ -1,59 +1,59 @@
 /**
- * Approach 2: one connection + CLI destination per group.
+ * One connection and CLI destination per group.
  *
- * Every machine in the group runs `hookdeck listen <port> <source> <group
- * connection>`. Hookdeck creates one event per attached session, so all
- * machines in the group receive every matching event - the fan-out requirement
- * is met.
+ * Every machine in the group runs `hookdeck listen` on this connection.
+ * Hookdeck creates one event per CLI session, so each attached session
+ * receives the event.
  *
- * What it costs: Hookdeck sees one connection, not N machines. Sessions are
- * not exposed in the dashboard or API, so there is no way to tell which
- * machines are attached, nothing records a miss when one machine is down while
- * others are up, and a retry cannot be aimed at a single machine. See
+ * Hookdeck sees one connection, not N machines. Sessions are not exposed in
+ * the dashboard or API, so there is no way to tell which machines are
+ * attached, nothing records a miss when one machine is down while others are
+ * up, and a retry cannot be aimed at a single machine. See
  * per-group/src/recovery-problem.ts and FINDINGS.md.
  *
  *   npm run ensure:group -- group-a
  */
-import { env, fleet, group, groupConnectionName, repoFilter, sourceName } from "../../shared/src/config.js";
-import { cli, ciLogin } from "../../shared/src/hookdeck.js";
+import { connectionFor, env, fleet, group } from "../../shared/src/config.js";
+import { upsertConnection } from "../../shared/src/hookdeck.js";
 
-export function ensureGroupConnection(
+export async function ensureGroupConnection(
   groupName: string,
   opts: { dryRun?: boolean; quiet?: boolean } = {},
-): string {
+): Promise<string> {
   const spec = group(groupName);
-  const name = groupConnectionName(spec.name);
+  const conn = connectionFor("per-group", spec.hosts[0]!);
+  const sourceType = fleet().sources.find((s) => s.name === conn.source)?.type;
+  if (!sourceType) throw new Error(`Unknown source ${conn.source} in fleet.yaml.`);
 
-  const args = [
-    "gateway",
-    "connection",
-    "upsert",
-    name,
-    "--source-name",
-    sourceName("per-group"),
-    "--source-type",
-    "GITHUB",
-    "--source-webhook-secret",
-    env("GITHUB_WEBHOOK_SECRET"),
-    "--destination-name",
-    name,
-    "--destination-type",
-    "CLI",
-    "--destination-cli-path",
-    fleet().cliPath,
-    "--rule-filter-body",
-    repoFilter(spec.repos),
-    "--description",
-    `${spec.name} :: ${spec.machines.length} machine(s) share this connection`,
-    ...(opts.dryRun ? ["--dry-run"] : []),
-  ];
+  const description = `${spec.name} :: ${conn.hosts.length} host(s) listen on this connection`;
+  if (opts.dryRun) {
+    console.log(`PUT /connections ${conn.name}`);
+    console.log(`  source ${conn.source} ${sourceType}`);
+    console.log(`  destination ${conn.destination.name} ${conn.destination.type} ${conn.destination.path}`);
+    console.log(`  filter ${JSON.stringify(conn.filter)}`);
+    return conn.name;
+  }
 
-  const out = cli(args, { quiet: opts.quiet });
-  if (!opts.quiet) process.stdout.write(out.endsWith("\n") ? out : `${out}\n`);
-  return name;
+  const result = await upsertConnection({
+    name: conn.name,
+    description,
+    sourceName: conn.source,
+    sourceType,
+    destinationName: conn.destination.name,
+    destinationType: conn.destination.type,
+    destinationPath: conn.destination.path,
+    filter: conn.filter,
+    webhookSecret: env("GITHUB_WEBHOOK_SECRET"),
+  });
+  if (!opts.quiet) {
+    console.log(`PUT /connections ${conn.name} -> ${result.id}`);
+    if (result.source) console.log(`  source ${result.source.name} (${result.source.id})`);
+    if (result.destination) console.log(`  destination ${result.destination.name} (${result.destination.id})`);
+  }
+  return conn.name;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const groupName = args.find((a) => !a.startsWith("--"));
@@ -61,9 +61,13 @@ function main(): void {
     console.error("usage: npm run ensure:group -- <group-name> [--dry-run]");
     process.exit(2);
   }
-  ciLogin();
-  const name = ensureGroupConnection(groupName, { dryRun });
+  const name = await ensureGroupConnection(groupName, { dryRun });
   console.log(`\nConnection ${name} ensured for ${groupName}.`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

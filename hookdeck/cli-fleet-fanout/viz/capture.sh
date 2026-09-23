@@ -59,7 +59,7 @@ for scene in per-machine per-group; do
 
   palette="$work/palette.png"
   ffmpeg -y -framerate "$FPS" -i "$work/frame-%04d.png" \
-    -vf "palettegen=stats_mode=diff" "$palette" >/dev/null
+    -vf "palettegen=stats_mode=diff" -update 1 "$palette" >/dev/null
   ffmpeg -y -framerate "$FPS" -i "$work/frame-%04d.png" -i "$palette" \
     -lavfi "paletteuse=dither=bayer:bayer_scale=3" \
     -loop 0 "$VIZ/${scene}.gif" >/dev/null
