@@ -28,7 +28,7 @@ filters:
 # The fleet: who must receive what ------------------------------------------
 groups:
   - name: group-a
-    description: Three peer machines. Every one must receive every event these repositories produce.
+    description: Three peer hosts. Every one must receive every event for these repositories.
     filter: group-a-repos
     hosts:
       - group-a-host-01
@@ -37,7 +37,7 @@ groups:
 
   # The one-to-one case is just a group of one, so the same shape covers it.
   - name: group-b
-    description: One machine. Only its own repository's events.
+    description: One host. Only its own repository's events.
     filter: group-b-repos
     hosts:
       - group-b-host-01

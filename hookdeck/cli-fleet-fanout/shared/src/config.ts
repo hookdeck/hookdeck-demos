@@ -51,15 +51,12 @@ export interface ConnectionSpec {
   source: string;
   destination: ConnectionDestination;
   hosts: ConnectionHost[];
-  /** Name of the entry in `filters`; shared by every connection in a group. */
-  filterName: string;
-  /** The filter itself, resolved from `filterName`. */
+  /** Resolved from the filter name in fleet.yaml. */
   filter: ConnectionFilter;
 }
 
 export interface FleetSpec {
   prefix: string;
-  filters: Record<string, ConnectionFilter>;
   groups: GroupSpec[];
   sources: SourceSpec[];
   connections: ConnectionSpec[];
@@ -74,7 +71,7 @@ interface RawFleetSpec {
   filters: Record<string, ConnectionFilter>;
   groups: (Omit<GroupSpec, "repos"> & { filter: string })[];
   sources: SourceSpec[];
-  connections: (Omit<ConnectionSpec, "filter" | "filterName"> & { filter: string })[];
+  connections: (Omit<ConnectionSpec, "filter"> & { filter: string })[];
 }
 
 /**
@@ -142,7 +139,6 @@ function filterByName(raw: RawFleetSpec, name: string, usedBy: string): Connecti
 function resolveFleet(raw: RawFleetSpec): FleetSpec {
   return {
     prefix: raw.prefix,
-    filters: raw.filters ?? {},
     sources: raw.sources,
     groups: raw.groups.map((group) => ({
       ...group,
@@ -150,7 +146,6 @@ function resolveFleet(raw: RawFleetSpec): FleetSpec {
     })),
     connections: raw.connections.map((connection) => ({
       ...connection,
-      filterName: connection.filter,
       filter: filterByName(raw, connection.filter, `Connection ${connection.name}`),
     })),
   };
@@ -161,7 +156,7 @@ function resolveFleet(raw: RawFleetSpec): FleetSpec {
  * these as choices, so this assumes the demo's filter shape rather than
  * handling arbitrary Hookdeck filter syntax.
  */
-export const reposOf = (filter: ConnectionFilter): string[] =>
+const reposOf = (filter: ConnectionFilter): string[] =>
   filter.repository?.full_name?.$in ?? [];
 
 function validateFleet(spec: FleetSpec): void {
