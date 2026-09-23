@@ -1,7 +1,7 @@
 /**
  * Scenario runner. Each scenario is scripted end to end so it can be replayed
  * identically, and every command and its output is written to
- * evidence/<scenario>.<approach>.md for FINDINGS.md to quote.
+ * evidence/<scenario>.<approach>.md.
  *
  *   npm run scenario -- list
  *   npm run scenario -- happy-path            --approach per-machine

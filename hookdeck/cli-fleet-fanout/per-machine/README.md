@@ -1,4 +1,6 @@
-# Connection per machine
+# Connection per machine (recommended)
+
+*The approach this demo recommends. See the [README](../README.md) for why.*
 
 One source. One connection and one CLI destination per machine. Machines in the
 same group carry the same body filter, so all of them match the same events and
@@ -82,7 +84,7 @@ npm run recover -- group-a-host-01
 
 Step 3 exists because a retried request can still list its original
 `CLI_DISCONNECTED` ignored event - the ignored record alone is not proof the
-machine still needs it. See FINDINGS.md.
+machine still needs it.
 
 The equivalent by hand:
 

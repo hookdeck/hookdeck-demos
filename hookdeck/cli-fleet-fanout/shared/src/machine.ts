@@ -121,7 +121,7 @@ const server = createServer((req, res) => {
       repo,
       bodyBytes: raw.length,
       // Lets the forwarded request be compared byte for byte against what was
-      // originally sent. See the signature question in FINDINGS.md.
+      // originally sent.
       bodySha256: createHash("sha256").update(raw).digest("hex"),
       headers,
     };

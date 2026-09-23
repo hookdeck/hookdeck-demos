@@ -1,4 +1,7 @@
-# Connection per group
+# Connection per group (the alternative)
+
+*Shown to make the trade explicit, not as a recommendation. See the
+[README](../README.md).*
 
 One source. One connection and one CLI destination per group. Every machine in
 the group runs `hookdeck listen` against the *same* connection.

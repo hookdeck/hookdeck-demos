@@ -9,7 +9,7 @@
  * the dashboard or API, so there is no way to tell which machines are
  * attached, nothing records a miss when one machine is down while others are
  * up, and a retry cannot be aimed at a single machine. See
- * per-group/src/recovery-problem.ts and FINDINGS.md.
+ * per-group/src/recovery-problem.ts.
  *
  *   npm run ensure:group -- group-a
  */

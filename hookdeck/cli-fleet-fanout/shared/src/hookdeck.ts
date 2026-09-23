@@ -9,7 +9,7 @@ import { ROOT, apiBase, env, runDir, type Approach } from "./config.js";
  * Note on `retryRequest`: the `webhook_ids` body field limits a retry to
  * specific connections. It is what `hookdeck gateway request retry
  * --connection-ids` sends, but it is not in the public API reference. See
- * FINDINGS.md.
+ * README.md, "How CLI destinations behave".
  */
 
 export interface Page<T> {
@@ -120,7 +120,7 @@ export const getRequest = (id: string): Promise<HookdeckRequest> => api(`/reques
  * Use the nested path, not `GET /events?request_id=...`. That query parameter
  * is accepted and silently ignored - it returns unrelated events, which made
  * the "has this connection already been delivered to?" check in recover.ts
- * always true and would have skipped every recovery. See FINDINGS.md.
+ * always true and would have skipped every recovery.
  */
 export const listEventsForRequest = (requestId: string): Promise<Page<HookdeckEvent>> =>
   api(`/requests/${requestId}/events`, { query: { limit: 100 } });
@@ -231,7 +231,7 @@ export const deleteDestination = (id: string): Promise<unknown> =>
 
 /**
  * Run a hookdeck CLI command. Echoes the command first so a demo viewer can
- * see exactly what is being run, and so the output can be pasted into FINDINGS.
+ * see exactly what is being run.
  */
 export function cli(
   args: string[],
@@ -264,7 +264,7 @@ export const listenerConfigPath = (approach: Approach, machineName: string): str
 
 /**
  * The CLI is an npm dependency rather than a global install, so the demo runs
- * a known, pinned version. FINDINGS.md records behavior per version, and a
+ * a known, pinned version. Behavior differs between versions, and a
  * globally installed CLI would quietly invalidate that.
  *
  * We resolve the platform binary directly instead of going through
@@ -273,7 +273,8 @@ export const listenerConfigPath = (approach: Approach, machineName: string): str
  * a SIGINT sent to the wrapper never reaches the CLI. `listen` would then be
  * killed rather than shut down cleanly, and a killed session is held for the
  * reconnect grace window instead of being dropped immediately - which is the
- * opposite of what a clean stop is supposed to do. See FINDINGS.md.
+ * opposite of what a clean stop is supposed to do.
+ * https://github.com/hookdeck/hookdeck-cli/issues/429
  */
 export function hookdeckBin(): string {
   const archMap: Record<string, string> = { x64: "amd64", arm64: "arm64", ia32: "386" };
