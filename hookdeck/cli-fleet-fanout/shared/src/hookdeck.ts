@@ -79,19 +79,25 @@ async function api<T>(
   for (const [k, v] of Object.entries(init.query ?? {})) {
     if (v !== undefined) url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url, {
-    method: init.method ?? "GET",
-    headers: {
-      Authorization: auth(),
-      "Content-Type": "application/json",
-    },
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
-  });
-  const text = await res.text();
-  if (!res.ok) {
+  // Recovery and inspection walk every request in a window, two calls each, so
+  // rate limits are reachable. Back off here rather than in each caller.
+  for (let attempt = 0, delay = 500; ; attempt++, delay *= 2) {
+    const res = await fetch(url, {
+      method: init.method ?? "GET",
+      headers: {
+        Authorization: auth(),
+        "Content-Type": "application/json",
+      },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    });
+    const text = await res.text();
+    if (res.ok) return (text ? JSON.parse(text) : {}) as T;
+    if (res.status === 429 && attempt < 4) {
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
+    }
     throw new Error(`${init.method ?? "GET"} ${url.pathname}${url.search} -> ${res.status} ${text}`);
   }
-  return (text ? JSON.parse(text) : {}) as T;
 }
 
 export const listRequests = (query: {

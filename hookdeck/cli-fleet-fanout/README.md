@@ -18,7 +18,7 @@ recover when a machine dies.
 Give every machine its own connection and CLI destination. Machines in the same
 group share a filter, so all of them match the same events.
 
-![One connection per machine. Three connections; group-a-host-03 is down, and the request records CLI_DISCONNECTED against that connection.](viz/per-machine.gif)
+![One connection per machine. group-a-host-03 drops and the request records CLI_DISCONNECTED. The host comes back, and that event is retried onto its connection only.](viz/per-machine.gif)
 
 A connection is the unit Hookdeck records delivery against. Making each machine
 a connection is what gives you, for free:
@@ -142,7 +142,7 @@ Every machine in the group runs `listen` against the *same* connection.
 Hookdeck creates one event per attached session, so the fan-out requirement is
 still met with fewer connections.
 
-![One connection per group. The three CLI sessions stack on a single connection, and the request records a normal delivery.](viz/per-group.gif)
+![One connection per group. The request records a normal delivery. Bringing the down host back does not fetch the event it missed.](viz/per-group.gif)
 
 It is here to show the trade, not as a recommendation. Because Hookdeck sees
 one connection rather than N machines:

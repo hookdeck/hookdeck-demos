@@ -9,7 +9,7 @@
 
   const WIDTH = 960;
   const HEIGHT = 520;
-  const DURATION = 10;
+  const DURATION = 14;
 
   const MACHINES = [
     { name: "group-a-host-01", agent: "host 01" },
@@ -26,6 +26,10 @@
   const DROP_START = 4.25;
   const DROP_END = 4.95;
   const CALLOUT_AT = 7.15;
+  const RISE_START = 8.5;
+  const RISE_END = 9.15;
+  const RETRY_START = 9.55;
+  const RETRY_DUR = 1.65;
 
   const C = {
     bg: "#12151c",
@@ -74,8 +78,10 @@
   function presenceOf(name, t) {
     if (name !== "group-a-host-03") return 1;
     if (t < DROP_START) return 1;
-    if (t >= DROP_END) return 0;
-    return 1 - smooth((t - DROP_START) / (DROP_END - DROP_START));
+    if (t < DROP_END) return 1 - smooth((t - DROP_START) / (DROP_END - DROP_START));
+    if (t < RISE_START) return 0;
+    if (t >= RISE_END) return 1;
+    return smooth((t - RISE_START) / (RISE_END - RISE_START));
   }
 
   function scriptedState(scene, t) {
@@ -95,13 +101,24 @@
         if (missed && scene === "per-group") continue;
         if (missed && scene === "per-machine") {
           const stop = 0.58;
-          const u = Math.min(linear, stop);
-          lanes.push({
-            machine: m.name,
-            progress: smooth(u / stop) * stop,
-            outcome: linear >= stop ? "disconnected" : "inflight",
-            cause: "CLI_DISCONNECTED",
-          });
+          // The miss stays on the wire until the host is back. The retry is a
+          // new trip from the source, only on this connection.
+          if (t < RISE_END) {
+            const u = Math.min(linear, stop);
+            lanes.push({
+              machine: m.name,
+              progress: smooth(u / stop) * stop,
+              outcome: linear >= stop ? "disconnected" : "inflight",
+              cause: "CLI_DISCONNECTED",
+            });
+          } else if (t >= RETRY_START) {
+            const retry = clamp01((t - RETRY_START) / RETRY_DUR);
+            lanes.push({
+              machine: m.name,
+              progress: smooth(retry),
+              outcome: retry >= 1 ? "delivered" : "inflight",
+            });
+          }
           continue;
         }
         lanes.push({
@@ -117,8 +134,20 @@
     let calloutTone = null;
     if (t >= CALLOUT_AT) {
       if (scene === "per-machine") {
-        callout = "CLI_DISCONNECTED on group-a-host-03";
-        calloutTone = "bad";
+        const retry = clamp01((t - RETRY_START) / RETRY_DUR);
+        if (t >= RETRY_START && retry >= 1) {
+          callout = "retried group-a-host-03 · delivered";
+          calloutTone = "ok";
+        } else if (t >= RETRY_START) {
+          callout = "fetching the miss for group-a-host-03";
+          calloutTone = "pending";
+        } else {
+          callout = "CLI_DISCONNECTED on group-a-host-03";
+          calloutTone = "bad";
+        }
+      } else if (t >= RISE_END) {
+        callout = "host 03 is back · nothing to retry";
+        calloutTone = "ok";
       } else {
         callout = "delivered · nothing notes the miss";
         calloutTone = "ok";

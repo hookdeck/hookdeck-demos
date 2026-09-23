@@ -20,7 +20,8 @@ else
 fi
 
 FPS=12
-DURATION=10
+# Keep this equal to DURATION in scene.js. The clock is the scripted timeline.
+DURATION=14
 FRAMES=$((FPS * DURATION))
 WIDTH=960
 HEIGHT=520
