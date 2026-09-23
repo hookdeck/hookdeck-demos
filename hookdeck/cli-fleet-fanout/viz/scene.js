@@ -183,6 +183,12 @@
   }
 
   function render(svg, scene, state) {
+    // The scripted GIFs pass no groups and keep the fixed frame. The live page
+    // passes every group from the selected scenario and the frame grows to fit.
+    if (state.groups && state.groups.length) {
+      renderFleet(svg, scene, state);
+      return;
+    }
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     const title =
@@ -464,9 +470,9 @@
     colors.forEach((color, i) => drawDot(svg, rightX - i * 16, y, color, r));
   }
 
-  function drawCallout(svg, message, tone) {
+  function drawCallout(svg, message, tone, yOverride) {
     const x = 28;
-    const y = 424;
+    const y = yOverride == null ? 424 : yOverride;
     const w = 904;
     const h = 72;
     const stroke = tone === "bad" ? "#8a4b55" : tone === "ok" ? "#3f6e5e" : C.border;
@@ -504,6 +510,240 @@
     }
     if (current) lines.push(current);
     return lines;
+  }
+
+  function font(size, extra) {
+    return Object.assign(
+      {
+        "font-family": "ui-sans-serif, system-ui, sans-serif",
+        "font-size": size,
+      },
+      extra || {},
+    );
+  }
+
+  function hostLabel(groupName, hostName) {
+    const prefix = groupName + "-";
+    return hostName.startsWith(prefix) ? hostName.slice(prefix.length) : hostName;
+  }
+
+  function presenceOfMachine(state, name) {
+    const machine = machineByName(state, name);
+    return machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
+  }
+
+  function sizeSvg(svg, height) {
+    svg.setAttribute("viewBox", `0 0 ${WIDTH} ${height}`);
+    svg.setAttribute("width", String(WIDTH));
+    svg.setAttribute("height", String(height));
+  }
+
+  function paintFrame(svg, height, title) {
+    sizeSvg(svg, height);
+    svg.setAttribute("aria-label", title);
+    el(svg, "rect", { width: WIDTH, height, fill: C.bg });
+    el(svg, "rect", {
+      x: 0.5,
+      y: 0.5,
+      width: WIDTH - 1,
+      height: height - 1,
+      fill: "none",
+      stroke: C.border,
+    });
+  }
+
+  function renderFleet(svg, scene, state) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const laid = scene === "per-machine" ? layoutMachines(state.groups) : layoutGroups(state.groups);
+    const title = scene === "per-machine" ? "Connection per machine" : "Connection per group";
+    const subtitle =
+      state.connections === false
+        ? "No connections"
+        : scene === "per-machine"
+          ? "Each line is its own connection"
+          : "One connection. Multiple CLI sessions.";
+    paintFrame(svg, laid.height, title);
+    text(svg, 28, 36, title, font(18, { fill: C.text, "font-weight": 650 }));
+    text(svg, 28, 58, subtitle, font(13, { fill: C.muted }));
+    drawLegend(svg, state.legend || []);
+    drawSource(svg, 28, laid.sourceY, laid.sourceW, laid.sourceH);
+    if (state.connections !== false) {
+      if (scene === "per-machine") drawFleetMachines(svg, state, laid);
+      else drawFleetGroups(svg, state, laid);
+    } else {
+      drawFleetNamesOnly(svg, laid);
+    }
+    if (state.callout) drawCallout(svg, state.callout, state.calloutTone || "pending", laid.calloutY);
+  }
+
+  function layoutMachines(groups) {
+    const pitch = 88;
+    const blocks = [];
+    let y = 108;
+    for (const group of groups) {
+      const hosts = group.hosts || [];
+      const labelY = y;
+      y += 56;
+      const lanes = hosts.map((name) => {
+        const lane = { name, y };
+        y += pitch;
+        return lane;
+      });
+      if (!lanes.length) y += pitch;
+      blocks.push({ name: group.name, lanes, labelY });
+      y += 16;
+    }
+    const first = blocks.flatMap((block) => block.lanes)[0];
+    const last = blocks.flatMap((block) => block.lanes).at(-1);
+    const sourceY = first ? first.y - 36 : 108;
+    const sourceH = first && last ? Math.max(92, last.y - first.y + 72) : 92;
+    const calloutY = Math.max(y, sourceY + sourceH) + 28;
+    return {
+      blocks,
+      sourceY,
+      sourceH,
+      sourceW: 136,
+      x1: 164,
+      x2: 600,
+      calloutY,
+      height: calloutY + 72 + 24,
+    };
+  }
+
+  function layoutGroups(groups) {
+    const blocks = [];
+    let y = 96;
+    for (const group of groups) {
+      const hosts = group.hosts || [];
+      const n = Math.max(hosts.length, 1);
+      const multi = hosts.length > 1;
+      const cardH = multi ? 58 : 36;
+      const peek = 22;
+      const gap = 12;
+      const stackH = multi ? cardH + (n - 1) * peek : cardH;
+      const top = y + 18;
+      const center = top + stackH / 2;
+      const lanes = (hosts.length ? hosts : [""]).map((name, i) => ({
+        name,
+        lineY: center + (i - (n - 1) / 2) * (multi ? gap : 0),
+        cardY: top + (multi ? i * peek : 0),
+        front: i === 0,
+      }));
+      const bottom = top + stackH;
+      blocks.push({ name: group.name, lanes, labelY: y, cardH, cardW: multi ? 230 : 188, multi, bottom });
+      y = bottom + 40;
+    }
+    const centers = blocks.flatMap((block) => block.lanes.map((lane) => lane.lineY));
+    const sourceY = (centers[0] ?? 140) - 46;
+    const sourceH = Math.max(92, (centers.at(-1) ?? sourceY + 92) - sourceY + 46);
+    const calloutY = y + 12;
+    return {
+      blocks,
+      sourceY,
+      sourceH,
+      sourceW: 144,
+      x1: 172,
+      stackX: 520,
+      calloutY,
+      height: calloutY + 72 + 24,
+    };
+  }
+
+  function drawFleetNamesOnly(svg, laid) {
+    for (const block of laid.blocks) {
+      text(svg, laid.x1 + 18, block.labelY + 14, block.name, font(12, { fill: C.faint }));
+      for (const lane of block.lanes) {
+        if (!lane.name) continue;
+        const y = lane.y || lane.lineY;
+        text(svg, laid.x1 + 18, y + 4, lane.name, font(12, { fill: C.muted }));
+      }
+    }
+  }
+
+  function drawFleetMachines(svg, state, laid) {
+    const yOf = new Map();
+    for (const block of laid.blocks) {
+      text(svg, laid.x1 + 18, block.labelY + 12, block.name, font(12, { fill: C.faint }));
+      for (const lane of block.lanes) {
+        yOf.set(lane.name, lane.y);
+        const presence = presenceOfMachine(state, lane.name);
+        drawLine(svg, laid.x1, lane.y, laid.x2, lane.y, presence);
+        text(svg, laid.x1 + 18, lane.y - 20, lane.name, font(12, { fill: presence < 0.55 ? C.lineDown : C.muted }));
+        drawSessionCard(svg, laid.x2, lane.y - 18, 188, 36, "CLI session", presence);
+        const agent = hostLabel(block.name, lane.name);
+        text(
+          svg,
+          laid.x2 + 204,
+          lane.y + 5,
+          presence < 0.55 ? agent + "  down" : agent,
+          font(13, { fill: presence < 0.55 ? C.bad : C.text }),
+        );
+        drawDotRow(svg, laid.x2 + 168, lane.y, deliveredColors(state, lane.name), 5);
+      }
+    }
+    for (const event of state.events || []) {
+      for (const lane of event.lanes) {
+        if (lane.outcome !== "inflight" && lane.outcome !== "disconnected") continue;
+        const y = yOf.get(lane.machine);
+        if (y == null) continue;
+        const point = lanePoint(laid.x1, laid.x2, y, lane.progress);
+        drawDot(svg, point.x, point.y, event.color);
+        if (lane.outcome === "disconnected") {
+          text(svg, point.x, point.y + 22, lane.cause || "CLI_DISCONNECTED", font(11, { fill: C.bad, "text-anchor": "middle", "font-weight": 650 }));
+        }
+      }
+    }
+  }
+
+  function drawFleetGroups(svg, state, laid) {
+    const yOf = new Map();
+    for (const block of laid.blocks) {
+      text(svg, (laid.x1 + laid.stackX) / 2, block.labelY + 12, block.name, font(12, { fill: C.muted, "text-anchor": "middle" }));
+      for (const lane of block.lanes) {
+        if (!lane.name) continue;
+        yOf.set(lane.name, lane.lineY);
+        const presence = presenceOfMachine(state, lane.name);
+        drawLine(svg, laid.x1, lane.lineY, laid.stackX, lane.lineY, presence);
+      }
+      for (let i = block.lanes.length - 1; i >= 0; i--) {
+        const lane = block.lanes[i];
+        if (!lane.name) continue;
+        const presence = presenceOfMachine(state, lane.name);
+        drawSessionCard(
+          svg,
+          laid.stackX,
+          lane.cardY,
+          block.cardW,
+          block.cardH,
+          lane.front ? (block.multi ? "CLI sessions" : "CLI session") : "",
+          presence,
+        );
+        const visibleH = lane.front || !block.multi ? block.cardH : 22;
+        const labelY = lane.front || !block.multi ? lane.cardY + block.cardH / 2 + 4 : lane.cardY + block.cardH - visibleH / 2 + 4;
+        const agent = hostLabel(block.name, lane.name);
+        text(
+          svg,
+          laid.stackX + block.cardW + 16,
+          labelY,
+          presence < 0.55 ? agent + "  down" : agent,
+          font(13, { fill: presence < 0.55 ? C.bad : C.text }),
+        );
+        const dotsY = lane.front || !block.multi ? lane.cardY + block.cardH / 2 : lane.cardY + block.cardH - visibleH / 2;
+        drawDotRow(svg, laid.stackX + block.cardW - 70, dotsY, deliveredColors(state, lane.name), 5);
+      }
+    }
+    for (const event of state.events || []) {
+      for (const lane of event.lanes) {
+        if (lane.outcome !== "inflight" && lane.outcome !== "disconnected") continue;
+        const y = yOf.get(lane.machine);
+        if (y == null) continue;
+        const point = lanePoint(laid.x1, laid.stackX, y, lane.progress);
+        drawDot(svg, point.x, point.y, event.color, 5);
+        if (lane.outcome === "disconnected") {
+          text(svg, point.x, point.y + 16, lane.cause || "CLI_DISCONNECTED", font(11, { fill: C.bad, "text-anchor": "middle", "font-weight": 650 }));
+        }
+      }
+    }
   }
 
   window.FleetViz = {

@@ -68,19 +68,23 @@ group membership separately, and a repository appears in exactly one place.
 ```bash
 npm install                        # brings a pinned hookdeck-cli with it
 cp .env.example .env               # HOOKDECK_API_KEY + GITHUB_WEBHOOK_SECRET
-npm run viz                        # then open the printed URL
+npm run viz                        # default scenario (fleet.yaml), then open the printed URL
+npm run viz -- --scenario multi-region
 ```
 
 `.env` wants a project API key for a **dedicated Event Gateway test project**.
 The demo authenticates into its own `run/hookdeck-cli.toml`, so it never
 touches the project you are logged into interactively, and every resource it
-creates is named with the `fleet-demo` prefix so teardown can find them.
+creates is named with that scenario's prefix so teardown can find them. The
+default prefix is `fleet-demo`.
 
-The visualization drives the real fleet: **Setup** upserts the connections and
-starts a CLI session on each, **Send** posts a signed webhook, **Crash
-group-a-host-03** kills that machine's process group, and **Teardown** removes
-everything. The same page rendered the animations above, so what you see live
-and what is in this README cannot drift.
+The visualization drives the real fleet for the scenario you started. It draws
+every group in that file, and the frame grows with the hosts. **Setup** upserts
+the connections and starts a CLI session on each, **Send** posts a signed
+webhook. The host menu on the Setup row picks a machine; **Up**, **Down**, and **Crash** apply to that host. The selected host and each menu entry show whether it is up or down. **Teardown**
+removes everything. The animations above are the default scenario,
+`fleet.yaml`, and only its group of three. `scenarios/multi-region.yaml` is a
+larger fleet: `npm run viz -- --scenario multi-region`.
 
 Prefer the terminal? `npm run setup`, then `npm run fleet -- up per-machine`,
 then `npm run send -- --approach per-machine --repo demo-org/service-api`.

@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
@@ -108,15 +108,66 @@ export function env(key: string, fallback?: string): string {
 export const apiBase = (): string =>
   (process.env.HOOKDECK_API_BASE ?? "https://api.hookdeck.com/2026-09-01").replace(/\/$/, "");
 
-let cached: FleetSpec | undefined;
+export interface ScenarioChoice {
+  name: string;
+  file: string;
+}
+
+const SCENARIOS_DIR = resolve(ROOT, "scenarios");
+
+/** `default` is fleet.yaml, the fleet the scripted GIFs were drawn from. */
+export function listScenarios(): ScenarioChoice[] {
+  const extras = existsSync(SCENARIOS_DIR)
+    ? readdirSync(SCENARIOS_DIR)
+        .filter((name) => name.endsWith(".yaml"))
+        .map((name) => ({
+          name: name.slice(0, -".yaml".length),
+          file: resolve(SCENARIOS_DIR, name),
+        }))
+    : [];
+  return [{ name: "default", file: resolve(ROOT, "fleet.yaml") }, ...extras];
+}
+
+let scenarioName = "default";
+let cached: { file: string; mtimeMs: number; spec: FleetSpec } | undefined;
+
+/** Select the fleet file for this process. Call before anything reads `fleet()`. */
+export function useScenario(name: string): ScenarioChoice {
+  const found = listScenarios().find((scenario) => scenario.name === name);
+  if (!found) {
+    throw new Error(`Unknown scenario ${name}. Known: ${listScenarios().map((s) => s.name).join(", ")}`);
+  }
+  scenarioName = name;
+  cached = undefined;
+  return found;
+}
+
+export function activeScenario(): ScenarioChoice {
+  return listScenarios().find((scenario) => scenario.name === scenarioName) ?? listScenarios()[0]!;
+}
+
+/** Drop `--scenario <name>` from argv and select that fleet for this process. */
+export function applyScenarioArg(argv: string[]): string[] {
+  const index = argv.indexOf("--scenario");
+  if (index === -1) return argv;
+  const name = argv[index + 1];
+  if (!name || name.startsWith("-")) {
+    throw new Error(`--scenario needs a name. Known: ${listScenarios().map((s) => s.name).join(", ")}`);
+  }
+  useScenario(name);
+  return [...argv.slice(0, index), ...argv.slice(index + 2)];
+}
 
 export function fleet(): FleetSpec {
-  if (!cached) {
-    const raw = parseYaml(readFileSync(resolve(ROOT, "fleet.yaml"), "utf8")) as RawFleetSpec;
-    cached = resolveFleet(raw);
-    validateFleet(cached);
+  const choice = activeScenario();
+  const mtimeMs = statSync(choice.file).mtimeMs;
+  if (!cached || cached.file !== choice.file || cached.mtimeMs !== mtimeMs) {
+    const raw = parseYaml(readFileSync(choice.file, "utf8")) as RawFleetSpec;
+    const spec = resolveFleet(raw);
+    validateFleet(spec);
+    cached = { file: choice.file, mtimeMs, spec };
   }
-  return cached;
+  return cached.spec;
 }
 
 /** Look up a named filter, failing loudly rather than silently matching nothing. */

@@ -11,7 +11,7 @@
  */
 import { rmSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { fleet, runDir } from "./config.js";
+import { applyScenarioArg, fleet, runDir } from "./config.js";
 import { stopSessions } from "./fleet.js";
 import {
   ciLogin,
@@ -24,6 +24,8 @@ import {
 } from "./hookdeck.js";
 
 async function main(): Promise<void> {
+  const argv = applyScenarioArg(process.argv.slice(2));
+  process.argv = [process.argv[0]!, process.argv[1]!, ...argv];
   const { values } = parseArgs({
     options: { "dry-run": { type: "boolean", default: false }, "keep-local": { type: "boolean", default: false } },
   });

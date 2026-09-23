@@ -28,6 +28,23 @@
       #app.live h1 { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
       .lede { color: #939bab; margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
       .toolbar, .presets, .views { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      .host-bar { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto; }
+      .host-menu { position: relative; }
+      .host-trigger { display: flex; align-items: center; gap: 8px; min-width: 14rem; white-space: nowrap; }
+      .host-trigger .chev { margin-left: auto; color: #939bab; font-size: 11px; }
+      .host-list {
+        position: absolute; top: calc(100% + 6px); right: 0; z-index: 4;
+        min-width: 16rem; max-height: 22rem; overflow: auto;
+        background: #161a22; border: 1px solid #2a3142; border-radius: 8px;
+        padding: 6px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      }
+      .host-option {
+        display: flex; width: 100%; align-items: center; gap: 8px;
+        text-align: left; background: transparent; border-color: transparent;
+      }
+      .host-option.selected { background: #243044; border-color: transparent; }
+      .host-list .group-label { margin: 8px 8px 2px; }
+      .host-list .group-label:first-child { margin-top: 2px; }
       button.selected { background: #243044; border-color: #6ea8fe; }
       select, button {
         background: #1a1e28;
@@ -49,22 +66,16 @@
       [hidden] { display: none !important; }
       @media (max-width: 1100px) { .scenes { grid-template-columns: 1fr; } }
       .scene-wrap svg { width: 100%; height: auto; display: block; }
-      .machines { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; }
-      .machine {
-        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-        font-size: 13px; color: #c5cad3;
-      }
-      .machine .name { min-width: 10.5rem; }
       .pill {
         font-size: 11px; border-radius: 999px; padding: 2px 8px;
         border: 1px solid #2a3142; color: #939bab;
       }
       .pill.up { color: #8fd4ae; border-color: #3f6e5e; }
       .pill.down { color: #f09196; border-color: #8a4b55; }
+      .pill.mixed { color: #f0b429; border-color: #8a6a2b; }
       .group-label { margin: 14px 0 0; font-size: 12px; color: #6b7384; letter-spacing: 0.04em; }
       .status { min-height: 1.2em; color: #f09196; font-size: 13px; margin: 0 0 12px; }
       .status.ok { color: #8fd4ae; }
-      .panel { margin-top: 8px; }
     </style>
   </head>
   <body>
@@ -134,6 +145,8 @@
           lede.className = "lede";
           lede.textContent =
             "Send a webhook and watch it move. Session edges light from each machine's log. The request record is what Hookdeck stored.";
+          const scenarioLine = document.createElement("p");
+          scenarioLine.className = "lede";
           const status = document.createElement("p");
           status.className = "status";
           const views = document.createElement("div");
@@ -144,7 +157,9 @@
           toolbar.className = "toolbar";
           const scenes = document.createElement("div");
           scenes.className = "scenes";
-          app.append(h1, lede, views, status, presets, toolbar, scenes);
+          const hostBar = document.createElement("div");
+          hostBar.className = "host-bar";
+          app.append(h1, lede, scenarioLine, views, status, presets, toolbar, scenes);
 
           let mode = "per-machine";
           const viewChoice = [
@@ -171,8 +186,7 @@
             return node;
           }
 
-          const crashButton = button("Crash group-a-host-03", "danger", () => crashDemo());
-          const resetButton = button("Reset", "", () => resetDemo());
+          const clearButton = button("Clear events", "", () => clearEvents());
           const machinesUpButton = button("All machines up", "", () => machinesUp());
           presets.append(
             button("Setup", "", () => project("/api/setup")),
@@ -180,13 +194,40 @@
               if (!confirm("Delete every connection in this Hookdeck project?")) return;
               project("/api/teardown");
             }),
-            resetButton,
+            clearButton,
             machinesUpButton,
-            crashButton,
+            hostBar,
           );
 
           const sendButton = button("Send", "primary", () => send(mode === "comparison" ? "both" : mode));
           toolbar.append(repo, eventType, sendButton);
+
+          let selectedHost = "";
+          let menuOpen = false;
+          const hostMenu = document.createElement("div");
+          hostMenu.className = "host-menu";
+          const hostTrigger = button("", "", () => {
+            menuOpen = !menuOpen;
+            paintHostMenu();
+          });
+          hostTrigger.classList.add("host-trigger");
+          const hostChevron = document.createElement("span");
+          hostChevron.className = "chev";
+          hostChevron.textContent = "▾";
+          const hostList = document.createElement("div");
+          hostList.className = "host-list";
+          hostList.hidden = true;
+          hostMenu.append(hostTrigger, hostList);
+          const hostUpButton = button("Up", "", () => hostAction("up"));
+          const hostDownButton = button("Down", "", () => hostAction("down"));
+          const hostCrashButton = button("Crash", "danger", () => hostAction("crash"));
+          hostBar.append(hostMenu, hostUpButton, hostDownButton, hostCrashButton);
+          document.addEventListener("click", (event) => {
+            if (!menuOpen || hostMenu.contains(event.target)) return;
+            menuOpen = false;
+            hostList.hidden = true;
+            hostTrigger.setAttribute("aria-expanded", "false");
+          });
 
           for (const choice of viewChoice) {
             views.append(button(choice.label, choice.id === mode ? "selected" : "", () => setMode(choice.id)));
@@ -197,10 +238,7 @@
             wrap.className = "scene-wrap";
             const svg = viz.createSvg();
             svgs[name] = svg;
-            const controls = document.createElement("div");
-            controls.className = "panel";
-            controls.dataset.approach = name;
-            wrap.append(svg, controls);
+            wrap.append(svg);
             scenes.appendChild(wrap);
           }
 
@@ -214,11 +252,10 @@
             }
             scenes.classList.toggle("single", next !== "comparison");
             for (const name of ["per-machine", "per-group"]) {
-              const wrap = scenes.querySelector('[data-approach="' + name + '"]')?.parentElement;
+              const wrap = svgs[name]?.parentElement;
               if (wrap) wrap.classList.toggle("hidden", next !== "comparison" && next !== name);
             }
-            crashButton.textContent =
-              next === "comparison" ? "Crash group-a-host-03 on both" : "Crash group-a-host-03";
+            paintHostMenu();
           }
 
           function labelFor(id) {
@@ -229,7 +266,18 @@
             return mode === "comparison" ? ["per-machine", "per-group"] : [mode];
           }
 
+          function hostNames() {
+            const names = [];
+            for (const group of snapshot.groups || []) {
+              for (const name of group.machines || []) {
+                if (!names.includes(name)) names.push(name);
+              }
+            }
+            return names.length ? names : viz.MACHINES.map((spec) => spec.name);
+          }
+
           function paint() {
+            scenarioLine.textContent = snapshot.scenario ? "Scenario " + snapshot.scenario : "";
             status.textContent = error || snapshot.error || notice;
             status.classList.toggle("ok", !error && !snapshot.error && !!notice);
             const repos = [];
@@ -250,17 +298,22 @@
             });
             if (nextControl !== controlKey) {
               controlKey = nextControl;
-              paintControls();
+              paintHostMenu();
             }
             const showFleet = visibleApproaches().some((name) => routesReady(name));
-            resetButton.hidden = !showFleet;
+            clearButton.hidden = !showFleet;
             machinesUpButton.hidden = !showFleet;
-            crashButton.hidden = !showFleet;
             toolbar.hidden = !showFleet;
+            hostBar.hidden = !showFleet;
             for (const name of ["per-machine", "per-group"]) {
               viz.render(svgs[name], name, viewState(name, snapshot));
             }
             for (const node of app.querySelectorAll("button, select")) node.disabled = busy;
+            if (!busy && !selectedHost) {
+              hostUpButton.disabled = true;
+              hostDownButton.disabled = true;
+              hostCrashButton.disabled = true;
+            }
           }
 
           function fillRepos() {
@@ -288,53 +341,96 @@
             return counts[name] > 0;
           }
 
-          function paintControls() {
-            for (const name of ["per-machine", "per-group"]) {
-              const panel = scenes.querySelector('[data-approach="' + name + '"]');
-              panel.replaceChildren();
-              if (!routesReady(name)) continue;
-              const machines = (snapshot.approaches && snapshot.approaches[name]) || [];
-              let lastGroup = "";
-              for (const machine of machines) {
-                if (machine.group !== lastGroup) {
-                  lastGroup = machine.group;
-                  const label = document.createElement("div");
-                  label.className = "group-label";
-                  label.textContent = machine.group;
-                  panel.appendChild(label);
-                }
-                const row = document.createElement("div");
-                row.className = "machine";
-                const title = document.createElement("span");
-                title.className = "name";
-                title.textContent = machine.name;
-                const pill = document.createElement("span");
-                pill.className = "pill " + (machine.up ? "up" : "down");
-                pill.textContent = machine.up ? "up" : "down";
-                row.append(
-                  title,
-                  pill,
-                  button("Up", "", () => fleet(name, "up", [machine.name])),
-                  button("Down", "", () => fleet(name, "down", [machine.name])),
-                  button("Crash", "danger", () => fleet(name, "crash", [machine.name])),
-                );
-                panel.appendChild(row);
+          function hostsFor(approach) {
+            return (snapshot.approaches && snapshot.approaches[approach]) || [];
+          }
+
+          function hostRows() {
+            const rows = [];
+            for (const group of snapshot.groups || []) {
+              for (const name of group.machines || []) {
+                rows.push({ group: group.name, name, state: hostState(name) });
               }
+            }
+            return rows;
+          }
+
+          function hostState(name) {
+            const states = visibleApproaches().map((approach) => {
+              const row = hostsFor(approach).find((machine) => machine.name === name);
+              return !!(row && row.up);
+            });
+            if (!states.length || states.every((up) => !up)) return "down";
+            if (states.every(Boolean)) return "up";
+            return "mixed";
+          }
+
+          function statusPill(state) {
+            const pill = document.createElement("span");
+            pill.className = "pill " + state;
+            pill.textContent = state;
+            return pill;
+          }
+
+          function paintHostMenu() {
+            const rows = hostRows();
+            if (!rows.some((row) => row.name === selectedHost)) {
+              selectedHost = rows[0] ? rows[0].name : "";
+            }
+            const selected = rows.find((row) => row.name === selectedHost);
+            hostTrigger.replaceChildren();
+            if (selected) hostTrigger.appendChild(statusPill(selected.state));
+            hostTrigger.append(document.createTextNode(selected ? selected.name : "Host"), hostChevron);
+            hostTrigger.setAttribute("aria-expanded", menuOpen ? "true" : "false");
+            hostTrigger.setAttribute("aria-haspopup", "listbox");
+            hostList.hidden = !menuOpen;
+            hostList.replaceChildren();
+            let lastGroup = "";
+            for (const row of rows) {
+              if (row.group !== lastGroup) {
+                lastGroup = row.group;
+                const label = document.createElement("div");
+                label.className = "group-label";
+                label.textContent = row.group;
+                hostList.appendChild(label);
+              }
+              const option = button(row.name, "host-option" + (row.name === selectedHost ? " selected" : ""), () => {
+                selectedHost = row.name;
+                menuOpen = false;
+                paintHostMenu();
+              });
+              option.prepend(statusPill(row.state));
+              hostList.appendChild(option);
+            }
+            const ready = !!selectedHost;
+            hostUpButton.disabled = !ready;
+            hostDownButton.disabled = !ready;
+            hostCrashButton.disabled = !ready;
+          }
+
+          async function hostAction(action) {
+            if (!selectedHost) return;
+            for (const approach of visibleApproaches()) {
+              await fleet(approach, action, [selectedHost]);
             }
           }
 
           function viewState(name, data) {
-            const rows = ((data.approaches && data.approaches[name]) || []).filter((m) =>
-              viz.MACHINES.some((known) => known.name === m.name),
-            );
+            const groups = (data.groups || []).map((group) => ({
+              name: group.name,
+              hosts: group.machines || [],
+            }));
+            const rows = (data.approaches && data.approaches[name]) || [];
             const connected = routesReady(name);
-            const machines = viz.MACHINES.map((spec) => {
-              const row = rows.find((m) => m.name === spec.name);
-              const up = row ? row.up : false;
-              return { name: spec.name, agent: spec.agent, up, presence: up ? 1 : 0 };
-            });
+            const machines = groups.flatMap((group) =>
+              group.hosts.map((host) => {
+                const row = rows.find((item) => item.name === host);
+                const up = row ? row.up : false;
+                return { name: host, up, presence: up ? 1 : 0, group: group.name };
+              }),
+            );
             if (!connected) {
-              return { machines, events: [], callout: null, calloutTone: null, legend: [], connections: false };
+              return { groups, machines, events: [], callout: null, calloutTone: null, legend: [], connections: false };
             }
             const deliveries = (data.deliveries || []).filter((d) => d.approach === name).slice(-4);
             const now = Date.now();
@@ -346,6 +442,7 @@
             }));
             const latest = deliveries[deliveries.length - 1];
             return {
+              groups,
               machines,
               events,
               callout: latest ? latest.callout : null,
@@ -359,8 +456,7 @@
             const travel = 1.6;
             const raw = Math.min(1, age / travel);
             const lanes = [];
-            for (const spec of viz.MACHINES) {
-              const machine = spec.name;
+            for (const machine of hostNames()) {
               if (!(delivery.targets || []).includes(machine)) continue;
               const local = (delivery.local || []).includes(machine);
               const recorded = (delivery.hookdeckLanes || []).find((lane) => lane.machine === machine);
@@ -416,16 +512,17 @@
             }
           }
 
-          async function resetDemo() {
+          async function clearEvents() {
             busy = true;
             error = "";
             notice = "";
             paint();
             try {
-              const res = await fetch("/api/reset", { method: "POST" });
+              const res = await fetch("/api/clear-events", { method: "POST" });
               const data = await res.json();
               if (!res.ok) throw new Error(data.error || res.statusText);
               snapshot = data;
+              notice = typeof data.notice === "string" ? data.notice : "";
             } catch (err) {
               error = err instanceof Error ? err.message : String(err);
             } finally {
@@ -441,12 +538,6 @@
           async function machinesUp() {
             for (const approach of visibleApproaches()) {
               await act({ approach, action: "up", machines: [] });
-            }
-          }
-
-          async function crashDemo() {
-            for (const approach of visibleApproaches()) {
-              await act({ approach, action: "crash", machines: ["group-a-host-03"] });
             }
           }
 

@@ -11,7 +11,16 @@
  */
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { fleet, machines, runDir, sourceName, connectionName, groupConnectionName, type Approach } from "./config.js";
+import {
+  applyScenarioArg,
+  fleet,
+  machines,
+  runDir,
+  sourceName,
+  connectionName,
+  groupConnectionName,
+  type Approach,
+} from "./config.js";
 import { startSessions } from "./fleet.js";
 import { listConnections, listSources, type Connection } from "./hookdeck.js";
 import { ensureMachineConnection } from "../../per-machine/src/ensure-connection.js";
@@ -123,7 +132,7 @@ export function clearCachedConnections(): void {
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const args = applyScenarioArg(process.argv.slice(2));
   const dryRun = args.includes("--dry-run");
   const only = args.includes("--approach") ? args[args.indexOf("--approach") + 1] : undefined;
   await runSetup({ dryRun, only });

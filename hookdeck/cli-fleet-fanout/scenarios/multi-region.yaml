@@ -1,0 +1,85 @@
+# A larger fleet than fleet.yaml. Start the demo with:
+#   npm run viz -- --scenario multi-region
+# The scripted GIFs stay tied to the default scenario (fleet.yaml).
+# Own prefix so its Hookdeck resources are distinct from the default fleet.
+
+prefix: fleet-region
+
+filters:
+  eu:
+    repository:
+      full_name:
+        $in:
+          - demo-org/checkout-eu
+  us:
+    repository:
+      full_name:
+        $in:
+          - demo-org/checkout-us
+          - demo-org/billing
+  edge:
+    repository:
+      full_name:
+        $in:
+          - demo-org/status
+
+sources:
+  - name: fleet-region-per-machine
+    type: GITHUB
+  - name: fleet-region-per-group
+    type: GITHUB
+
+connections:
+  - name: fleet-region-eu-host-01
+    source: fleet-region-per-machine
+    destination: { name: fleet-region-eu-host-01, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: eu-host-01, port: 4111 }]
+    filter: eu
+  - name: fleet-region-eu-host-02
+    source: fleet-region-per-machine
+    destination: { name: fleet-region-eu-host-02, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: eu-host-02, port: 4112 }]
+    filter: eu
+
+  - name: fleet-region-us-host-01
+    source: fleet-region-per-machine
+    destination: { name: fleet-region-us-host-01, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: us-host-01, port: 4121 }]
+    filter: us
+  - name: fleet-region-us-host-02
+    source: fleet-region-per-machine
+    destination: { name: fleet-region-us-host-02, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: us-host-02, port: 4122 }]
+    filter: us
+  - name: fleet-region-us-host-03
+    source: fleet-region-per-machine
+    destination: { name: fleet-region-us-host-03, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: us-host-03, port: 4123 }]
+    filter: us
+
+  - name: fleet-region-edge-host-01
+    source: fleet-region-per-machine
+    destination: { name: fleet-region-edge-host-01, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: edge-host-01, port: 4131 }]
+    filter: edge
+
+  - name: fleet-region-eu
+    source: fleet-region-per-group
+    destination: { name: fleet-region-eu, type: CLI, path: /webhooks/scm }
+    hosts:
+      - { host: eu-host-01, port: 4211 }
+      - { host: eu-host-02, port: 4212 }
+    filter: eu
+  - name: fleet-region-us
+    source: fleet-region-per-group
+    destination: { name: fleet-region-us, type: CLI, path: /webhooks/scm }
+    hosts:
+      - { host: us-host-01, port: 4221 }
+      - { host: us-host-02, port: 4222 }
+      - { host: us-host-03, port: 4223 }
+    filter: us
+  - name: fleet-region-edge
+    source: fleet-region-per-group
+    destination: { name: fleet-region-edge, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: edge-host-01, port: 4231 }]
+    filter: edge

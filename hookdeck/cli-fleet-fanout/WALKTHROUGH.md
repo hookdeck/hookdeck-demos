@@ -52,7 +52,7 @@ correctly skipped. Routing is per connection, and you can see the decision.
 
 ## 7. Crash a machine
 
-Click **Crash group-a-host-03**. This is `kill -9` on the process group, so the
+Open the host menu on the Setup row, choose **group-a-host-03**, and click **Crash**. This is `kill -9` on the process group, so the
 listener dies with no chance to close its WebSocket - a crash, not a shutdown.
 
 Send another push **within two minutes**. Two hosts receive it. The third does

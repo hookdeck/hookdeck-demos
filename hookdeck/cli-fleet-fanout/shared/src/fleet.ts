@@ -25,7 +25,17 @@ import {
 } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { ROOT, logPath, machines, portOf, connectionName, runDir, groupOf, type Approach } from "./config.js";
+import {
+  applyScenarioArg,
+  ROOT,
+  logPath,
+  machines,
+  portOf,
+  connectionName,
+  runDir,
+  groupOf,
+  type Approach,
+} from "./config.js";
 import { ciLogin } from "./hookdeck.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -230,7 +240,7 @@ export function status(
 }
 
 function main(): void {
-  const [command, ...rest] = process.argv.slice(2);
+  const [command, ...rest] = applyScenarioArg(process.argv.slice(2));
 
   if (command === "status") {
     const approach = rest[0] as Approach | undefined;

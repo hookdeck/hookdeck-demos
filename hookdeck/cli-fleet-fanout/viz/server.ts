@@ -9,7 +9,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { eventLogPath, fleet, machines, type Approach } from "../shared/src/config.js";
+import { activeScenario, eventLogPath, fleet, machines, useScenario, type Approach } from "../shared/src/config.js";
 import { crash, down, status, stopSessions, up, type MachineStatus } from "../shared/src/fleet.js";
 import {
   deleteAllConnections,
@@ -26,6 +26,16 @@ import { clearCachedConnections, runSetup } from "../shared/src/setup.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.VIZ_PORT ?? 4173);
+
+function scenarioFromArgv(): string {
+  const index = process.argv.indexOf("--scenario");
+  if (index === -1) return process.env.FLEET_SCENARIO || "default";
+  const name = process.argv[index + 1];
+  if (!name || name.startsWith("-")) throw new Error("--scenario needs a name. Known scenarios are listed at startup.");
+  return name;
+}
+
+const scenario = useScenario(scenarioFromArgv());
 const APPROACHES: Approach[] = ["per-machine", "per-group"];
 const PALETTE = ["#6ea8fe", "#f0b429", "#5dcaa5", "#d2a8ff", "#ff8b6a"];
 const EVENTS = new Set(["push", "pull_request", "workflow_run"]);
@@ -119,7 +129,9 @@ function connectionCounts(): Record<Approach, number> {
   } catch {
     return counts;
   }
+  const wanted = new Set(fleet().connections.map((connection) => connection.name));
   for (const connection of Object.values(setup.connections ?? {})) {
+    if (!wanted.has(connection.name)) continue;
     if (connection.approach === "per-machine" || connection.approach === "per-group") {
       counts[connection.approach] += 1;
     }
@@ -128,6 +140,7 @@ function connectionCounts(): Record<Approach, number> {
 }
 
 function snapshot(): {
+  scenario: string;
   groups: { name: string; repos: string[]; machines: string[] }[];
   approaches: Record<Approach, MachineStatus[]>;
   connections: Record<Approach, number>;
@@ -146,6 +159,7 @@ function snapshot(): {
     error = err instanceof Error ? err.message : String(err);
   }
   return {
+    scenario: activeScenario().name,
     groups: fleet().groups.map((group) => ({
       name: group.name,
       repos: group.repos,
@@ -480,12 +494,10 @@ async function handleTeardown(_req: IncomingMessage, res: ServerResponse): Promi
   sendJson(res, 200, { ...(await buildState()), notice: `Stopped CLI sessions. Deleted ${deleted.length} ${noun}.` });
 }
 
-async function handleReset(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleClearEvents(_req: IncomingMessage, res: ServerResponse): Promise<void> {
   clearDeliveries();
-  const names = machines().map((m) => m.name);
-  up("per-machine", names);
-  up("per-group", names);
-  sendJson(res, 200, await buildState());
+  requestCache.clear();
+  sendJson(res, 200, { ...(await buildState()), notice: "Cleared events." });
 }
 
 async function handleFleet(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -560,8 +572,8 @@ const server = createServer((req, res) => {
         await handleTeardown(req, res);
         return;
       }
-      if (req.method === "POST" && url.pathname === "/api/reset") {
-        await handleReset(req, res);
+      if (req.method === "POST" && url.pathname === "/api/clear-events") {
+        await handleClearEvents(req, res);
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/fleet") {
@@ -586,4 +598,5 @@ const server = createServer((req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Fleet viz at http://127.0.0.1:${PORT}`);
+  console.log(`Scenario ${scenario.name} (${scenario.file})`);
 });
