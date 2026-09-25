@@ -163,11 +163,16 @@ const listenerPidFile = (approach: Approach, name: string): string =>
  *   crash    process gone, session held for the grace window, new session on return
  *   offline  same session, reconnects and picks up what it missed
  */
-export function setLink(approach: Approach, names: string[], online: boolean): void {
+export function setLink(approach: Approach, names: string[], online: boolean): string[] {
+  // Machines started before their listener pidfile existed cannot be signalled.
+  // Report them rather than doing nothing quietly: from the UI a silent no-op
+  // is indistinguishable from the feature not working.
+  const skipped: string[] = [];
   for (const name of names) {
     const file = listenerPidFile(approach, name);
     if (!existsSync(file)) {
-      console.log(`  = ${name} has no listener running`);
+      console.log(`  = ${name} has no listener pidfile - restart it with \`fleet up\``);
+      skipped.push(name);
       continue;
     }
     const pid = Number(readFileSync(file, "utf8").trim());
@@ -176,6 +181,7 @@ export function setLink(approach: Approach, names: string[], online: boolean): v
     } catch {
       console.log(`  = ${name} listener ${pid} is gone`);
       rmSync(file, { force: true });
+      skipped.push(name);
       continue;
     }
     appendFileSync(
@@ -188,6 +194,7 @@ export function setLink(approach: Approach, names: string[], online: boolean): v
         : `  ~ ${name} offline - link to Hookdeck is gone, the machine itself is still up`,
     );
   }
+  return skipped;
 }
 
 function signal(approach: Approach, names: string[], sig: "SIGTERM" | "SIGKILL"): void {

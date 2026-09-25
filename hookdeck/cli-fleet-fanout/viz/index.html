@@ -479,7 +479,9 @@
               group.hosts.map((host) => {
                 const row = rows.find((item) => item.name === host);
                 const up = row ? row.up : false;
-                return { name: host, up, presence: up ? 1 : 0, group: group.name };
+                // offline is its own state: the machine is up, its link is not.
+                const offline = row ? !!row.offline : false;
+                return { name: host, up, offline, presence: up ? 1 : 0, group: group.name };
               }),
             );
             if (!connected) {

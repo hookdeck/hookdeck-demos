@@ -541,8 +541,14 @@ async function handleFleet(req: IncomingMessage, res: ServerResponse): Promise<v
   if (body.action === "up") up(body.approach, names);
   else if (body.action === "down") down(body.approach, names);
   else if (body.action === "crash") crash(body.approach, names);
-  else if (body.action === "offline") setLink(body.approach, names, false);
-  else if (body.action === "online") setLink(body.approach, names, true);
+  else if (body.action === "offline" || body.action === "online") {
+    const skipped = setLink(body.approach, names, body.action === "online");
+    if (skipped.length > 0) {
+      throw new Error(
+        `No listener to signal for ${skipped.join(", ")}. Restart with "All machines up".`,
+      );
+    }
+  }
   else throw new Error("action must be up, down, crash, offline, or online.");
   sendJson(res, 200, await buildState());
 }
