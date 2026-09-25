@@ -477,16 +477,44 @@ function preferLocalReceipt(): void {
   }
 }
 
+let refreshing = false;
+let refreshedAt = 0;
+let refreshError: string | undefined;
+const REFRESH_EVERY_MS = 1500;
+
+/**
+ * Ask Hookdeck what happened, in the background.
+ *
+ * This used to be awaited inside every /api/state poll, which made the page
+ * only as responsive as the Hookdeck API. With a machine offline its delivery
+ * never settles, so the work repeated on every poll, and a rate-limited call
+ * blocked the response for as long as the backoff - freezing the whole
+ * visualization, including the machines that were working fine.
+ *
+ * The page now gets the current picture straight away and the Hookdeck detail
+ * catches up within a beat.
+ */
+function scheduleRefresh(): void {
+  if (refreshing || Date.now() - refreshedAt < REFRESH_EVERY_MS) return;
+  refreshing = true;
+  void refreshHookdeck()
+    .then(() => {
+      refreshError = undefined;
+    })
+    .catch((err: unknown) => {
+      refreshError = err instanceof Error ? err.message : String(err);
+    })
+    .finally(() => {
+      refreshing = false;
+      refreshedAt = Date.now();
+    });
+}
+
 async function buildState(): Promise<ReturnType<typeof snapshot>> {
   const state = snapshot();
   refreshLocal();
-  if (!state.error && deliveries.length > 0) {
-    try {
-      await refreshHookdeck();
-    } catch (err: unknown) {
-      state.error = err instanceof Error ? err.message : String(err);
-    }
-  }
+  if (!state.error && deliveries.length > 0) scheduleRefresh();
+  if (!state.error && refreshError) state.error = refreshError;
   preferLocalReceipt();
   return state;
 }
