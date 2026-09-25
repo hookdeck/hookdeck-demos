@@ -116,6 +116,12 @@ export function up(approach: Approach, names: string[]): void {
   ciLogin();
 
   for (const name of names) {
+    // Starting a machine means wanting it connected. Clearing this first also
+    // makes `up` reconnect a machine that is running with its session stopped,
+    // and stops a disconnected machine from coming up and immediately
+    // stopping its listener again on the next poll.
+    rmSync(resolve(runDir(), `${approach}.${name}.session`), { force: true });
+
     const existing = readPid(approach, name);
     if (existing && groupAlive(existing)) {
       console.log(`  = ${name} already running (pgid ${existing})`);

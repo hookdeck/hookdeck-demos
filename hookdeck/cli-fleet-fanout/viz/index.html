@@ -74,9 +74,17 @@
       .pill.down { color: #f09196; border-color: #8a4b55; }
       .pill.offline { color: #f0b429; border-color: #8a6f3f; }
       .pill.no.session, .pill[class~="session"] { color: #aeb6c6; border-color: #4a5468; }
-      .seg { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 0 6px; }
-      .seg-row { display: inline-flex; gap: 6px; }
+      .seg { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; }
       .seg-label { font-size: 11px; color: #6b7384; letter-spacing: 0.04em; }
+      .switch { min-width: 116px; text-align: left; }
+      .switch::before {
+        content: ""; display: inline-block; width: 8px; height: 8px;
+        border-radius: 50%; margin-right: 8px; vertical-align: 1px;
+      }
+      .switch.on { border-color: #3f6e5e; color: #8fd4ae; }
+      .switch.on::before { background: #5dcaa5; }
+      .switch.off { border-color: #8a6f3f; color: #f0b429; }
+      .switch.off::before { background: #f0b429; }
       .seg button.selected { background: #243044; border-color: #6ea8fe; }
       .pill.mixed { color: #f0b429; border-color: #8a6a2b; }
       .group-label { margin: 14px 0 0; font-size: 12px; color: #6b7384; letter-spacing: 0.04em; }
@@ -231,40 +239,47 @@
           hostList.className = "host-list";
           hostList.hidden = true;
           hostMenu.append(hostTrigger, hostList);
-          const hostUpButton = button("Up", "", () => hostAction("up"));
-          const hostDownButton = button("Down", "", () => hostAction("down"));
           const hostCrashButton = button("Crash", "danger", () => hostAction("crash"));
-          // Offline suspends the listener: the machine stays up, only its link
-          // to Hookdeck goes. Coming back online reconnects the same session,
-          // which is why it behaves differently from Down and Crash.
-          const hostOfflineButton = button("Offline", "", () => hostAction("offline"));
-          const hostOnlineButton = button("Online", "", () => hostAction("online"));
-          // Stopping the session closes the WebSocket cleanly, so Hookdeck
-          // drops it at once and the next event is CLI_DISCONNECTED.
-          const hostConnectButton = button("Connected", "", () => hostAction("connect"));
-          const hostDisconnectButton = button("Disconnected", "", () => hostAction("disconnect"));
 
-          // Two independent axes - is the machine running, and does it have a
-          // link - so two toggles rather than four buttons to pick between.
-          function segmented(label, buttons) {
+          /**
+           * One control per axis. The button shows the state the machine is
+           * in; clicking it moves to the other one. Three axes, independent of
+           * each other: is the machine running, does it have a CLI session,
+           * and does that session have a working link.
+           */
+          function toggle(label, onText, offText, onAction, offAction) {
             const wrap = document.createElement("div");
             wrap.className = "seg";
             const tag = document.createElement("span");
             tag.className = "seg-label";
             tag.textContent = label;
-            const row = document.createElement("div");
-            row.className = "seg-row";
-            row.append(...buttons);
-            wrap.append(tag, row);
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "switch";
+            btn.addEventListener("click", () => {
+              // On means "currently in the on state", so clicking leaves it.
+              hostAction(btn.dataset.on === "1" ? offAction : onAction);
+            });
+            wrap.append(tag, btn);
+            wrap.setState = (on, disabled) => {
+              btn.dataset.on = on ? "1" : "0";
+              btn.textContent = on ? onText : offText;
+              btn.classList.toggle("on", on);
+              btn.classList.toggle("off", !on);
+              btn.disabled = disabled;
+            };
             return wrap;
           }
-          hostBar.append(
-            hostMenu,
-            segmented("machine", [hostUpButton, hostDownButton]),
-            segmented("session", [hostConnectButton, hostDisconnectButton]),
-            segmented("link", [hostOnlineButton, hostOfflineButton]),
-            hostCrashButton,
-          );
+
+          const machineToggle = toggle("machine", "Up", "Down", "up", "down");
+          // Stopping the session closes the WebSocket cleanly, so Hookdeck
+          // drops it at once and the next event is CLI_DISCONNECTED.
+          const sessionToggle = toggle("session", "Connected", "Disconnected", "connect", "disconnect");
+          // Offline suspends the listener: the machine stays up and the socket
+          // stays open, so events fail rather than being ignored.
+          const linkToggle = toggle("link", "Online", "Offline", "online", "offline");
+
+          hostBar.append(hostMenu, machineToggle, sessionToggle, linkToggle, hostCrashButton);
           document.addEventListener("click", (event) => {
             if (!menuOpen || hostMenu.contains(event.target)) return;
             menuOpen = false;
@@ -386,13 +401,9 @@
               viz.render(svgs[name], name, viewState(name, snapshot));
             }
             for (const node of app.querySelectorAll("button, select")) node.disabled = busy;
-            if (!busy && !selectedHost) {
-              hostUpButton.disabled = true;
-              hostDownButton.disabled = true;
-              hostCrashButton.disabled = true;
-              hostOfflineButton.disabled = true;
-              hostOnlineButton.disabled = true;
-            }
+            // paintHostMenu owns the host controls' enabled state, including
+            // the rule that you cannot act on a host you have not selected.
+            if (!busy) paintHostMenu();
           }
 
           function fillRepos() {
@@ -489,21 +500,12 @@
             const state = selected ? selected.state : "down";
             const isUp = state !== "down";
             const hasSession = isUp && state !== "no session";
-            hostUpButton.classList.toggle("selected", isUp);
-            hostDownButton.classList.toggle("selected", state === "down");
-            hostConnectButton.classList.toggle("selected", hasSession);
-            hostDisconnectButton.classList.toggle("selected", state === "no session");
-            hostOnlineButton.classList.toggle("selected", hasSession && state !== "offline");
-            hostOfflineButton.classList.toggle("selected", state === "offline");
-            hostUpButton.disabled = !ready;
-            hostDownButton.disabled = !ready;
-            hostCrashButton.disabled = !ready;
+            machineToggle.setState(isUp, !ready);
             // No session to start or stop unless the machine is running, and
             // no link to freeze unless there is a session.
-            hostConnectButton.disabled = !ready || !isUp;
-            hostDisconnectButton.disabled = !ready || !isUp;
-            hostOfflineButton.disabled = !ready || !hasSession;
-            hostOnlineButton.disabled = !ready || !hasSession;
+            sessionToggle.setState(hasSession, !ready || !isUp);
+            linkToggle.setState(hasSession && state !== "offline", !ready || !hasSession);
+            hostCrashButton.disabled = !ready;
           }
 
           async function hostAction(action) {

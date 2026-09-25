@@ -253,6 +253,9 @@ function shutdown(signal: string): void {
   log(`SHUTDOWN clean (${signal}) - sending SIGINT to hookdeck listen`);
   // SIGINT is what Ctrl+C sends. The CLI closes the WebSocket with code 1000
   // and Hookdeck drops the session straight away rather than holding it.
+  // SIGCONT first, in case the machine is offline: a suspended process would
+  // never see the SIGINT and we would escalate to SIGKILL for no reason.
+  listener?.kill("SIGCONT");
   listener?.kill("SIGINT");
 
   const done = () => {
@@ -311,6 +314,10 @@ setInterval(() => {
   listenerWanted = wanted;
   if (!wanted) {
     log("SESSION stopping hookdeck listen (clean close)");
+    // A suspended process cannot act on SIGINT - the signal just queues. Thaw
+    // it first so that stopping an offline machine's session still closes the
+    // WebSocket cleanly rather than timing out into a SIGKILL.
+    listener?.kill("SIGCONT");
     listener?.kill("SIGINT");
   } else {
     log("SESSION starting hookdeck listen");
