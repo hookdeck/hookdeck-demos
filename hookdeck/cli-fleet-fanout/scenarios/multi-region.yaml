@@ -83,3 +83,12 @@ connections:
     destination: { name: fleet-region-edge, type: CLI, path: /webhooks/scm }
     hosts: [{ host: edge-host-01, port: 4231 }]
     filter: edge
+
+# Approaches ----------------------------------------------------------------
+approaches:
+  - id: per-machine
+    label: Connection per host
+    source: fleet-region-per-machine
+  - id: per-group
+    label: Connection per region
+    source: fleet-region-per-group

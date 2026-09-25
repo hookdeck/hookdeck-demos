@@ -9,7 +9,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeScenario, eventLogPath, fleet, machines, useScenario, type Approach } from "../shared/src/config.js";
+import { activeScenario, approaches as approachSpecs, eventLogPath, fleet, machines, useScenario, type Approach } from "../shared/src/config.js";
 import { crash, down, status, stopSessions, up, type MachineStatus } from "../shared/src/fleet.js";
 import {
   deleteAllConnections,
@@ -141,6 +141,8 @@ function connectionCounts(): Record<Approach, number> {
 
 function snapshot(): {
   scenario: string;
+  /** The approaches from fleet.yaml, as the UI's tabs. */
+  tabs: { id: Approach; label: string }[];
   groups: { name: string; repos: string[]; machines: string[] }[];
   approaches: Record<Approach, MachineStatus[]>;
   connections: Record<Approach, number>;
@@ -160,6 +162,7 @@ function snapshot(): {
   }
   return {
     scenario: activeScenario().name,
+    tabs: approachSpecs().map((a) => ({ id: a.id, label: a.label })),
     groups: fleet().groups.map((group) => ({
       name: group.name,
       repos: group.repos,

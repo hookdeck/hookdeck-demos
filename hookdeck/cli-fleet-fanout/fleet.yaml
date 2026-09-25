@@ -85,3 +85,15 @@ connections:
     destination: { name: fleet-demo-group-b, type: CLI, path: /webhooks/scm }
     hosts: [{ host: group-b-host-01, port: 4204 }]
     filter: group-b
+
+# Approaches ----------------------------------------------------------------
+# The two models the demo compares, and how the UI presents them. `id` selects
+# the renderer, `source` says which source that model's traffic arrives on, and
+# `label` is what the tab is called.
+approaches:
+  - id: per-machine
+    label: Connection per machine
+    source: fleet-demo-per-machine
+  - id: per-group
+    label: Connection per group
+    source: fleet-demo-per-group

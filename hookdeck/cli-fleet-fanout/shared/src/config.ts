@@ -23,6 +23,21 @@ export interface GroupSpec {
   hosts: string[];
 }
 
+/**
+ * One of the two models the demo compares, as the UI presents it.
+ *
+ * `id` picks the renderer, so it stays constrained to the two we have. `label`
+ * and `source` are data: a scenario can name its sources whatever it likes and
+ * title its tabs to suit. Before this existed the source was found by checking
+ * whether its name ended with the approach id, which made a naming convention
+ * load-bearing.
+ */
+export interface ApproachSpec {
+  id: Approach;
+  label: string;
+  source: string;
+}
+
 export interface SourceSpec {
   name: string;
   type: string;
@@ -56,6 +71,7 @@ export interface ConnectionSpec {
 
 export interface FleetSpec {
   prefix: string;
+  approaches: ApproachSpec[];
   groups: GroupSpec[];
   sources: SourceSpec[];
   connections: ConnectionSpec[];
@@ -68,6 +84,7 @@ export interface FleetSpec {
 interface RawFleetSpec {
   prefix: string;
   filters: Record<string, ConnectionFilter>;
+  approaches: ApproachSpec[];
   sources: SourceSpec[];
   connections: (Omit<ConnectionSpec, "filter"> & { filter: string })[];
 }
@@ -197,6 +214,7 @@ function resolveFleet(raw: RawFleetSpec): FleetSpec {
 
   return {
     prefix: raw.prefix,
+    approaches: raw.approaches ?? [],
     sources: raw.sources,
     connections,
     groups: [...hostsByFilter].map(([name, hosts]) => ({
@@ -217,6 +235,21 @@ const reposOf = (filter: ConnectionFilter): string[] =>
 
 function validateFleet(spec: FleetSpec): void {
   const sources = new Set(spec.sources.map((s) => s.name));
+
+  if (spec.approaches.length === 0) {
+    throw new Error("fleet.yaml needs an `approaches` section naming each model's source.");
+  }
+  const seen = new Set<string>();
+  for (const approach of spec.approaches) {
+    if (approach.id !== "per-machine" && approach.id !== "per-group") {
+      throw new Error(`Approach id ${approach.id} must be per-machine or per-group.`);
+    }
+    if (seen.has(approach.id)) throw new Error(`Approach ${approach.id} is declared twice.`);
+    seen.add(approach.id);
+    if (!sources.has(approach.source)) {
+      throw new Error(`Approach ${approach.id} uses unknown source ${approach.source}.`);
+    }
+  }
   for (const connection of spec.connections) {
     if (!sources.has(connection.source)) {
       throw new Error(`Connection ${connection.name} uses unknown source ${connection.source}.`);
@@ -267,13 +300,19 @@ export function group(name: string): GroupSpec {
   return found;
 }
 
-export const sourceName = (approach: Approach): string => {
-  const found = fleet().sources.find((s) => s.name.endsWith(approach));
+export const approaches = (): ApproachSpec[] => fleet().approaches;
+
+export function approachSpec(approach: Approach): ApproachSpec {
+  const found = fleet().approaches.find((a) => a.id === approach);
   if (!found) {
-    throw new Error(`No source in fleet.yaml ends with ${approach}.`);
+    throw new Error(
+      `No approach ${approach} in this scenario. Declared: ${fleet().approaches.map((a) => a.id).join(", ")}`,
+    );
   }
-  return found.name;
-};
+  return found;
+}
+
+export const sourceName = (approach: Approach): string => approachSpec(approach).source;
 
 /** The connection this host listens on for that source. Declared in fleet.yaml. */
 export function connectionFor(approach: Approach, machineName: string): ConnectionSpec {

@@ -161,12 +161,19 @@
           hostBar.className = "host-bar";
           app.append(h1, lede, scenarioLine, views, status, presets, toolbar, scenes);
 
+          // Tabs come from the `approaches` section of the scenario's YAML, so a
+          // scenario can title them to suit. Comparison is added when there is
+          // more than one to compare.
           let mode = "per-machine";
-          const viewChoice = [
-            { id: "per-machine", label: "Connection per machine" },
-            { id: "per-group", label: "Connection per group" },
-            { id: "comparison", label: "Comparison" },
-          ];
+          let viewChoice = [];
+
+          function tabsFrom(snapshot) {
+            const tabs = (snapshot && snapshot.tabs) || [];
+            if (tabs.length === 0) return [];
+            const choices = tabs.map((tab) => ({ id: tab.id, label: tab.label }));
+            if (choices.length > 1) choices.push({ id: "comparison", label: "Comparison" });
+            return choices;
+          }
 
           const repo = document.createElement("select");
           const eventType = document.createElement("select");
@@ -229,9 +236,15 @@
             hostTrigger.setAttribute("aria-expanded", "false");
           });
 
-          for (const choice of viewChoice) {
-            views.append(button(choice.label, choice.id === mode ? "selected" : "", () => setMode(choice.id)));
+          function paintTabs() {
+            views.replaceChildren();
+            for (const choice of viewChoice) {
+              views.append(
+                button(choice.label, choice.id === mode ? "selected" : "", () => setMode(choice.id)),
+              );
+            }
           }
+          paintTabs();
 
           for (const name of ["per-machine", "per-group"]) {
             const wrap = document.createElement("div");
@@ -277,6 +290,18 @@
           }
 
           function paint() {
+            // Tabs are data, so resync them when the scenario's approaches
+            // arrive or change. Only rebuild the buttons when they differ, or
+            // every poll would flicker the selection.
+            const nextTabs = tabsFrom(snapshot);
+            const signature = nextTabs.map((t) => t.id + ":" + t.label).join("|");
+            if (signature !== viewChoice.map((t) => t.id + ":" + t.label).join("|")) {
+              viewChoice = nextTabs;
+              if (!viewChoice.some((choice) => choice.id === mode)) {
+                mode = viewChoice[0] ? viewChoice[0].id : "per-machine";
+              }
+              paintTabs();
+            }
             scenarioLine.textContent = snapshot.scenario ? "Scenario " + snapshot.scenario : "";
             status.textContent = error || snapshot.error || notice;
             status.classList.toggle("ok", !error && !snapshot.error && !!notice);
