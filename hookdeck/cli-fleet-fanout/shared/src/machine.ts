@@ -231,9 +231,24 @@ let recovering = false;
  * that is already attached.
  */
 function maybeRecover(line: string): void {
-  if (approach !== "per-machine" || shuttingDown || recovering) return;
+  if (approach !== "per-machine" || shuttingDown) return;
   if (!line.includes("Connected. Waiting for events")) return;
+  if (recovering) {
+    // Say so rather than skipping quietly. A recovery that never settles used
+    // to leave this flag set, which disabled recovery for the life of the
+    // process without a word in the log.
+    log("RECOVER skipped: a previous recovery is still running");
+    return;
+  }
   recovering = true;
+  // Belt and braces: whatever happens to the promise, allow the next
+  // reconnect to try again.
+  const release = setTimeout(() => {
+    if (!recovering) return;
+    log("RECOVER timed out after 60s - allowing the next reconnect to retry");
+    recovering = false;
+  }, 60_000);
+  release.unref();
   // The "Connected" line is local. Give the session a moment to register
   // before asking Hookdeck to deliver what this connection missed.
   setTimeout(() => {
@@ -242,6 +257,7 @@ function maybeRecover(line: string): void {
         log(`RECOVER failed: ${err instanceof Error ? err.message : String(err)}`);
       })
       .finally(() => {
+        clearTimeout(release);
         recovering = false;
       });
   }, 2000).unref();
