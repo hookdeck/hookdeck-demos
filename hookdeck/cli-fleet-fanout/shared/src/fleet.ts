@@ -13,7 +13,7 @@
  * scenarios 2, 3 and 5: a clean stop drops the Hookdeck session immediately, a
  * kill leaves it in the reconnect grace window.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   appendFileSync,
   existsSync,
@@ -100,15 +100,13 @@ export interface MachineStatus {
   pid?: number;
 }
 
-/** True when the listener process exists but is stopped (SIGSTOP). */
-function listenerSuspended(approach: Approach, name: string): boolean {
-  const file = listenerPidFile(approach, name);
-  if (!existsSync(file)) return false;
-  const pid = Number(readFileSync(file, "utf8").trim());
-  if (!Number.isFinite(pid)) return false;
-  const res = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
-  // A stopped process reports a state beginning with T on macOS and Linux.
-  return (res.stdout ?? "").trim().startsWith("T");
+/** The machine reports its own link state; absent means online. */
+function linkOffline(approach: Approach, name: string): boolean {
+  try {
+    return readFileSync(resolve(runDir(), `${approach}.${name}.network.state`), "utf8").trim() === "offline";
+  } catch {
+    return false;
+  }
 }
 
 export function up(approach: Approach, names: string[]): void {
@@ -121,6 +119,7 @@ export function up(approach: Approach, names: string[]): void {
     // and stops a disconnected machine from coming up and immediately
     // stopping its listener again on the next poll.
     rmSync(resolve(runDir(), `${approach}.${name}.session`), { force: true });
+    rmSync(resolve(runDir(), `${approach}.${name}.network`), { force: true });
 
     const existing = readPid(approach, name);
     if (existing && groupAlive(existing)) {
@@ -176,34 +175,33 @@ const listenerPidFile = (approach: Approach, name: string): string =>
  *   offline  same session, reconnects and picks up what it missed
  */
 export function setLink(approach: Approach, names: string[], online: boolean): string[] {
-  // Machines started before their listener pidfile existed cannot be signalled.
-  // Report them rather than doing nothing quietly: from the UI a silent no-op
-  // is indistinguishable from the feature not working.
   const skipped: string[] = [];
   for (const name of names) {
-    const file = listenerPidFile(approach, name);
-    if (!existsSync(file)) {
-      console.log(`  = ${name} has no listener pidfile - restart it with \`fleet up\``);
+    const pid = readPid(approach, name);
+    if (!pid || !groupAlive(pid)) {
+      console.log(`  = ${name} is not running`);
       skipped.push(name);
       continue;
     }
-    const pid = Number(readFileSync(file, "utf8").trim());
-    try {
-      process.kill(pid, online ? "SIGCONT" : "SIGSTOP");
-    } catch {
-      console.log(`  = ${name} listener ${pid} is gone`);
-      rmSync(file, { force: true });
-      skipped.push(name);
-      continue;
+    writeFileSync(
+      resolve(runDir(), `${approach}.${name}.network`),
+      online ? "online" : "offline",
+    );
+    // Wait for the machine to apply it, so a caller reading state straight
+    // afterwards sees the change rather than the state it asked to leave.
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      if (linkOffline(approach, name) === !online) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
     }
     appendFileSync(
       logPath(approach, name),
-      `${new Date().toISOString()} ${online ? "ONLINE link restored" : "OFFLINE link lost"} listener pid ${pid}\n`,
+      `${new Date().toISOString()} ${online ? "ONLINE requested" : "OFFLINE requested"}\n`,
     );
     console.log(
       online
-        ? `  ~ ${name} back online - reconnects the same session`
-        : `  ~ ${name} offline - link to Hookdeck is gone, the machine itself is still up`,
+        ? `  ~ ${name} back online - the CLI reconnects`
+        : `  ~ ${name} offline - link cut, the machine itself is still up`,
     );
   }
   return skipped;
@@ -341,7 +339,7 @@ export function status(
         name: m.name,
         group: groupOf(m.name).name,
         up: alive,
-        offline: alive && listenerSuspended(approach, m.name),
+        offline: alive && linkOffline(approach, m.name),
         listening: alive && existsSync(listenerPidFile(approach, m.name)),
         port: portOf(approach, m.name),
         connection: connectionName(approach, m.name),
