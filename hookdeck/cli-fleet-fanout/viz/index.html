@@ -85,6 +85,8 @@
       .switch.on::before { background: #5dcaa5; }
       .switch.off { border-color: #8a6f3f; color: #f0b429; }
       .switch.off::before { background: #f0b429; }
+      .switch.neutral { color: #6b7384; }
+      .switch.neutral::before { background: #3a4152; }
       .seg button.selected { background: #243044; border-color: #6ea8fe; }
       .pill.mixed { color: #f0b429; border-color: #8a6a2b; }
       .group-label { margin: 14px 0 0; font-size: 12px; color: #6b7384; letter-spacing: 0.04em; }
@@ -261,11 +263,15 @@
               hostAction(btn.dataset.on === "1" ? offAction : onAction);
             });
             wrap.append(tag, btn);
-            wrap.setState = (on, disabled) => {
+            // `neutral` is for an axis that does not apply: a machine that is
+            // down has no session, and a stopped session has no network state.
+            // Showing "Offline" there would assert something untrue.
+            wrap.setState = (on, disabled, neutral) => {
               btn.dataset.on = on ? "1" : "0";
-              btn.textContent = on ? onText : offText;
-              btn.classList.toggle("on", on);
-              btn.classList.toggle("off", !on);
+              btn.textContent = neutral ? "–" : on ? onText : offText;
+              btn.classList.toggle("on", !neutral && on);
+              btn.classList.toggle("off", !neutral && !on);
+              btn.classList.toggle("neutral", !!neutral);
               btn.disabled = disabled;
             };
             return wrap;
@@ -275,11 +281,12 @@
           // Stopping the session closes the WebSocket cleanly, so Hookdeck
           // drops it at once and the next event is CLI_DISCONNECTED.
           const sessionToggle = toggle("session", "Connected", "Disconnected", "connect", "disconnect");
-          // Offline suspends the listener: the machine stays up and the socket
-          // stays open, so events fail rather than being ignored.
-          const linkToggle = toggle("link", "Online", "Offline", "online", "offline");
+          // Offline suspends the listener: the machine stays up and its socket
+          // stays open, so events fail rather than being ignored. It models a
+          // network problem, not a stopped session.
+          const networkToggle = toggle("network", "Online", "Offline", "online", "offline");
 
-          hostBar.append(hostMenu, machineToggle, sessionToggle, linkToggle, hostCrashButton);
+          hostBar.append(hostMenu, machineToggle, sessionToggle, networkToggle, hostCrashButton);
           document.addEventListener("click", (event) => {
             if (!menuOpen || hostMenu.contains(event.target)) return;
             menuOpen = false;
@@ -500,11 +507,15 @@
             const state = selected ? selected.state : "down";
             const isUp = state !== "down";
             const hasSession = isUp && state !== "no session";
-            machineToggle.setState(isUp, !ready);
+            machineToggle.setState(isUp, !ready, false);
             // No session to start or stop unless the machine is running, and
-            // no link to freeze unless there is a session.
-            sessionToggle.setState(hasSession, !ready || !isUp);
-            linkToggle.setState(hasSession && state !== "offline", !ready || !hasSession);
+            // no network state to speak of unless there is a session.
+            sessionToggle.setState(hasSession, !ready || !isUp, !isUp);
+            networkToggle.setState(
+              hasSession && state !== "offline",
+              !ready || !hasSession,
+              !hasSession,
+            );
             hostCrashButton.disabled = !ready;
           }
 
@@ -528,7 +539,8 @@
                 const up = row ? row.up : false;
                 // offline is its own state: the machine is up, its link is not.
                 const offline = row ? !!row.offline : false;
-                return { name: host, up, offline, presence: up ? 1 : 0, group: group.name };
+                const listening = row ? row.listening !== false : false;
+                return { name: host, up, offline, listening, presence: up ? 1 : 0, group: group.name };
               }),
             );
             if (!connected) {

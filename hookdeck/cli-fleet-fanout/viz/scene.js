@@ -52,6 +52,10 @@
     // gone, and it keeps its session. Amber rather than red, so the two read
     // as different problems at a glance.
     lineOffline: "#8a6f3f",
+    // No session is a deliberate state, not a fault: muted rather than alarming.
+    lineNoSession: "#4a5468",
+    sessionNoneFill: "#161a22",
+    sessionNoneStroke: "#4a5468",
     sessionOfflineFill: "#25200f",
     sessionOfflineStroke: "#8a6f3f",
     warn: "#f0b429",
@@ -297,18 +301,18 @@
     return { x: x1 + (x2 - x1) * progress, y: y + (yOffset || 0) };
   }
 
-  function drawLine(svg, x1, y1, x2, y2, presence, offline) {
-    const down = presence < 0.55;
+  function drawLine(svg, x1, y1, x2, y2, presence, stateName) {
+    const style = styleFor(stateName);
     el(svg, "line", {
       x1,
       y1,
       x2,
       y2,
-      stroke: offline ? C.lineOffline : down ? C.lineDown : C.line,
+      stroke: style.line ? C[style.line] : C.line,
       "stroke-width": 2,
       "stroke-linecap": "round",
-      "stroke-dasharray": offline || down ? "7 6" : null,
-      opacity: offline ? 0.75 : 0.45 + 0.55 * presence,
+      "stroke-dasharray": style.dash ? "7 6" : null,
+      opacity: stateName === "down" ? 0.45 + 0.55 * presence : style.dash ? 0.75 : 1,
     });
   }
 
@@ -338,20 +342,19 @@
       const spec = MACHINES[i];
       const machine = machineByName(state, spec.name);
       const presence = machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
-      const offline = !!machine.offline;
-      drawLine(svg, x1, y, x2, y, presence, offline);
+      const mstate = stateOfMachine(state, spec.name);
+      drawLine(svg, x1, y, x2, y, presence, mstate);
 
       text(svg, x1 + 18, y - 12, spec.name, {
-        fill: offline ? C.lineOffline : presence < 0.55 ? C.lineDown : C.muted,
+        fill: styleFor(mstate).line ? C[styleFor(mstate).line] : C.muted,
         "font-family": "ui-sans-serif, system-ui, sans-serif",
         "font-size": 12,
       });
 
-      drawSessionCard(svg, x2, y - 18, 168, 36, "CLI session", presence, offline);
+      drawSessionCard(svg, x2, y - 18, 168, 36, "CLI session", presence, mstate);
       const agent = machine.agent || spec.agent;
-      const suffix = offline ? "  offline" : presence < 0.55 ? "  down" : "";
-      text(svg, x2 + 184, y + 5, agent + suffix, {
-        fill: offline ? C.warn : presence < 0.55 ? C.bad : C.text,
+      text(svg, x2 + 184, y + 5, agent + styleFor(mstate).suffix, {
+        fill: styleFor(mstate).text ? C[styleFor(mstate).text] : C.text,
         "font-family": "ui-sans-serif, system-ui, sans-serif",
         "font-size": 13,
       });
@@ -404,7 +407,7 @@
     MACHINES.forEach((spec, i) => {
       const machine = machineByName(state, spec.name);
       const presence = machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
-      drawLine(svg, x1, sessionLineY(i), stackX, sessionLineY(i), presence, !!machine.offline);
+      drawLine(svg, x1, sessionLineY(i), stackX, sessionLineY(i), presence, stateOfMachine(state, spec.name));
     });
 
     text(svg, (x1 + stackX) / 2, lineY - 28, "group-a", {
@@ -421,13 +424,13 @@
       const presence = machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
       const y = frontY + i * peek;
       const visibleH = i === 0 ? cardH : peek;
-      drawSessionCard(svg, stackX, y, cardW, cardH, i === 0 ? "CLI sessions" : "", presence, !!machine.offline);
+      const gstate = stateOfMachine(state, spec.name);
+      drawSessionCard(svg, stackX, y, cardW, cardH, i === 0 ? "CLI sessions" : "", presence, gstate);
 
       const labelY = i === 0 ? y + cardH / 2 + 4 : y + cardH - visibleH / 2 + 4;
       const agent = machine.agent || agentFor(spec.name);
-      const label = machine.offline ? agent + "  offline" : presence < 0.55 ? agent + "  down" : agent;
-      text(svg, stackX + cardW + 16, labelY, label, {
-        fill: machine.offline ? C.warn : presence < 0.55 ? C.bad : C.text,
+      text(svg, stackX + cardW + 16, labelY, agent + styleFor(gstate).suffix, {
+        fill: styleFor(gstate).text ? C[styleFor(gstate).text] : C.text,
         "font-family": "ui-sans-serif, system-ui, sans-serif",
         "font-size": 13,
       });
@@ -457,22 +460,22 @@
     });
   }
 
-  function drawSessionCard(svg, x, y, w, h, label, presence, offline) {
-    const down = presence < 0.55;
+  function drawSessionCard(svg, x, y, w, h, label, presence, stateName) {
+    const style = styleFor(stateName);
     el(svg, "rect", {
       x,
       y,
       width: w,
       height: h,
       rx: 8,
-      fill: offline ? C.sessionOfflineFill : down ? C.sessionDownFill : C.sessionFill,
-      stroke: offline ? C.sessionOfflineStroke : down ? C.sessionDownStroke : C.sessionStroke,
-      "stroke-dasharray": offline || down ? "5 4" : null,
-      opacity: offline ? 0.85 : 0.55 + 0.45 * presence,
+      fill: style.fill ? C[style.fill] : C.sessionFill,
+      stroke: style.stroke ? C[style.stroke] : C.sessionStroke,
+      "stroke-dasharray": style.dash ? "5 4" : null,
+      opacity: stateName === "down" ? 0.55 + 0.45 * presence : style.dash ? 0.85 : 1,
     });
     if (label) {
       text(svg, x + 12, y + h / 2 + 4, label, {
-        fill: offline ? C.warn : down ? C.bad : C.text,
+        fill: style.text ? C[style.text] : C.text,
         "font-family": "ui-sans-serif, system-ui, sans-serif",
         "font-size": 12,
       });
@@ -573,6 +576,41 @@
   function offlineOfMachine(state, name) {
     return !!machineByName(state, name).offline;
   }
+
+  /**
+   * A machine is in exactly one of these, in order of severity:
+   *
+   *   down       the machine is not running
+   *   nosession  running, but `hookdeck listen` is stopped - no CLI session,
+   *              so events are ignored with CLI_DISCONNECTED
+   *   offline    session exists but its link is gone - events fail instead
+   *   up         everything working
+   */
+  function stateOfMachine(state, name) {
+    const machine = machineByName(state, name);
+    const presence = machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
+    if (presence < 0.55) return "down";
+    if (machine.listening === false) return "nosession";
+    return machine.offline ? "offline" : "up";
+  }
+
+  const STATE_STYLE = {
+    up: { line: null, fill: null, stroke: null, text: null, dash: null, suffix: "" },
+    offline: {
+      line: "lineOffline", fill: "sessionOfflineFill", stroke: "sessionOfflineStroke",
+      text: "warn", dash: true, suffix: "  offline",
+    },
+    nosession: {
+      line: "lineNoSession", fill: "sessionNoneFill", stroke: "sessionNoneStroke",
+      text: "pending", dash: true, suffix: "  no session",
+    },
+    down: {
+      line: "lineDown", fill: "sessionDownFill", stroke: "sessionDownStroke",
+      text: "bad", dash: true, suffix: "  down",
+    },
+  };
+
+  const styleFor = (name) => STATE_STYLE[name] || STATE_STYLE.up;
 
   function sizeSvg(svg, height) {
     svg.setAttribute("viewBox", `0 0 ${WIDTH} ${height}`);
@@ -699,17 +737,17 @@
       for (const lane of block.lanes) {
         yOf.set(lane.name, lane.y);
         const presence = presenceOfMachine(state, lane.name);
-        const offline = offlineOfMachine(state, lane.name);
-        drawLine(svg, laid.x1, lane.y, laid.x2, lane.y, presence, offline);
+        const lstate = stateOfMachine(state, lane.name);
+        drawLine(svg, laid.x1, lane.y, laid.x2, lane.y, presence, lstate);
         text(svg, laid.x1 + 18, lane.y - 20, lane.name, font(12, { fill: presence < 0.55 ? C.lineDown : C.muted }));
-        drawSessionCard(svg, laid.x2, lane.y - 18, 188, 36, "CLI session", presence, offline);
+        drawSessionCard(svg, laid.x2, lane.y - 18, 188, 36, "CLI session", presence, lstate);
         const agent = hostLabel(block.name, lane.name);
         text(
           svg,
           laid.x2 + 204,
           lane.y + 5,
-          offline ? agent + "  offline" : presence < 0.55 ? agent + "  down" : agent,
-          font(13, { fill: offline ? C.warn : presence < 0.55 ? C.bad : C.text }),
+          agent + styleFor(lstate).suffix,
+          font(13, { fill: styleFor(lstate).text ? C[styleFor(lstate).text] : C.text }),
         );
         drawDotRow(svg, laid.x2 + 168, lane.y, deliveredColors(state, lane.name), 5);
         const dupes = duplicateCount(state, lane.name);
@@ -746,13 +784,13 @@
         if (!lane.name) continue;
         yOf.set(lane.name, lane.lineY);
         const presence = presenceOfMachine(state, lane.name);
-        drawLine(svg, laid.x1, lane.lineY, laid.stackX, lane.lineY, presence, offlineOfMachine(state, lane.name));
+        drawLine(svg, laid.x1, lane.lineY, laid.stackX, lane.lineY, presence, stateOfMachine(state, lane.name));
       }
       for (let i = block.lanes.length - 1; i >= 0; i--) {
         const lane = block.lanes[i];
         if (!lane.name) continue;
         const presence = presenceOfMachine(state, lane.name);
-        const offline = offlineOfMachine(state, lane.name);
+        const gstate2 = stateOfMachine(state, lane.name);
         drawSessionCard(
           svg,
           laid.stackX,
@@ -761,7 +799,7 @@
           block.cardH,
           lane.front ? (block.multi ? "CLI sessions" : "CLI session") : "",
           presence,
-          offline,
+          gstate2,
         );
         const visibleH = lane.front || !block.multi ? block.cardH : 22;
         const labelY = lane.front || !block.multi ? lane.cardY + block.cardH / 2 + 4 : lane.cardY + block.cardH - visibleH / 2 + 4;
@@ -770,8 +808,8 @@
           svg,
           laid.stackX + block.cardW + 16,
           labelY,
-          offline ? agent + "  offline" : presence < 0.55 ? agent + "  down" : agent,
-          font(13, { fill: offline ? C.warn : presence < 0.55 ? C.bad : C.text }),
+          agent + styleFor(gstate2).suffix,
+          font(13, { fill: styleFor(gstate2).text ? C[styleFor(gstate2).text] : C.text }),
         );
         const dotsY = lane.front || !block.multi ? lane.cardY + block.cardH / 2 : lane.cardY + block.cardH - visibleH / 2;
         drawDotRow(svg, laid.stackX + block.cardW - 70, dotsY, deliveredColors(state, lane.name), 5);
