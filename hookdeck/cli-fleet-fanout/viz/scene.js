@@ -556,6 +556,10 @@
     return machine.presence == null ? (machine.up ? 1 : 0) : machine.presence;
   }
 
+  function offlineOfMachine(state, name) {
+    return !!machineByName(state, name).offline;
+  }
+
   function sizeSvg(svg, height) {
     svg.setAttribute("viewBox", `0 0 ${WIDTH} ${height}`);
     svg.setAttribute("width", String(WIDTH));
@@ -681,16 +685,17 @@
       for (const lane of block.lanes) {
         yOf.set(lane.name, lane.y);
         const presence = presenceOfMachine(state, lane.name);
-        drawLine(svg, laid.x1, lane.y, laid.x2, lane.y, presence, !!machine.offline);
+        const offline = offlineOfMachine(state, lane.name);
+        drawLine(svg, laid.x1, lane.y, laid.x2, lane.y, presence, offline);
         text(svg, laid.x1 + 18, lane.y - 20, lane.name, font(12, { fill: presence < 0.55 ? C.lineDown : C.muted }));
-        drawSessionCard(svg, laid.x2, lane.y - 18, 188, 36, "CLI session", presence, !!machine.offline);
+        drawSessionCard(svg, laid.x2, lane.y - 18, 188, 36, "CLI session", presence, offline);
         const agent = hostLabel(block.name, lane.name);
         text(
           svg,
           laid.x2 + 204,
           lane.y + 5,
-          machine.offline ? agent + "  offline" : presence < 0.55 ? agent + "  down" : agent,
-          font(13, { fill: machine.offline ? C.warn : presence < 0.55 ? C.bad : C.text }),
+          offline ? agent + "  offline" : presence < 0.55 ? agent + "  down" : agent,
+          font(13, { fill: offline ? C.warn : presence < 0.55 ? C.bad : C.text }),
         );
         drawDotRow(svg, laid.x2 + 168, lane.y, deliveredColors(state, lane.name), 5);
       }
@@ -717,12 +722,13 @@
         if (!lane.name) continue;
         yOf.set(lane.name, lane.lineY);
         const presence = presenceOfMachine(state, lane.name);
-        drawLine(svg, laid.x1, lane.lineY, laid.stackX, lane.lineY, presence, !!machine.offline);
+        drawLine(svg, laid.x1, lane.lineY, laid.stackX, lane.lineY, presence, offlineOfMachine(state, lane.name));
       }
       for (let i = block.lanes.length - 1; i >= 0; i--) {
         const lane = block.lanes[i];
         if (!lane.name) continue;
         const presence = presenceOfMachine(state, lane.name);
+        const offline = offlineOfMachine(state, lane.name);
         drawSessionCard(
           svg,
           laid.stackX,
@@ -731,7 +737,7 @@
           block.cardH,
           lane.front ? (block.multi ? "CLI sessions" : "CLI session") : "",
           presence,
-          !!machine.offline,
+          offline,
         );
         const visibleH = lane.front || !block.multi ? block.cardH : 22;
         const labelY = lane.front || !block.multi ? lane.cardY + block.cardH / 2 + 4 : lane.cardY + block.cardH - visibleH / 2 + 4;
@@ -740,8 +746,8 @@
           svg,
           laid.stackX + block.cardW + 16,
           labelY,
-          machine.offline ? agent + "  offline" : presence < 0.55 ? agent + "  down" : agent,
-          font(13, { fill: machine.offline ? C.warn : presence < 0.55 ? C.bad : C.text }),
+          offline ? agent + "  offline" : presence < 0.55 ? agent + "  down" : agent,
+          font(13, { fill: offline ? C.warn : presence < 0.55 ? C.bad : C.text }),
         );
         const dotsY = lane.front || !block.multi ? lane.cardY + block.cardH / 2 : lane.cardY + block.cardH - visibleH / 2;
         drawDotRow(svg, laid.stackX + block.cardW - 70, dotsY, deliveredColors(state, lane.name), 5);
