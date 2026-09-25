@@ -36,9 +36,10 @@ the scenario file and an idempotent upsert on machine launch are for.
 
 ## How the config maps
 
-[`scenarios/fleet.yaml`](scenarios/fleet.yaml) is the source of truth and maps one-to-one onto
-Hookdeck. Groups and hosts at the top, then the sources and connections that
-`npm run setup` upserts exactly as written:
+[`scenarios/fleet.yaml`](scenarios/fleet.yaml) is the source of truth and maps
+one-to-one onto Hookdeck: the filters, then the sources and connections that
+`npm run setup` upserts exactly as written, then the approaches the UI shows as
+tabs. Nothing else - there is no separate list of groups:
 
 ```yaml
 filters:
@@ -122,8 +123,12 @@ default prefix is `fleet-demo`.
 The visualization drives the real fleet for the scenario you started. It draws
 every group in that file, and the frame grows with the hosts. **Setup** upserts
 the connections and starts a CLI session on each, **Send** posts a signed
-webhook. The host menu on the Setup row picks a machine; **Up**, **Down**, and **Crash** apply to that host. The selected host and each menu entry show whether it is up or down. **Teardown**
-removes everything. The animations above are the default scenario,
+webhook. The host menu on the Setup row picks a machine, and three toggles act on it -
+**machine** (Up/Down), **session** (Connected/Disconnected) and **network**
+(Online/Offline) - plus **Crash**. They are independent: a machine can be
+running with no session, or with a session whose network is gone. Each toggle
+shows the state the host is in, greys out when it does not apply, and takes its
+off colour from that state in the diagram. **Teardown** removes everything. The animations above are the default scenario,
 `scenarios/fleet.yaml`, and only its group of three. `scenarios/multi-region.yaml` is a
 larger fleet: `npm run viz -- --scenario multi-region`.
 
@@ -199,8 +204,10 @@ Worth knowing before you rely on any of this. Verified against
 - `CLI_UNAVAILABLE` is an attempt error code on an event that exists.
   `CLI_DISCONNECTED` is an ignored-event cause where no event was created. Only
   the second means there is nothing to retry.
-- Sessions are not exposed in the dashboard or API, which is the root of every
-  limitation in the alternative below.
+- Sessions are not exposed to you. The CLI binary references a `/cli-sessions`
+  endpoint, but it returns 401 with a project API key, and nothing surfaces
+  sessions in the dashboard. That is the root of every limitation in the
+  alternative below.
 - The forwarded request keeps the original body byte for byte and the original
   `X-Hub-Signature-256`, so a receiver's existing signature check still passes.
 
@@ -262,7 +269,8 @@ viz/                                  live visualization, shared renderer, GIF c
 shared/src/config.ts                  loads the scenario
 shared/src/hookdeck.ts                Hookdeck API client + CLI wrapper
 shared/src/machine.ts                 one simulated machine: stub server, listener, startup recovery
-shared/src/fleet.ts                   process manager: up, down, crash, status, logs
+shared/src/fleet.ts                   process manager: up, down, crash, connect,
+                                      disconnect, offline, online, status, logs
 shared/src/send-webhook.ts            signed GitHub-shaped webhook sender
 shared/src/inspect.ts                 per-request, per-connection outcomes
 shared/src/setup.ts, teardown.ts      create and remove everything by prefix
