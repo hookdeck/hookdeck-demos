@@ -157,7 +157,24 @@ Every row below was measured against a live project.
 | **crash**, back within ~2 min | held for the grace window, new session on return | event created, then `FAILED` with `CLI_UNAVAILABLE` | recovery retries the event |
 | **crash**, back later | expires with the grace window | `CLI_DISCONNECTED`, no event created | recovery retries the request |
 
-Two things are worth drawing out.
+**What `offline` actually models.** It suspends the listener process, so the
+process stops reading its socket while the kernel keeps the connection open and
+keeps buffering. Hookdeck still has a live connection and a registered session,
+and an unresponsive peer. That is a machine that has stopped responding - a
+paused container, a VM starved of CPU, a handler wedged in swap - not a severed
+link. A real partition would break the connection, and the event would not be
+waiting in the socket when the machine came back. Severing a link for real
+needs firewall rules and root, which is more than a demo should ask for.
+
+This matters for the duplicate in row one. That duplicate happens because the
+event was already in the machine's socket buffer when Hookdeck gave up on the
+attempt. Under a true partition there would be no such event waiting, so
+recovery's retry would be the only delivery. The duplicate is still a real
+at-least-once case - the machine processed the event and Hookdeck never heard
+back - it is simply easier to reproduce by freezing a process than by breaking
+a network.
+
+Two more things are worth drawing out.
 
 **Hookdeck does not re-send any of these.** The first row looks like a re-send
 and is not: the event had already been written to the socket before the client

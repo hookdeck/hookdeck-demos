@@ -159,12 +159,16 @@ const listenerPidFile = (approach: Approach, name: string): string =>
 /**
  * Take a machine's link to Hookdeck offline, or bring it back.
  *
- * Implemented by suspending the `hookdeck listen` process, which is the
- * closest we can get to a severed link without root. The machine itself is
- * fine and the process is alive - only its connection to Hookdeck goes away,
- * which is what a network blip, a sleeping laptop or a flapping VPN looks
- * like. The session is not dropped, so coming back online reconnects the same
- * session rather than starting a new one.
+ * Implemented by suspending the `hookdeck listen` process. Be clear about what
+ * that does and does not model: the process stops reading its socket, but the
+ * kernel keeps the connection open and keeps buffering. Hookdeck still has a
+ * live TCP connection and a registered session, and an unresponsive peer.
+ *
+ * So this is a machine that has stopped responding - a paused container, a VM
+ * starved of CPU, a process stuck in swap - and not a severed link. A real
+ * partition would break the connection, and the event would not be sitting in
+ * the socket waiting to be read when it came back. Severing the link for real
+ * needs firewall rules and root, which a demo should not want.
  *
  * Contrast with the two we already had:
  *   down     clean stop, session dropped immediately
