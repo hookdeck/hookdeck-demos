@@ -76,13 +76,17 @@ move. No duplicates, no manual step.
 ## 9b. The case that needs nothing
 
 Select `group-a-host-03` and click **Offline**. The machine is still running -
-only its link to Hookdeck is gone - it has stopped responding, the way a
-paused container or a CPU-starved VM does. Send a push, then click **Online**.
+only its link to Hookdeck is gone. The listener's sockets are destroyed and
+new connections refused, so the CLI really does lose its connection and
+reconnect when you restore it. Send a push, then click **Online**.
 
-The event arrives on reconnect, with no recovery involved. The session was
-never dropped, so Hookdeck still had somewhere to deliver it. Worth showing
-because it is the most common kind of "down" and the one that needs no script -
-it separates a genuine outage from a blip.
+If you restore it within about ten seconds, the event arrives with no recovery
+involved: Hookdeck waits roughly that long for a session to come back before
+giving up on a delivery. Leave it longer and the attempt is finalised, and
+recovery replays it when the machine reconnects.
+
+Worth showing because it separates a blip, which needs nothing, from an outage,
+which needs the script - and the boundary is seconds, not minutes.
 
 ## 10. The case that needs recovery
 
