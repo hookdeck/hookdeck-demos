@@ -24,7 +24,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
   connectionFor,
@@ -55,6 +55,7 @@ const cliPath = connectionFor(approach, name).destination.path;
 const source = sourceName(approach);
 const humanLog = logPath(approach, name);
 const listenerPidFile = resolve(runDir(), `${approach}.${name}.listener.pid`);
+const sessionFile = resolve(runDir(), `${approach}.${name}.session`);
 const jsonLog = eventLogPath(approach, name);
 
 mkdirSync(dirname(humanLog), { recursive: true });
@@ -197,8 +198,16 @@ function startListener(): void {
 
   child.on("exit", (code, signal) => {
     rmSync(listenerPidFile, { force: true });
+    listener = undefined;
     log(`LISTEN exited code=${code} signal=${signal}`);
-    if (!shuttingDown) process.exit(code ?? 1);
+    if (shuttingDown) return;
+    if (!listenerWanted) {
+      // Stopped on purpose: the machine stays up with no CLI session, which is
+      // what produces CLI_DISCONNECTED on the next event.
+      log("SESSION disconnected - machine still up, no CLI session");
+      return;
+    }
+    process.exit(code ?? 1);
   });
 }
 
@@ -207,6 +216,12 @@ function startListener(): void {
 // ---------------------------------------------------------------------------
 
 let shuttingDown = false;
+/**
+ * Whether this machine is supposed to have a listener. Stopping the listener
+ * on purpose must not take the machine down with it, so the exit handler
+ * checks this before deciding an exit was a failure.
+ */
+let listenerWanted = true;
 let recovering = false;
 
 /**
@@ -268,6 +283,40 @@ function shutdown(signal: string): void {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+/**
+ * Session control, driven by `fleet disconnect` and `fleet connect`.
+ *
+ * Stopping `hookdeck listen` the way Ctrl+C would closes the WebSocket
+ * cleanly, so Hookdeck drops the session immediately and the next event
+ * records CLI_DISCONNECTED. The machine and its local service keep running,
+ * which is what separates this from `down`.
+ *
+ * Driven by a file rather than a signal: this process is started through the
+ * tsx CLI, which forwards SIGTERM but not SIGUSR1/SIGUSR2, so a user signal
+ * sent to the pid we record never arrives here.
+ */
+function readSessionWish(): boolean {
+  try {
+    return readFileSync(sessionFile, "utf8").trim() !== "disconnected";
+  } catch {
+    return true; // no file means connected, which is the default
+  }
+}
+
+setInterval(() => {
+  if (shuttingDown) return;
+  const wanted = readSessionWish();
+  if (wanted === listenerWanted) return;
+  listenerWanted = wanted;
+  if (!wanted) {
+    log("SESSION stopping hookdeck listen (clean close)");
+    listener?.kill("SIGINT");
+  } else {
+    log("SESSION starting hookdeck listen");
+    startListener();
+  }
+}, 500).unref();
 
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {

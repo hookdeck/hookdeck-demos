@@ -488,6 +488,20 @@
     return colors;
   }
 
+  /**
+   * How many times this machine received the same event more than once. The
+   * whole argument for a connection per machine is recovery without
+   * duplicates, so a duplicate has to be visible when it happens.
+   */
+  function duplicateCount(state, machine) {
+    let extra = 0;
+    for (const event of state.events || []) {
+      const lane = (event.lanes || []).find((item) => item.machine === machine);
+      if (lane && lane.times > 1) extra += lane.times - 1;
+    }
+    return extra;
+  }
+
   function drawDotRow(svg, rightX, y, colors, r) {
     // colors are oldest-first. The oldest stays at rightX. Each later delivery
     // is drawn one slot to the left, so earlier dots do not move.
@@ -698,6 +712,16 @@
           font(13, { fill: offline ? C.warn : presence < 0.55 ? C.bad : C.text }),
         );
         drawDotRow(svg, laid.x2 + 168, lane.y, deliveredColors(state, lane.name), 5);
+        const dupes = duplicateCount(state, lane.name);
+        if (dupes > 0) {
+          text(
+            svg,
+            laid.x2 + 204,
+            lane.y + 22,
+            dupes === 1 ? "1 duplicate" : dupes + " duplicates",
+            font(11, { fill: C.bad }),
+          );
+        }
       }
     }
     for (const event of state.events || []) {

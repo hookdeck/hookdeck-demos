@@ -10,7 +10,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { activeScenario, approaches as approachSpecs, eventLogPath, fleet, machines, useScenario, type Approach } from "../shared/src/config.js";
-import { crash, down, setLink, status, stopSessions, up, type MachineStatus } from "../shared/src/fleet.js";
+import { crash, down, setLink, setSession, status, stopSessions, up, type MachineStatus } from "../shared/src/fleet.js";
 import {
   deleteAllConnections,
   getRequest,
@@ -91,6 +91,12 @@ interface Delivery {
   upAtSend: string[];
   requestId?: string;
   local: string[];
+  /**
+   * How many times each machine logged this delivery. A machine receiving the
+   * same event twice is the thing the recommended model is supposed to avoid,
+   * so it has to be countable rather than a membership test.
+   */
+  localCounts: Record<string, number>;
   hookdeckLanes: LaneRecord[];
   callout: string;
   calloutTone: "ok" | "bad" | "pending";
@@ -208,7 +214,10 @@ function snapshot(): {
 
 function refreshLocal(): void {
   const want = new Set(deliveries.map((d) => d.delivery));
-  for (const delivery of deliveries) delivery.local = [];
+  for (const delivery of deliveries) {
+    delivery.local = [];
+    delivery.localCounts = {};
+  }
   if (want.size === 0) return;
 
   for (const approach of APPROACHES) {
@@ -228,7 +237,9 @@ function refreshLocal(): void {
         }
         if (typeof record.delivery !== "string" || !want.has(record.delivery)) continue;
         const delivery = deliveries.find((d) => d.delivery === record.delivery && d.approach === approach);
-        if (delivery && !delivery.local.includes(machine.name)) delivery.local.push(machine.name);
+        if (!delivery) continue;
+        if (!delivery.local.includes(machine.name)) delivery.local.push(machine.name);
+        delivery.localCounts[machine.name] = (delivery.localCounts[machine.name] ?? 0) + 1;
       }
     }
   }
@@ -431,6 +442,7 @@ function recordSend(result: SendResult, upNames: string[]): Delivery {
     upAtSend: upNames.filter((name) => targetsFor(result.repo).includes(name)),
     requestId: result.requestId,
     local: [],
+    localCounts: {},
     hookdeckLanes: [],
     callout: "waiting for Hookdeck",
     calloutTone: "pending",
@@ -541,7 +553,10 @@ async function handleFleet(req: IncomingMessage, res: ServerResponse): Promise<v
   if (body.action === "up") up(body.approach, names);
   else if (body.action === "down") down(body.approach, names);
   else if (body.action === "crash") crash(body.approach, names);
-  else if (body.action === "offline" || body.action === "online") {
+  else if (body.action === "connect" || body.action === "disconnect") {
+    const skipped = setSession(body.approach, names, body.action === "connect");
+    if (skipped.length > 0) throw new Error(`Not running: ${skipped.join(", ")}.`);
+  } else if (body.action === "offline" || body.action === "online") {
     const skipped = setLink(body.approach, names, body.action === "online");
     if (skipped.length > 0) {
       throw new Error(
@@ -549,7 +564,7 @@ async function handleFleet(req: IncomingMessage, res: ServerResponse): Promise<v
       );
     }
   }
-  else throw new Error("action must be up, down, crash, offline, or online.");
+  else throw new Error("action must be up, down, crash, connect, disconnect, offline, or online.");
   sendJson(res, 200, await buildState());
 }
 

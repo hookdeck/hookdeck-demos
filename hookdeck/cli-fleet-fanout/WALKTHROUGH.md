@@ -84,26 +84,37 @@ never dropped, so Hookdeck still had somewhere to deliver it. Worth showing
 because it is the most common kind of "down" and the one that needs no script -
 it separates a genuine outage from a blip.
 
-## 10. The harder case
+## 10. The case that needs recovery
 
-Crash it again and leave it down **past two minutes**, then send. This time
-there is no session at all, so **no event is created** - the request records a
-`CLI_DISCONNECTED` ignored event against that connection.
+Set the **session** toggle to **Disconnected**. This stops `hookdeck listen`
+cleanly while the machine keeps running, so the WebSocket closes and Hookdeck
+drops the session immediately - no waiting for a grace window.
 
-That is the case nothing can retry on its own, because there is nothing to
-retry. Bring the machine back and let recovery run, or show it by hand:
+Send a push. This time there is no session at all, so **no event is created**:
+the request records a `CLI_DISCONNECTED` ignored event against that
+connection. Show it in the dashboard next to the two that succeeded.
 
-```bash
-npm run recover -- group-a-host-03 --dry-run
-npm run recover -- group-a-host-03
+Set the session back to **Connected**. The machine reconnects and recovery
+runs: it goes back to the request and retries it scoped to this connection
+alone, so the machine catches up and its peers see nothing.
+
+```
+SESSION starting hookdeck listen
+LISTEN Connected. Waiting for events...
+Recovering group-a-host-03
+  retried request req_gs5Pup1ijiB8LqaTVfU7 -> 1 event(s)
+RECV push repo=demo-org/service-api delivery=792f1cc0-...
 ```
 
-It goes back to the request and retries it scoped to that connection alone.
-Same outcome, different mechanism, and the machine catches up without its peers
-seeing anything twice.
+Steps 9b and 10 are the same machine unavailable in two different ways. In one
+the session survives and nothing is needed; in the other it is gone and only a
+targeted retry brings the machine back in line. That is the distinction the
+whole design rests on, and it is why a connection per machine matters: the
+retry could be aimed at this machine alone.
 
-Steps 7 and 10 are the same failure separated only by the clock. Worth saying
-out loud, because it is the thing people get wrong.
+Crashing and waiting out the two-minute window reaches the same place, but
+takes two minutes of silence on camera. Use `disconnect` unless the grace
+window itself is the point.
 
 ## 11. Optional contrast
 

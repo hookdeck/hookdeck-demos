@@ -139,60 +139,45 @@ itself partway through a demo is the last thing you want.
 
 ## When a machine goes down
 
-Three different things get called "down", and they behave differently. What
-separates them is whether the CLI *session* survives.
+"Down" covers several situations that behave differently. What separates them
+is what happens to the CLI *session*, and each is a control in the demo.
 
-| | `offline` | `crash`, back inside ~2 min | `crash`, back later |
+| Control | What it does | Session | Next event is |
 |---|---|---|---|
-| What happened | link lost, process alive | process gone | process gone |
-| Session | same one, reconnects | dropped, new one on return | gone |
-| Event | delivered on reconnect | created, then `FAILED` with `CLI_UNAVAILABLE` | **never created** |
-| Recorded as | a normal delivery | an event on that connection | `CLI_DISCONNECTED` ignored event |
-| Recovered by | nothing needed | retrying the event | retrying the request, scoped to that connection |
+| `disconnect` | stops `hookdeck listen`, machine keeps running | closed cleanly, dropped at once | `CLI_DISCONNECTED`, no event created |
+| `down` | stops the machine | closed cleanly, dropped at once | `CLI_DISCONNECTED`, no event created |
+| `offline` | suspends the listener, socket stays open | still registered | `CLI_UNAVAILABLE` on a created event - for the first few minutes |
+| `crash` | SIGKILL, no close frame | held for the ~2 min grace window | `CLI_UNAVAILABLE`, then `CLI_DISCONNECTED` once it expires |
 
-The first column is the common case in practice - a flapping VPN, a sleeping
-laptop, a brief network partition - and it self-heals. Try it:
+`offline` is the one worth understanding. Suspending the process does not close
+its socket, so Hookdeck still has a session and an unresponsive client: it
+creates the event, attempts delivery and the attempt times out. Measured on
+this demo, sends at 25 seconds and 2 minutes in both produced
+`CLI_UNAVAILABLE`; at 4 minutes the server had given up on the socket and it
+became `CLI_DISCONNECTED`. So it models "unreachable but connected", which is
+what a frozen VM or a saturated link looks like - not a severed cable.
+
+Come back quickly enough and nothing is needed: the listener reconnects the
+same session and the event it was already holding is delivered.
+
+The rest is recovered automatically. When a session reconnects, `machine.ts`
+runs `recoverMachine()`, which finds what that connection missed and replays
+only that - failed events by event retry, never-created events by a request
+retry scoped to its connection. Nothing reaches its peers.
 
 ```bash
-npm run fleet -- offline per-machine group-a-host-03
+npm run fleet -- disconnect per-machine group-a-host-03   # session gone, machine up
 npm run send   -- --approach per-machine --repo demo-org/service-api
-npm run fleet -- online  per-machine group-a-host-03
+npm run fleet -- connect    per-machine group-a-host-03   # reconnects, then recovers
 ```
-
-The log shows the link go, the event arrive on reconnect, and the session come
-back - without any recovery running:
-
-```
-OFFLINE link lost listener pid 15088
-ONLINE link restored listener pid 15088
-LISTEN Connection lost, reconnecting...
-RECV push repo=demo-org/service-api delivery=53bb53e1-... event=evt_h4YCLSO2sFd73Rdiec
-```
-
-The other two columns do need recovery, and get it automatically: when a
-machine's CLI session reconnects, `machine.ts` runs `recoverMachine()`, which
-finds what that connection missed and replays only that - failed events by event
-retry, never-created events by a request retry scoped to its connection. Nothing
-reaches its peers.
 
 **Your handler needs to be idempotent.** That is true of any webhook consumer,
-and it is true here: an attempt can time out from Hookdeck's side after the CLI
-has already delivered locally, so a later retry can deliver the same event
-again. Deduplicate on `X-GitHub-Delivery`, or on the Hookdeck event id in
-`X-Hookdeck-Eventid`. The demo does not do this for you - the stub server
-records every delivery it gets, precisely so duplicates are visible rather than
-hidden.
-
-Run it by hand to watch it work:
-
-```bash
-npm run recover -- group-a-host-01 --dry-run
-npm run recover -- group-a-host-01
-```
-
-It skips requests that already have a successful event on the connection, so
-re-running it is safe. The last run is recorded in
-`run/recover.<machine>.json` and used as the next `--since`.
+and this demo can show you why: an attempt can time out on Hookdeck's side
+after the CLI has already delivered locally, so the event is recorded `FAILED`
+while the machine has it. Recovery then retries it and the machine receives it
+twice. Deduplicate on `X-GitHub-Delivery` or `X-Hookdeck-Eventid`. The stub
+server records every delivery and the visualization counts them, so a duplicate
+is visible rather than hidden.
 
 ## How CLI destinations behave
 
@@ -246,7 +231,7 @@ npm run group-recovery-problem -- group-a --retry    # and the duplicates a retr
 npm run setup [-- --dry-run]                    # upsert everything in the scenario
 npm run viz                                     # live visualization + controls
 npm run viz:watch                               # same, restarting on file changes
-npm run fleet -- up|down|crash|offline|online <approach> [host]
+npm run fleet -- up|down|crash|connect|disconnect|offline|online <approach> [host]
 npm run fleet -- status|logs <approach> [host]
 npm run send -- --approach <a> --repo <r> [--event push] [--count N]
 npm run inspect -- --approach <a>               # per request, what each connection did

@@ -72,6 +72,12 @@
       }
       .pill.up { color: #8fd4ae; border-color: #3f6e5e; }
       .pill.down { color: #f09196; border-color: #8a4b55; }
+      .pill.offline { color: #f0b429; border-color: #8a6f3f; }
+      .pill.no.session, .pill[class~="session"] { color: #aeb6c6; border-color: #4a5468; }
+      .seg { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 0 6px; }
+      .seg-row { display: inline-flex; gap: 6px; }
+      .seg-label { font-size: 11px; color: #6b7384; letter-spacing: 0.04em; }
+      .seg button.selected { background: #243044; border-color: #6ea8fe; }
       .pill.mixed { color: #f0b429; border-color: #8a6a2b; }
       .group-label { margin: 14px 0 0; font-size: 12px; color: #6b7384; letter-spacing: 0.04em; }
       .status { min-height: 1.2em; color: #f09196; font-size: 13px; margin: 0 0 12px; }
@@ -233,9 +239,31 @@
           // which is why it behaves differently from Down and Crash.
           const hostOfflineButton = button("Offline", "", () => hostAction("offline"));
           const hostOnlineButton = button("Online", "", () => hostAction("online"));
+          // Stopping the session closes the WebSocket cleanly, so Hookdeck
+          // drops it at once and the next event is CLI_DISCONNECTED.
+          const hostConnectButton = button("Connected", "", () => hostAction("connect"));
+          const hostDisconnectButton = button("Disconnected", "", () => hostAction("disconnect"));
+
+          // Two independent axes - is the machine running, and does it have a
+          // link - so two toggles rather than four buttons to pick between.
+          function segmented(label, buttons) {
+            const wrap = document.createElement("div");
+            wrap.className = "seg";
+            const tag = document.createElement("span");
+            tag.className = "seg-label";
+            tag.textContent = label;
+            const row = document.createElement("div");
+            row.className = "seg-row";
+            row.append(...buttons);
+            wrap.append(tag, row);
+            return wrap;
+          }
           hostBar.append(
-            hostMenu, hostUpButton, hostDownButton, hostCrashButton,
-            hostOfflineButton, hostOnlineButton,
+            hostMenu,
+            segmented("machine", [hostUpButton, hostDownButton]),
+            segmented("session", [hostConnectButton, hostDisconnectButton]),
+            segmented("link", [hostOnlineButton, hostOfflineButton]),
+            hostCrashButton,
           );
           document.addEventListener("click", (event) => {
             if (!menuOpen || hostMenu.contains(event.target)) return;
@@ -406,14 +434,18 @@
             return rows;
           }
 
+          // Three things can be true of a machine, and they are independent:
+          // is it running, does it have a CLI session, and does that session
+          // have a working link.
           function hostState(name) {
-            const states = visibleApproaches().map((approach) => {
-              const row = hostsFor(approach).find((machine) => machine.name === name);
-              return !!(row && row.up);
-            });
-            if (!states.length || states.every((up) => !up)) return "down";
-            if (states.every(Boolean)) return "up";
-            return "mixed";
+            const rows = visibleApproaches().map((approach) =>
+              hostsFor(approach).find((machine) => machine.name === name),
+            );
+            const up = rows.map((row) => !!(row && row.up));
+            if (!up.length || up.every((v) => !v)) return "down";
+            if (!up.every(Boolean)) return "mixed";
+            if (rows.some((row) => row && !row.listening)) return "no session";
+            return rows.some((row) => row && row.offline) ? "offline" : "up";
           }
 
           function statusPill(state) {
@@ -454,11 +486,24 @@
               hostList.appendChild(option);
             }
             const ready = !!selectedHost;
+            const state = selected ? selected.state : "down";
+            const isUp = state !== "down";
+            const hasSession = isUp && state !== "no session";
+            hostUpButton.classList.toggle("selected", isUp);
+            hostDownButton.classList.toggle("selected", state === "down");
+            hostConnectButton.classList.toggle("selected", hasSession);
+            hostDisconnectButton.classList.toggle("selected", state === "no session");
+            hostOnlineButton.classList.toggle("selected", hasSession && state !== "offline");
+            hostOfflineButton.classList.toggle("selected", state === "offline");
             hostUpButton.disabled = !ready;
             hostDownButton.disabled = !ready;
             hostCrashButton.disabled = !ready;
-            hostOfflineButton.disabled = !ready;
-            hostOnlineButton.disabled = !ready;
+            // No session to start or stop unless the machine is running, and
+            // no link to freeze unless there is a session.
+            hostConnectButton.disabled = !ready || !isUp;
+            hostDisconnectButton.disabled = !ready || !isUp;
+            hostOfflineButton.disabled = !ready || !hasSession;
+            hostOnlineButton.disabled = !ready || !hasSession;
           }
 
           async function hostAction(action) {
@@ -514,11 +559,12 @@
             for (const machine of hostNames()) {
               if (!(delivery.targets || []).includes(machine)) continue;
               const local = (delivery.local || []).includes(machine);
+              const times = (delivery.localCounts || {})[machine] || 0;
               const recorded = (delivery.hookdeckLanes || []).find((lane) => lane.machine === machine);
               if (local || (recorded && recorded.outcome === "delivered")) {
                 const progress = raw >= 1 ? 1 : smoothTo(raw);
-                if (progress < 1) lanes.push({ machine, progress, outcome: "inflight" });
-                else lanes.push({ machine, progress: 1, outcome: "delivered" });
+                if (progress < 1) lanes.push({ machine, progress, outcome: "inflight", times });
+                else lanes.push({ machine, progress: 1, outcome: "delivered", times });
                 continue;
               }
               if (recorded && recorded.outcome === "disconnected") {

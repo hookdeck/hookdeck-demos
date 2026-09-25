@@ -93,6 +93,8 @@ export interface MachineStatus {
    * picks up what it missed when it comes back.
    */
   offline: boolean;
+  /** A CLI session is attached. False once `disconnect` stops the listener. */
+  listening: boolean;
   port: number;
   connection: string;
   pid?: number;
@@ -197,6 +199,48 @@ export function setLink(approach: Approach, names: string[], online: boolean): s
   return skipped;
 }
 
+/**
+ * Stop or start a machine's CLI session while the machine keeps running.
+ *
+ * Stopping closes the WebSocket cleanly, so Hookdeck drops the session at once
+ * and the next event records CLI_DISCONNECTED - with no grace window and no
+ * event created. That is what separates this from `offline`, where the socket
+ * stays open and events fail with CLI_UNAVAILABLE until the server gives up.
+ */
+export function setSession(approach: Approach, names: string[], connected: boolean): string[] {
+  const skipped: string[] = [];
+  for (const name of names) {
+    const pid = readPid(approach, name);
+    if (!pid || !groupAlive(pid)) {
+      console.log(`  = ${name} is not running`);
+      skipped.push(name);
+      continue;
+    }
+    writeFileSync(
+      resolve(runDir(), `${approach}.${name}.session`),
+      connected ? "connected" : "disconnected",
+    );
+    // The machine picks this up on its next poll. Wait for it, so a caller
+    // reading state straight afterwards sees the change rather than the state
+    // it just asked to leave.
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      if (existsSync(listenerPidFile(approach, name)) === connected) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+    }
+    appendFileSync(
+      logPath(approach, name),
+      `${new Date().toISOString()} ${connected ? "SESSION connect requested" : "SESSION disconnect requested"}\n`,
+    );
+    console.log(
+      connected
+        ? `  ~ ${name} starting its CLI session`
+        : `  ~ ${name} stopping its CLI session - machine stays up, next event is CLI_DISCONNECTED`,
+    );
+  }
+  return skipped;
+}
+
 function signal(approach: Approach, names: string[], sig: "SIGTERM" | "SIGKILL"): void {
   for (const name of names) {
     const pid = readPid(approach, name);
@@ -288,6 +332,7 @@ export function status(
         group: groupOf(m.name).name,
         up: alive,
         offline: alive && listenerSuspended(approach, m.name),
+        listening: alive && existsSync(listenerPidFile(approach, m.name)),
         port: portOf(approach, m.name),
         connection: connectionName(approach, m.name),
         pid: alive ? pid : undefined,
@@ -299,7 +344,13 @@ export function status(
     for (const row of rows) {
       console.log(`\n${row.approach}`);
       for (const m of row.machines) {
-        const state = !m.up ? "down   " : m.offline ? "offline" : "up     ";
+        const state = !m.up
+          ? "down   "
+          : !m.listening
+            ? "no-sess"
+            : m.offline
+              ? "offline"
+              : "up     ";
         console.log(
           `  ${state} ${m.name.padEnd(16)} port=${String(m.port).padEnd(5)} ` +
             `connection=${m.connection.padEnd(28)} ${m.up ? `pgid=${m.pid}` : ""}`,
@@ -330,7 +381,7 @@ function main(): void {
   const approach = rest[0] as Approach;
   if (!APPROACHES.includes(approach)) {
     console.error(
-      `usage: npm run fleet -- <up|down|crash|offline|online> <per-machine|per-group> [machine...]\n` +
+      `usage: npm run fleet -- <up|down|crash|offline|online|connect|disconnect> <per-machine|per-group> [machine...]\n` +
         `       npm run fleet -- status [approach]\n` +
         `       npm run fleet -- logs <approach> <machine>`,
     );
@@ -358,6 +409,14 @@ function main(): void {
     case "online":
       console.log(`Bringing ${names.length} machine(s) back online on ${approach}:`);
       setLink(approach, names, true);
+      break;
+    case "disconnect":
+      console.log(`Stopping the CLI session on ${names.length} machine(s) for ${approach}:`);
+      setSession(approach, names, false);
+      break;
+    case "connect":
+      console.log(`Starting the CLI session on ${names.length} machine(s) for ${approach}:`);
+      setSession(approach, names, true);
       break;
     default:
       console.error(`Unknown command ${command}`);
