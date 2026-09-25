@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fleet fan-out</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; background: #0c0e13; color: #e8eaef; }
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      body.capture {
+        width: 960px;
+        height: 520px;
+        overflow: hidden;
+        background: #12151c;
+      }
+      body.capture svg { display: block; }
+      #app.scripted {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        padding: 24px;
+        align-items: center;
+      }
+      #app.live { max-width: 1240px; margin: 0 auto; padding: 20px 20px 56px; }
+      #app.live h1 { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+      .lede { color: #939bab; margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
+      .toolbar, .presets, .views { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      .host-bar { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto; }
+      .host-menu { position: relative; }
+      .host-trigger { display: flex; align-items: center; gap: 8px; min-width: 14rem; white-space: nowrap; }
+      .host-trigger .chev { margin-left: auto; color: #939bab; font-size: 11px; }
+      .host-list {
+        position: absolute; top: calc(100% + 6px); right: 0; z-index: 4;
+        min-width: 16rem; max-height: 22rem; overflow: auto;
+        background: #161a22; border: 1px solid #2a3142; border-radius: 8px;
+        padding: 6px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      }
+      .host-option {
+        display: flex; width: 100%; align-items: center; gap: 8px;
+        text-align: left; background: transparent; border-color: transparent;
+      }
+      .host-option.selected { background: #243044; border-color: transparent; }
+      .host-list .group-label { margin: 8px 8px 2px; }
+      .host-list .group-label:first-child { margin-top: 2px; }
+      button.selected { background: #243044; border-color: #6ea8fe; }
+      select, button {
+        background: #1a1e28;
+        color: #e8eaef;
+        border: 1px solid #2a3142;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font: inherit;
+        font-size: 13px;
+      }
+      button { cursor: pointer; }
+      button:hover { border-color: #42597d; }
+      button.primary { background: #17352c; border-color: #3f6e5e; }
+      button.danger { color: #f09196; }
+      button:disabled { opacity: 0.5; cursor: wait; }
+      .scenes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+      .scenes.single { grid-template-columns: 1fr; }
+      .scene-wrap.hidden { display: none; }
+      [hidden] { display: none !important; }
+      @media (max-width: 1100px) { .scenes { grid-template-columns: 1fr; } }
+      .scene-wrap svg { width: 100%; height: auto; display: block; }
+      .pill {
+        font-size: 11px; border-radius: 999px; padding: 2px 8px;
+        border: 1px solid #2a3142; color: #939bab;
+      }
+      .pill.up { color: #8fd4ae; border-color: #3f6e5e; }
+      .pill.down { color: #f09196; border-color: #8a4b55; }
+      .pill.offline { color: #f0b429; border-color: #8a6f3f; }
+      .pill.no.session, .pill[class~="session"] { color: #aeb6c6; border-color: #4a5468; }
+      .seg { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; }
+      .seg-label { font-size: 11px; color: #6b7384; letter-spacing: 0.04em; }
+      .switch { min-width: 116px; text-align: left; }
+      .switch::before {
+        content: ""; display: inline-block; width: 8px; height: 8px;
+        border-radius: 50%; margin-right: 8px; vertical-align: 1px;
+      }
+      .switch.on { border-color: #3f6e5e; color: #8fd4ae; }
+      .switch.on::before { background: #5dcaa5; }
+      /* Off-state colours mirror the diagram: red down, grey no session,
+         amber offline. */
+      .switch.off-down { border-color: #8a4b55; color: #f09196; }
+      .switch.off-down::before { background: #f09196; }
+      .switch.off-muted { border-color: #4a5468; color: #aeb6c6; }
+      .switch.off-muted::before { background: #8b95a8; }
+      .switch.off-warn { border-color: #8a6f3f; color: #f0b429; }
+      .switch.off-warn::before { background: #f0b429; }
+      .switch.neutral { color: #6b7384; }
+      .switch.neutral::before { background: #3a4152; }
+      .seg button.selected { background: #243044; border-color: #6ea8fe; }
+      .pill.mixed { color: #f0b429; border-color: #8a6a2b; }
+      .group-label { margin: 14px 0 0; font-size: 12px; color: #6b7384; letter-spacing: 0.04em; }
+      .status { min-height: 1.2em; color: #f09196; font-size: 13px; margin: 0 0 12px; }
+      .status.ok { color: #8fd4ae; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="./scene.js"></script>
+    <script>
+      (function () {
+        const viz = window.FleetViz;
+        const params = new URLSearchParams(location.search);
+        const scene = params.get("scene");
+        const tRaw = params.get("t");
+        const app = document.getElementById("app");
+
+        if ((scene === "per-machine" || scene === "per-group") && tRaw != null) {
+          document.body.classList.add("capture");
+          app.remove();
+          const svg = viz.createSvg();
+          document.body.appendChild(svg);
+          const t = Number(tRaw);
+          viz.render(svg, scene, viz.scriptedState(scene, Number.isFinite(t) ? t : 0));
+          return;
+        }
+
+        if (params.has("scripted")) {
+          startScripted();
+          return;
+        }
+
+        fetch("/api/state")
+          .then((res) => {
+            if (!res.ok) throw new Error("not live");
+            return res.json();
+          })
+          .then((state) => startLive(state))
+          .catch(() => startScripted());
+
+        function startScripted() {
+          app.className = "scripted";
+          const views = ["per-machine", "per-group"].map((name) => {
+            const svg = viz.createSvg();
+            app.appendChild(svg);
+            return { name, svg };
+          });
+          const started = performance.now();
+          function frame(now) {
+            const t = ((now - started) / 1000) % viz.DURATION;
+            for (const view of views) {
+              viz.render(view.svg, view.name, viz.scriptedState(view.name, t));
+            }
+            requestAnimationFrame(frame);
+          }
+          requestAnimationFrame(frame);
+        }
+
+        function startLive(initial) {
+          app.className = "live";
+          let snapshot = initial;
+          let error = "";
+          let notice = "";
+          let busy = false;
+          const svgs = {};
+
+          app.innerHTML = "";
+          const h1 = document.createElement("h1");
+          h1.textContent = "Fleet fan-out";
+          const lede = document.createElement("p");
+          lede.className = "lede";
+          lede.textContent =
+            "Send a webhook and watch it move. Session edges light from each machine's log. The request record is what Hookdeck stored.";
+          const scenarioLine = document.createElement("p");
+          scenarioLine.className = "lede";
+          const status = document.createElement("p");
+          status.className = "status";
+          const views = document.createElement("div");
+          views.className = "views";
+          const presets = document.createElement("div");
+          presets.className = "presets";
+          const toolbar = document.createElement("div");
+          toolbar.className = "toolbar";
+          const scenes = document.createElement("div");
+          scenes.className = "scenes";
+          const hostBar = document.createElement("div");
+          hostBar.className = "host-bar";
+          app.append(h1, lede, scenarioLine, views, status, presets, toolbar, scenes);
+
+          // Tabs come from the `approaches` section of the scenario's YAML, so a
+          // scenario can title them to suit. Comparison is added when there is
+          // more than one to compare.
+          let mode = "per-machine";
+          let viewChoice = [];
+
+          function tabsFrom(snapshot) {
+            const tabs = (snapshot && snapshot.tabs) || [];
+            if (tabs.length === 0) return [];
+            const choices = tabs.map((tab) => ({ id: tab.id, label: tab.label }));
+            if (choices.length > 1) choices.push({ id: "comparison", label: "Comparison" });
+            return choices;
+          }
+
+          const repo = document.createElement("select");
+          const eventType = document.createElement("select");
+          for (const name of ["push", "pull_request", "workflow_run"]) {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = name;
+            eventType.appendChild(option);
+          }
+
+          function button(label, className, onClick) {
+            const node = document.createElement("button");
+            node.type = "button";
+            node.textContent = label;
+            if (className) node.className = className;
+            node.addEventListener("click", onClick);
+            return node;
+          }
+
+          const clearButton = button("Clear events", "", () => clearEvents());
+          const machinesUpButton = button("All machines up", "", () => machinesUp());
+          presets.append(
+            button("Setup", "", () => project("/api/setup")),
+            button("Teardown", "danger", () => {
+              if (!confirm("Delete every connection in this Hookdeck project?")) return;
+              project("/api/teardown");
+            }),
+            clearButton,
+            machinesUpButton,
+            hostBar,
+          );
+
+          const sendButton = button("Send", "primary", () => send(mode === "comparison" ? "both" : mode));
+          toolbar.append(repo, eventType, sendButton);
+
+          let selectedHost = "";
+          let menuOpen = false;
+          const hostMenu = document.createElement("div");
+          hostMenu.className = "host-menu";
+          const hostTrigger = button("", "", () => {
+            menuOpen = !menuOpen;
+            paintHostMenu();
+          });
+          hostTrigger.classList.add("host-trigger");
+          const hostChevron = document.createElement("span");
+          hostChevron.className = "chev";
+          hostChevron.textContent = "▾";
+          const hostList = document.createElement("div");
+          hostList.className = "host-list";
+          hostList.hidden = true;
+          hostMenu.append(hostTrigger, hostList);
+          const hostCrashButton = button("Crash", "danger", () => hostAction("crash"));
+
+          /**
+           * One control per axis. The button shows the state the machine is
+           * in; clicking it moves to the other one. Three axes, independent of
+           * each other: is the machine running, does it have a CLI session,
+           * and does that session have a working link.
+           */
+          function toggle(label, onText, offText, onAction, offAction, offTone) {
+            const wrap = document.createElement("div");
+            wrap.className = "seg";
+            const tag = document.createElement("span");
+            tag.className = "seg-label";
+            tag.textContent = label;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "switch";
+            btn.addEventListener("click", () => {
+              // On means "currently in the on state", so clicking leaves it.
+              hostAction(btn.dataset.on === "1" ? offAction : onAction);
+            });
+            wrap.append(tag, btn);
+            // `neutral` is for an axis that does not apply: a machine that is
+            // down has no session, and a stopped session has no network state.
+            // Showing "Offline" there would assert something untrue.
+            wrap.setState = (on, disabled, neutral) => {
+              btn.classList.remove("off-down", "off-muted", "off-warn");
+              btn.dataset.on = on ? "1" : "0";
+              btn.textContent = neutral ? "–" : on ? onText : offText;
+              btn.classList.toggle("on", !neutral && on);
+              // Each toggle's off state uses the colour that state has in the
+              // diagram, so the control and the picture agree at a glance.
+              btn.classList.toggle("off", !neutral && !on);
+              btn.classList.toggle("off-" + offTone, !neutral && !on);
+              btn.classList.toggle("neutral", !!neutral);
+              btn.disabled = disabled;
+            };
+            return wrap;
+          }
+
+          const machineToggle = toggle("machine", "Up", "Down", "up", "down", "down");
+          // Stopping the session closes the WebSocket cleanly, so Hookdeck
+          // drops it at once and the next event is CLI_DISCONNECTED.
+          const sessionToggle = toggle("session", "Connected", "Disconnected", "connect", "disconnect", "muted");
+          // Offline suspends the listener: the machine stays up and its socket
+          // stays open, so events fail rather than being ignored. It models a
+          // network problem, not a stopped session.
+          const networkToggle = toggle("network", "Online", "Offline", "online", "offline", "warn");
+
+          hostBar.append(hostMenu, machineToggle, sessionToggle, networkToggle, hostCrashButton);
+          document.addEventListener("click", (event) => {
+            if (!menuOpen || hostMenu.contains(event.target)) return;
+            menuOpen = false;
+            hostList.hidden = true;
+            hostTrigger.setAttribute("aria-expanded", "false");
+          });
+
+          function paintTabs() {
+            views.replaceChildren();
+            for (const choice of viewChoice) {
+              views.append(
+                button(choice.label, choice.id === mode ? "selected" : "", () => setMode(choice.id)),
+              );
+            }
+          }
+          paintTabs();
+
+          for (const name of ["per-machine", "per-group"]) {
+            const wrap = document.createElement("div");
+            wrap.className = "scene-wrap";
+            const svg = viz.createSvg();
+            svgs[name] = svg;
+            wrap.append(svg);
+            scenes.appendChild(wrap);
+          }
+
+          let repoKey = "";
+          let controlKey = "";
+
+          function setMode(next) {
+            mode = next;
+            for (const node of views.querySelectorAll("button")) {
+              node.classList.toggle("selected", node.textContent === labelFor(next));
+            }
+            scenes.classList.toggle("single", next !== "comparison");
+            for (const name of ["per-machine", "per-group"]) {
+              const wrap = svgs[name]?.parentElement;
+              if (wrap) wrap.classList.toggle("hidden", next !== "comparison" && next !== name);
+            }
+            paintHostMenu();
+          }
+
+          function labelFor(id) {
+            return viewChoice.find((choice) => choice.id === id)?.label || "";
+          }
+
+          function visibleApproaches() {
+            return mode === "comparison" ? ["per-machine", "per-group"] : [mode];
+          }
+
+          function hostNames() {
+            const names = [];
+            for (const group of snapshot.groups || []) {
+              for (const name of group.machines || []) {
+                if (!names.includes(name)) names.push(name);
+              }
+            }
+            return names.length ? names : viz.MACHINES.map((spec) => spec.name);
+          }
+
+          // In watch mode the server sends a token derived from the mtimes of
+          // index.html, scene.js and the scenario YAML. When it changes, the
+          // files behind this page changed, so reload. null when not watching.
+          let seenReloadToken = null;
+
+          function checkReload() {
+            const token = snapshot && snapshot.reloadToken;
+            if (!token) return;
+            if (seenReloadToken === null) {
+              seenReloadToken = token;
+              return;
+            }
+            if (token !== seenReloadToken) location.reload();
+          }
+
+          function paint() {
+            checkReload();
+            // Tabs are data, so resync them when the scenario's approaches
+            // arrive or change. Only rebuild the buttons when they differ, or
+            // every poll would flicker the selection.
+            const nextTabs = tabsFrom(snapshot);
+            const signature = nextTabs.map((t) => t.id + ":" + t.label).join("|");
+            if (signature !== viewChoice.map((t) => t.id + ":" + t.label).join("|")) {
+              viewChoice = nextTabs;
+              if (!viewChoice.some((choice) => choice.id === mode)) {
+                mode = viewChoice[0] ? viewChoice[0].id : "per-machine";
+              }
+              paintTabs();
+            }
+            scenarioLine.textContent = snapshot.scenario ? "Scenario " + snapshot.scenario : "";
+            status.textContent = error || snapshot.error || notice;
+            status.classList.toggle("ok", !error && !snapshot.error && !!notice);
+            const repos = [];
+            for (const group of snapshot.groups || []) {
+              for (const item of group.repos || []) {
+                if (!repos.includes(item)) repos.push(item);
+              }
+            }
+            const nextRepoKey = repos.join("|");
+            if (nextRepoKey !== repoKey) {
+              repoKey = nextRepoKey;
+              fillRepos();
+            }
+            const nextControl = JSON.stringify({
+              approaches: snapshot.approaches || {},
+              connections: snapshot.connections || {},
+              mode,
+            });
+            if (nextControl !== controlKey) {
+              controlKey = nextControl;
+              paintHostMenu();
+            }
+            const showFleet = visibleApproaches().some((name) => routesReady(name));
+            clearButton.hidden = !showFleet;
+            machinesUpButton.hidden = !showFleet;
+            toolbar.hidden = !showFleet;
+            hostBar.hidden = !showFleet;
+            for (const name of ["per-machine", "per-group"]) {
+              viz.render(svgs[name], name, viewState(name, snapshot));
+            }
+            for (const node of app.querySelectorAll("button, select")) node.disabled = busy;
+            // paintHostMenu owns the host controls' enabled state, including
+            // the rule that you cannot act on a host you have not selected.
+            if (!busy) paintHostMenu();
+          }
+
+          function fillRepos() {
+            const selected = repo.value;
+            const repos = [];
+            for (const group of snapshot.groups || []) {
+              for (const item of group.repos || []) {
+                if (!repos.includes(item)) repos.push(item);
+              }
+            }
+            if (!repos.length) repos.push("demo-org/service-api");
+            repo.replaceChildren();
+            for (const item of repos) {
+              const option = document.createElement("option");
+              option.value = item;
+              option.textContent = item;
+              repo.appendChild(option);
+            }
+            if (repos.includes(selected)) repo.value = selected;
+          }
+
+          function routesReady(name) {
+            const counts = snapshot.connections;
+            if (!counts || typeof counts[name] !== "number") return true;
+            return counts[name] > 0;
+          }
+
+          function hostsFor(approach) {
+            return (snapshot.approaches && snapshot.approaches[approach]) || [];
+          }
+
+          function hostRows() {
+            const rows = [];
+            for (const group of snapshot.groups || []) {
+              for (const name of group.machines || []) {
+                rows.push({ group: group.name, name, state: hostState(name) });
+              }
+            }
+            return rows;
+          }
+
+          // Three things can be true of a machine, and they are independent:
+          // is it running, does it have a CLI session, and does that session
+          // have a working link.
+          function hostState(name) {
+            const rows = visibleApproaches().map((approach) =>
+              hostsFor(approach).find((machine) => machine.name === name),
+            );
+            const up = rows.map((row) => !!(row && row.up));
+            if (!up.length || up.every((v) => !v)) return "down";
+            if (!up.every(Boolean)) return "mixed";
+            if (rows.some((row) => row && !row.listening)) return "no session";
+            return rows.some((row) => row && row.offline) ? "offline" : "up";
+          }
+
+          function statusPill(state) {
+            const pill = document.createElement("span");
+            pill.className = "pill " + state;
+            pill.textContent = state;
+            return pill;
+          }
+
+          function paintHostMenu() {
+            const rows = hostRows();
+            if (!rows.some((row) => row.name === selectedHost)) {
+              selectedHost = rows[0] ? rows[0].name : "";
+            }
+            const selected = rows.find((row) => row.name === selectedHost);
+            hostTrigger.replaceChildren();
+            if (selected) hostTrigger.appendChild(statusPill(selected.state));
+            hostTrigger.append(document.createTextNode(selected ? selected.name : "Host"), hostChevron);
+            hostTrigger.setAttribute("aria-expanded", menuOpen ? "true" : "false");
+            hostTrigger.setAttribute("aria-haspopup", "listbox");
+            hostList.hidden = !menuOpen;
+            hostList.replaceChildren();
+            let lastGroup = "";
+            for (const row of rows) {
+              if (row.group !== lastGroup) {
+                lastGroup = row.group;
+                const label = document.createElement("div");
+                label.className = "group-label";
+                label.textContent = row.group;
+                hostList.appendChild(label);
+              }
+              const option = button(row.name, "host-option" + (row.name === selectedHost ? " selected" : ""), () => {
+                selectedHost = row.name;
+                menuOpen = false;
+                paintHostMenu();
+              });
+              option.prepend(statusPill(row.state));
+              hostList.appendChild(option);
+            }
+            const ready = !!selectedHost;
+            const state = selected ? selected.state : "down";
+            const isUp = state !== "down";
+            const hasSession = isUp && state !== "no session";
+            machineToggle.setState(isUp, !ready, false);
+            // No session to start or stop unless the machine is running, and
+            // no network state to speak of unless there is a session.
+            sessionToggle.setState(hasSession, !ready || !isUp, !isUp);
+            networkToggle.setState(
+              hasSession && state !== "offline",
+              !ready || !hasSession,
+              !hasSession,
+            );
+            hostCrashButton.disabled = !ready;
+          }
+
+          async function hostAction(action) {
+            if (!selectedHost) return;
+            for (const approach of visibleApproaches()) {
+              await fleet(approach, action, [selectedHost]);
+            }
+          }
+
+          function viewState(name, data) {
+            const groups = (data.groups || []).map((group) => ({
+              name: group.name,
+              hosts: group.machines || [],
+            }));
+            const rows = (data.approaches && data.approaches[name]) || [];
+            const connected = routesReady(name);
+            const machines = groups.flatMap((group) =>
+              group.hosts.map((host) => {
+                const row = rows.find((item) => item.name === host);
+                const up = row ? row.up : false;
+                // offline is its own state: the machine is up, its link is not.
+                const offline = row ? !!row.offline : false;
+                const listening = row ? row.listening !== false : false;
+                return { name: host, up, offline, listening, presence: up ? 1 : 0, group: group.name };
+              }),
+            );
+            if (!connected) {
+              return { groups, machines, events: [], callout: null, calloutTone: null, legend: [], connections: false };
+            }
+            const deliveries = (data.deliveries || []).filter((d) => d.approach === name).slice(-4);
+            const now = Date.now();
+            const events = deliveries.map((delivery) => ({
+              id: delivery.delivery,
+              color: delivery.color,
+              label: delivery.label,
+              lanes: lanesFor(delivery, now),
+            }));
+            const latest = deliveries[deliveries.length - 1];
+            return {
+              groups,
+              machines,
+              events,
+              callout: latest ? latest.callout : null,
+              calloutTone: latest ? latest.calloutTone : null,
+              legend: deliveries.map((d) => ({ color: d.color, label: d.label })),
+            };
+          }
+
+          function lanesFor(delivery, now) {
+            const age = Math.max(0, (now - Date.parse(delivery.sentAt)) / 1000);
+            const travel = 1.6;
+            const raw = Math.min(1, age / travel);
+            const lanes = [];
+            for (const machine of hostNames()) {
+              if (!(delivery.targets || []).includes(machine)) continue;
+              const local = (delivery.local || []).includes(machine);
+              const times = (delivery.localCounts || {})[machine] || 0;
+              const recorded = (delivery.hookdeckLanes || []).find((lane) => lane.machine === machine);
+              if (local || (recorded && recorded.outcome === "delivered")) {
+                const progress = raw >= 1 ? 1 : smoothTo(raw);
+                if (progress < 1) lanes.push({ machine, progress, outcome: "inflight", times });
+                else lanes.push({ machine, progress: 1, outcome: "delivered", times });
+                continue;
+              }
+              if (recorded && recorded.outcome === "disconnected") {
+                lanes.push({
+                  machine,
+                  progress: 0.58,
+                  outcome: "disconnected",
+                  cause: recorded.cause,
+                });
+                continue;
+              }
+              const wasUp = (delivery.upAtSend || []).includes(machine);
+              const settled = delivery.calloutTone === "ok" || delivery.calloutTone === "bad";
+              if (!wasUp || (settled && raw >= 1)) continue;
+              const held = Math.min(raw, 0.92);
+              lanes.push({
+                machine,
+                progress: smoothTo(held / 0.92) * 0.92,
+                outcome: "inflight",
+              });
+            }
+            return lanes;
+          }
+
+          function smoothTo(u) {
+            const x = Math.max(0, Math.min(1, u));
+            return x * x * (3 - 2 * x);
+          }
+
+          async function project(path) {
+            busy = true;
+            error = "";
+            notice = "";
+            paint();
+            try {
+              const res = await fetch(path, { method: "POST" });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+              notice = typeof data.notice === "string" ? data.notice : "";
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
+          async function clearEvents() {
+            busy = true;
+            error = "";
+            notice = "";
+            paint();
+            try {
+              const res = await fetch("/api/clear-events", { method: "POST" });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+              notice = typeof data.notice === "string" ? data.notice : "";
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
+          async function fleet(approach, action, machines) {
+            await act({ approach, action, machines });
+          }
+
+          async function machinesUp() {
+            for (const approach of visibleApproaches()) {
+              await act({ approach, action: "up", machines: [] });
+            }
+          }
+
+          async function send(approach) {
+            await actSend({ approach, repo: repo.value, event: eventType.value });
+          }
+
+          async function act(body) {
+            busy = true;
+            error = "";
+            notice = "";
+            paint();
+            try {
+              const res = await fetch("/api/fleet", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
+          async function actSend(body) {
+            busy = true;
+            error = "";
+            notice = "";
+            paint();
+            try {
+              const res = await fetch("/api/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || res.statusText);
+              snapshot = data;
+            } catch (err) {
+              error = err instanceof Error ? err.message : String(err);
+            } finally {
+              busy = false;
+              paint();
+            }
+          }
+
+          setMode(mode);
+          paint();
+          requestAnimationFrame(function tick() {
+            for (const name of ["per-machine", "per-group"]) {
+              viz.render(svgs[name], name, viewState(name, snapshot));
+            }
+            requestAnimationFrame(tick);
+          });
+          setInterval(async () => {
+            if (busy) return;
+            try {
+              const res = await fetch("/api/state");
+              if (!res.ok) return;
+              snapshot = await res.json();
+              error = "";
+              paint();
+            } catch {
+              /* keep the last good snapshot while a poll fails */
+            }
+          }, 1000);
+        }
+      })();
+    </script>
+  </body>
+</html>

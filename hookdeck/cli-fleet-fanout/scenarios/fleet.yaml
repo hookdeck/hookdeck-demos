@@ -1,0 +1,105 @@
+# The whole configuration for this demo, and a one-to-one map onto Hookdeck.
+# In production this is the file you keep in source control; a machine reads
+# its own entry at launch and ensures its connection exists before listening.
+
+# Prefixes every Hookdeck resource created from this file, so teardown can find
+# them and nothing else in the project is touched.
+prefix: fleet-demo
+
+# Groups --------------------------------------------------------------------
+# A group is a filter: the body rule stored on a connection
+# (--rule-filter-body), naming the repositories its machines receive.
+#
+# There is no separate list of groups. The machines in a group are simply the
+# machines whose connections share this filter, which is what "these machines
+# receive the same events" means. Declaring it twice would only let the two
+# drift apart.
+filters:
+  group-a:
+    repository:
+      full_name:
+        $in:
+          - demo-org/service-api
+          - demo-org/service-worker
+
+  group-b:
+    repository:
+      full_name:
+        $in:
+          - demo-org/release-tooling
+
+# Sources -------------------------------------------------------------------
+# Two, so both models can run side by side against the same traffic.
+sources:
+  - name: fleet-demo-per-machine
+    type: GITHUB
+  - name: fleet-demo-per-group
+    type: GITHUB
+
+# Connections ---------------------------------------------------------------
+# `npm run setup` upserts these exactly as written. Each is a source, a CLI
+# destination with the path the machine serves, the hosts that run
+# `hookdeck listen` against it, and the filter deciding what it receives.
+#
+# The two models differ only in how many connections there are - one per
+# machine, so Hookdeck can name who missed what; or one per group, where it
+# cannot tell the sessions apart.
+connections:
+  # --- one connection per machine (recommended) --------------------------
+  - name: fleet-demo-group-a-host-01
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-a-host-01, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-a-host-01, port: 4101 }]
+    filter: group-a
+
+  - name: fleet-demo-group-a-host-02
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-a-host-02, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-a-host-02, port: 4102 }]
+    filter: group-a
+
+  - name: fleet-demo-group-a-host-03
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-a-host-03, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-a-host-03, port: 4103 }]
+    filter: group-a
+
+  - name: fleet-demo-group-b-host-01
+    source: fleet-demo-per-machine
+    destination: { name: fleet-demo-group-b-host-01, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-b-host-01, port: 4104 }]
+    filter: group-b
+
+  # --- one connection per group (the alternative) ------------------------
+  - name: fleet-demo-group-a
+    source: fleet-demo-per-group
+    destination: { name: fleet-demo-group-a, type: CLI, path: /webhooks/scm }
+    hosts:
+      - { host: group-a-host-01, port: 4201 }
+      - { host: group-a-host-02, port: 4202 }
+      - { host: group-a-host-03, port: 4203 }
+    filter: group-a
+
+  - name: fleet-demo-group-b
+    source: fleet-demo-per-group
+    destination: { name: fleet-demo-group-b, type: CLI, path: /webhooks/scm }
+    hosts: [{ host: group-b-host-01, port: 4204 }]
+    filter: group-b
+
+# Approaches ----------------------------------------------------------------
+# The two models the demo compares, and how the UI presents them. `id` selects
+# the renderer, `source` says which source that model's traffic arrives on, and
+# `label` is what the tab is called.
+#
+# There are exactly two, and always will be: either a machine has a connection
+# of its own, or it shares one with its group. This is not a list to extend.
+# How connections get created - from this file, or by each machine registering
+# itself at launch - is a separate question that does not change delivery, so
+# it is not a third approach.
+approaches:
+  - id: per-machine
+    label: Connection per machine
+    source: fleet-demo-per-machine
+  - id: per-group
+    label: Connection per group
+    source: fleet-demo-per-group
