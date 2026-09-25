@@ -265,13 +265,13 @@ function startListener(): void {
   child.stdout?.on("data", pipe("LISTEN"));
   child.stderr?.on("data", pipe("LISTEN"));
 
-  // Record the listener's own pid. `fleet pause` freezes just this process, so
-  // the machine stays up and only its link to Hookdeck goes away - a network
-  // problem rather than a crash.
+  // Record the listener's own pid. Its presence is how `fleet status` tells a
+  // machine with a CLI session from one that is up with no session, which is
+  // the difference between a failed delivery and CLI_DISCONNECTED.
   try {
     writeFileSync(listenerPidFile, String(child.pid));
   } catch {
-    /* best effort: pause is a convenience, not required for the demo to run */
+    /* best effort: status reporting only, not required for the demo to run */
   }
 
   child.on("exit", (code, signal) => {

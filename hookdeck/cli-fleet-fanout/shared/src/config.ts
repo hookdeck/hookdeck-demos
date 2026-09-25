@@ -33,7 +33,7 @@ export interface GroupSpec {
  *
  * How connections are *provisioned* - centrally from this file, or by each
  * machine registering itself at launch - is a separate axis entirely. It does
- * not change delivery behaviour, so it is not an approach. See
+ * not change delivery behavior, so it is not an approach. See
  * FLEET_SELF_REGISTER in machine.ts.
  *
  * `id` selects the renderer and is therefore fixed. `label` and `source` are

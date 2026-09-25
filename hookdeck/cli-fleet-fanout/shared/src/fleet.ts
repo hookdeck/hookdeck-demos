@@ -87,10 +87,10 @@ export interface MachineStatus {
   group: string;
   up: boolean;
   /**
-   * The machine is running but its listener is suspended, so it has no link to
-   * Hookdeck. Distinct from `up: false`, where the machine itself is gone - and
-   * the distinction matters, because an offline machine keeps its session and
-   * picks up what it missed when it comes back.
+   * The machine is running, and its listener too, but the link out has been
+   * cut. Distinct from `up: false`, where the machine itself is gone: an
+   * offline machine reconnects on its own and recovers what it missed, so the
+   * process it needs is a reconnect rather than a restart.
    */
   offline: boolean;
   /** A CLI session is attached. False once `disconnect` stops the listener. */
@@ -158,21 +158,23 @@ const listenerPidFile = (approach: Approach, name: string): string =>
 /**
  * Take a machine's link to Hookdeck offline, or bring it back.
  *
- * Implemented by suspending the `hookdeck listen` process. Be clear about what
- * that does and does not model: the process stops reading its socket, but the
- * kernel keeps the connection open and keeps buffering. Hookdeck still has a
- * live TCP connection and a registered session, and an unresponsive peer.
+ * Writes the wish to `<approach>.<name>.network` and waits for the machine to
+ * acknowledge it. The machine does the work: each one runs its `hookdeck
+ * listen` through a CONNECT proxy it hosts itself, so going offline destroys
+ * that machine's sockets and refuses new ones. The CLI sees its connection
+ * drop and reconnects, which is what a lost network actually looks like - and
+ * needs no firewall rules or root.
  *
- * So this is a machine that has stopped responding - a paused container, a VM
- * starved of CPU, a process stuck in swap - and not a severed link. A real
- * partition would break the connection, and the event would not be sitting in
- * the socket waiting to be read when it came back. Severing the link for real
- * needs firewall rules and root, which a demo should not want.
+ * An earlier version suspended the listener process instead. That closes
+ * nothing: the kernel keeps the connection open and keeps buffering, so
+ * Hookdeck saw a live session with an unresponsive peer. That models a hung
+ * machine, not an offline one.
  *
- * Contrast with the two we already had:
- *   down     clean stop, session dropped immediately
- *   crash    process gone, session held for the grace window, new session on return
- *   offline  same session, reconnects and picks up what it missed
+ * Contrast with the other three:
+ *   down        clean stop, session dropped immediately
+ *   disconnect  listener stopped, machine still up, session dropped immediately
+ *   crash       process gone, session held for the grace window
+ *   offline     session dropped, and the CLI reconnects when the link returns
  */
 export function setLink(approach: Approach, names: string[], online: boolean): string[] {
   const skipped: string[] = [];

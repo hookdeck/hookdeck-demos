@@ -58,7 +58,8 @@ listener dies with no chance to close its WebSocket - a crash, not a shutdown.
 Send another push **within two minutes**. Two hosts receive it. The third does
 not, and the event against its connection is `FAILED` with `CLI_UNAVAILABLE`:
 the session was still held open by the reconnect grace window, so Hookdeck
-created an event and tried to deliver it.
+created an event and tried to deliver it. Give it ten seconds before you look -
+until then it is still retrying, and the status has not settled.
 
 ## 8. Show it in the dashboard
 
@@ -82,7 +83,7 @@ reconnect when you restore it. Send a push, then click **Online**.
 
 If you restore it within about ten seconds, the event arrives with no recovery
 involved: Hookdeck waits roughly that long for a session to come back before
-giving up on a delivery. Leave it longer and the attempt is finalised, and
+giving up on a delivery. Leave it longer and the attempt is finalized, and
 recovery replays it when the machine reconnects.
 
 Worth showing because it separates a blip, which needs nothing, from an outage,
@@ -110,15 +111,16 @@ Recovering group-a-host-03
 RECV push repo=demo-org/service-api delivery=792f1cc0-...
 ```
 
-Steps 9b and 10 are the same machine unavailable in two different ways. In one
-the session survives and nothing is needed; in the other it is gone and only a
-targeted retry brings the machine back in line. That is the distinction the
-whole design rests on, and it is why a connection per machine matters: the
-retry could be aimed at this machine alone.
+Steps 9b and 10 are the same machine unavailable in two different ways, and
+what separates them is how long. A link cut and restored inside about ten
+seconds needs nothing: Hookdeck is still retrying, and the event lands. Past
+that the attempt is finalized, and only a targeted retry brings the machine
+back in line. That is why a connection per machine matters: the retry could be
+aimed at this machine alone.
 
-Crashing and waiting out the two-minute window reaches the same place, but
-takes two minutes of silence on camera. Use `disconnect` unless the grace
-window itself is the point.
+Crashing, waiting out the two-minute window and *then* sending reaches the same
+place, but costs two minutes of silence on camera. Use `disconnect` unless the
+grace window itself is the point.
 
 ## 11. Optional contrast
 

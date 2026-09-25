@@ -83,7 +83,7 @@
       }
       .switch.on { border-color: #3f6e5e; color: #8fd4ae; }
       .switch.on::before { background: #5dcaa5; }
-      /* Off-state colours mirror the diagram: red down, grey no session,
+      /* Off-state colors mirror the diagram: red down, gray no session,
          amber offline. */
       .switch.off-down { border-color: #8a4b55; color: #f09196; }
       .switch.off-down::before { background: #f09196; }
@@ -277,7 +277,7 @@
               btn.dataset.on = on ? "1" : "0";
               btn.textContent = neutral ? "–" : on ? onText : offText;
               btn.classList.toggle("on", !neutral && on);
-              // Each toggle's off state uses the colour that state has in the
+              // Each toggle's off state uses the color that state has in the
               // diagram, so the control and the picture agree at a glance.
               btn.classList.toggle("off", !neutral && !on);
               btn.classList.toggle("off-" + offTone, !neutral && !on);
@@ -291,9 +291,9 @@
           // Stopping the session closes the WebSocket cleanly, so Hookdeck
           // drops it at once and the next event is CLI_DISCONNECTED.
           const sessionToggle = toggle("session", "Connected", "Disconnected", "connect", "disconnect", "muted");
-          // Offline suspends the listener: the machine stays up and its socket
-          // stays open, so events fail rather than being ignored. It models a
-          // network problem, not a stopped session.
+          // Offline cuts the machine's link for real: the listener keeps
+          // running but its sockets are destroyed, so the CLI drops its
+          // session and reconnects when the link comes back.
           const networkToggle = toggle("network", "Online", "Offline", "online", "offline", "warn");
 
           hostBar.append(hostMenu, machineToggle, sessionToggle, networkToggle, hostCrashButton);
