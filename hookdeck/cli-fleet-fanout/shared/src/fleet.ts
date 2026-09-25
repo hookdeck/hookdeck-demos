@@ -13,7 +13,7 @@
  * scenarios 2, 3 and 5: a clean stop drops the Hookdeck session immediately, a
  * kill leaves it in the reconnect grace window.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   existsSync,
@@ -86,9 +86,27 @@ export interface MachineStatus {
   name: string;
   group: string;
   up: boolean;
+  /**
+   * The machine is running but its listener is suspended, so it has no link to
+   * Hookdeck. Distinct from `up: false`, where the machine itself is gone - and
+   * the distinction matters, because an offline machine keeps its session and
+   * picks up what it missed when it comes back.
+   */
+  offline: boolean;
   port: number;
   connection: string;
   pid?: number;
+}
+
+/** True when the listener process exists but is stopped (SIGSTOP). */
+function listenerSuspended(approach: Approach, name: string): boolean {
+  const file = listenerPidFile(approach, name);
+  if (!existsSync(file)) return false;
+  const pid = Number(readFileSync(file, "utf8").trim());
+  if (!Number.isFinite(pid)) return false;
+  const res = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+  // A stopped process reports a state beginning with T on macOS and Linux.
+  return (res.stdout ?? "").trim().startsWith("T");
 }
 
 export function up(approach: Approach, names: string[]): void {
@@ -262,6 +280,7 @@ export function status(
         name: m.name,
         group: groupOf(m.name).name,
         up: alive,
+        offline: alive && listenerSuspended(approach, m.name),
         port: portOf(approach, m.name),
         connection: connectionName(approach, m.name),
         pid: alive ? pid : undefined,
@@ -273,8 +292,9 @@ export function status(
     for (const row of rows) {
       console.log(`\n${row.approach}`);
       for (const m of row.machines) {
+        const state = !m.up ? "down   " : m.offline ? "offline" : "up     ";
         console.log(
-          `  ${m.up ? "up  " : "down"} ${m.name.padEnd(12)} port=${String(m.port).padEnd(5)} ` +
+          `  ${state} ${m.name.padEnd(16)} port=${String(m.port).padEnd(5)} ` +
             `connection=${m.connection.padEnd(28)} ${m.up ? `pgid=${m.pid}` : ""}`,
         );
       }
