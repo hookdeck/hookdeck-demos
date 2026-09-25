@@ -21,7 +21,7 @@ export async function ensureMachineConnection(
   const group = groupOf(machineName);
   const conn = connectionFor("per-machine", machineName);
   const sourceType = fleet().sources.find((s) => s.name === conn.source)?.type;
-  if (!sourceType) throw new Error(`Unknown source ${conn.source} in fleet.yaml.`);
+  if (!sourceType) throw new Error(`Unknown source ${conn.source} in this scenario.`);
 
   const description = `${group.name} :: ${machineName}`;
   if (opts.dryRun) {

@@ -26,11 +26,18 @@ export interface GroupSpec {
 /**
  * One of the two models the demo compares, as the UI presents it.
  *
- * `id` picks the renderer, so it stays constrained to the two we have. `label`
- * and `source` are data: a scenario can name its sources whatever it likes and
- * title its tabs to suit. Before this existed the source was found by checking
- * whether its name ended with the approach id, which made a naming convention
- * load-bearing.
+ * There are exactly two, and that is a property of the problem rather than a
+ * limit we have not got round to lifting: either a machine has a connection of
+ * its own or it shares one with its group. Everything the demo argues follows
+ * from that choice.
+ *
+ * How connections are *provisioned* - centrally from this file, or by each
+ * machine registering itself at launch - is a separate axis entirely. It does
+ * not change delivery behaviour, so it is not an approach. See
+ * FLEET_SELF_REGISTER in machine.ts.
+ *
+ * `id` selects the renderer and is therefore fixed. `label` and `source` are
+ * data, so a scenario can name its sources freely and title its tabs to suit.
  */
 export interface ApproachSpec {
   id: Approach;
@@ -65,7 +72,7 @@ export interface ConnectionSpec {
   source: string;
   destination: ConnectionDestination;
   hosts: ConnectionHost[];
-  /** Resolved from the filter name in fleet.yaml. */
+  /** Resolved from the filter name in the scenario. */
   filter: ConnectionFilter;
 }
 
@@ -78,7 +85,7 @@ export interface FleetSpec {
 }
 
 /**
- * fleet.yaml as written: groups and connections name a filter rather than
+ * The scenario as written: connections name a filter rather than
  * repeating it. Resolved into FleetSpec on load.
  */
 interface RawFleetSpec {
@@ -132,17 +139,27 @@ export interface ScenarioChoice {
 
 const SCENARIOS_DIR = resolve(ROOT, "scenarios");
 
-/** `default` is fleet.yaml, the fleet the scripted GIFs were drawn from. */
+/**
+ * Every scenario is a file in scenarios/. `fleet.yaml` is the fleet the
+ * scripted GIFs were drawn from, and is the scenario named "default".
+ */
 export function listScenarios(): ScenarioChoice[] {
   const extras = existsSync(SCENARIOS_DIR)
     ? readdirSync(SCENARIOS_DIR)
         .filter((name) => name.endsWith(".yaml"))
-        .map((name) => ({
-          name: name.slice(0, -".yaml".length),
-          file: resolve(SCENARIOS_DIR, name),
-        }))
+        .map((name) => {
+          const base = name.slice(0, -".yaml".length);
+          // The demo's own fleet is in fleet.yaml, because that is what it
+          // describes. As a scenario it is "default" - the one you get when
+          // you do not ask for another.
+          return { name: base === "fleet" ? "default" : base, file: resolve(SCENARIOS_DIR, name) };
+        })
     : [];
-  return [{ name: "default", file: resolve(ROOT, "fleet.yaml") }, ...extras];
+  if (extras.length === 0) {
+    throw new Error(`No scenarios found in ${SCENARIOS_DIR}. Expected at least fleet.yaml.`);
+  }
+  // default first, so it is the obvious one in listings and pickers.
+  return [...extras].sort((a, b) => (a.name === "default" ? -1 : b.name === "default" ? 1 : 0));
 }
 
 let scenarioName = "default";
@@ -237,7 +254,15 @@ function validateFleet(spec: FleetSpec): void {
   const sources = new Set(spec.sources.map((s) => s.name));
 
   if (spec.approaches.length === 0) {
-    throw new Error("fleet.yaml needs an `approaches` section naming each model's source.");
+    throw new Error(
+      `${activeScenario().file} needs an \`approaches\` section naming each model's source.`,
+    );
+  }
+  if (spec.approaches.length > 2) {
+    throw new Error(
+      "There are exactly two approaches: per-machine and per-group. " +
+        "A different way of provisioning connections is not a third one.",
+    );
   }
   const seen = new Set<string>();
   for (const approach of spec.approaches) {
@@ -314,7 +339,7 @@ export function approachSpec(approach: Approach): ApproachSpec {
 
 export const sourceName = (approach: Approach): string => approachSpec(approach).source;
 
-/** The connection this host listens on for that source. Declared in fleet.yaml. */
+/** The connection this host listens on for that source. Declared in the scenario. */
 export function connectionFor(approach: Approach, machineName: string): ConnectionSpec {
   const source = sourceName(approach);
   const found = fleet().connections.find(

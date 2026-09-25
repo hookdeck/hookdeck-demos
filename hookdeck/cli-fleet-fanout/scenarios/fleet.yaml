@@ -90,6 +90,12 @@ connections:
 # The two models the demo compares, and how the UI presents them. `id` selects
 # the renderer, `source` says which source that model's traffic arrives on, and
 # `label` is what the tab is called.
+#
+# There are exactly two, and always will be: either a machine has a connection
+# of its own, or it shares one with its group. This is not a list to extend.
+# How connections get created - from this file, or by each machine registering
+# itself at launch - is a separate question that does not change delivery, so
+# it is not a third approach.
 approaches:
   - id: per-machine
     label: Connection per machine

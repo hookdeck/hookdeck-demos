@@ -32,11 +32,11 @@ a connection is what gives you, for free:
 It costs one connection per machine rather than one per group. Connections are
 unlimited on every plan, and both models create one event per machine, so the
 event count is identical. The real cost is config surface, which is what
-`fleet.yaml` and an idempotent upsert on machine launch are for.
+the scenario file and an idempotent upsert on machine launch are for.
 
 ## How the config maps
 
-[`fleet.yaml`](fleet.yaml) is the source of truth and maps one-to-one onto
+[`scenarios/fleet.yaml`](scenarios/fleet.yaml) is the source of truth and maps one-to-one onto
 Hookdeck. Groups and hosts at the top, then the sources and connections that
 `npm run setup` upserts exactly as written:
 
@@ -63,12 +63,53 @@ receiving the same events are the machines sharing a filter. Nothing declares
 group membership separately, and a repository appears in exactly one place.
 `group-b` is the one-to-one case: one connection on that filter, same shape.
 
+## How connections get created
+
+Two ways, and they are the same call. `ensureMachineConnection` upserts one
+machine's connection; `npm run setup` runs it for every machine in the
+scenario.
+
+**Centrally**, which is what `setup` and the visualization's Setup button do -
+one place provisions the whole fleet.
+
+**Or each machine registers itself** at launch, which is what production looks
+like: nothing has to know the fleet exists in advance, and adding a machine is
+booting it.
+
+```bash
+FLEET_SELF_REGISTER=1 npm run fleet -- up per-machine
+```
+
+The machine ensures its own connection, then starts listening:
+
+```
+REGISTER ensuring fleet-demo-group-a-host-02 exists before listening
+REGISTER fleet-demo-group-a-host-02 ready
+READY machine=group-a-host-02 ... connection=fleet-demo-group-a-host-02
+```
+
+`connection upsert` is idempotent, so this is safe on every boot and on a
+redeploy.
+
+It **fails closed**: if the upsert fails, the machine exits rather than
+listening. That matters more than it looks. `listen` creates a connection
+called `cli-<source>` when it finds none for the source, so a machine that
+listened anyway would attach there - and so would every other machine,
+silently collapsing one connection per machine into one per group.
+
+Note this is a property of *provisioning*, not of the model. It changes who
+makes the call, not what Hookdeck records, so it is not a third approach. It
+also only applies to one connection per machine: under one connection per
+group, N machines would race to own one shared connection, and a machine
+booting from a stale config would quietly rewrite the filter for all its peers.
+Those connections are provisioned centrally.
+
 ## Run it
 
 ```bash
 npm install                        # brings a pinned hookdeck-cli with it
 cp .env.example .env               # HOOKDECK_API_KEY + GITHUB_WEBHOOK_SECRET
-npm run viz                        # default scenario (fleet.yaml), then open the printed URL
+npm run viz                        # default scenario, then open the printed URL
 npm run viz -- --scenario multi-region
 ```
 
@@ -83,7 +124,7 @@ every group in that file, and the frame grows with the hosts. **Setup** upserts
 the connections and starts a CLI session on each, **Send** posts a signed
 webhook. The host menu on the Setup row picks a machine; **Up**, **Down**, and **Crash** apply to that host. The selected host and each menu entry show whether it is up or down. **Teardown**
 removes everything. The animations above are the default scenario,
-`fleet.yaml`, and only its group of three. `scenarios/multi-region.yaml` is a
+`scenarios/fleet.yaml`, and only its group of three. `scenarios/multi-region.yaml` is a
 larger fleet: `npm run viz -- --scenario multi-region`.
 
 Prefer the terminal? `npm run setup`, then `npm run fleet -- up per-machine`,
@@ -173,7 +214,7 @@ npm run group-recovery-problem -- group-a --retry    # and the duplicates a retr
 ## Commands
 
 ```bash
-npm run setup [-- --dry-run]                    # upsert everything in fleet.yaml
+npm run setup [-- --dry-run]                    # upsert everything in the scenario
 npm run viz                                     # live visualization + controls
 npm run viz:watch                               # same, restarting on file changes
 npm run fleet -- up|down|crash <approach> [host]
@@ -191,15 +232,16 @@ Both models use separate sources and ports, so they run side by side:
 
 `setup` writes resolved Hookdeck IDs to `run/setup.json`, which is deliberately
 not in source control - those IDs are per project and stale after any teardown.
-`fleet.yaml` is the file that belongs in git; `setup` re-derives the rest in
+The scenario file belongs in git; `setup` re-derives the rest in
 seconds.
 
 ## Layout
 
 ```
-fleet.yaml                            groups, hosts, sources, and connections
+scenarios/fleet.yaml                  filters, sources, connections, approaches
+scenarios/multi-region.yaml           a second fleet, same shape
 viz/                                  live visualization, shared renderer, GIF capture
-shared/src/config.ts                  loads fleet.yaml
+shared/src/config.ts                  loads the scenario
 shared/src/hookdeck.ts                Hookdeck API client + CLI wrapper
 shared/src/machine.ts                 one simulated machine: stub server, listener, startup recovery
 shared/src/fleet.ts                   process manager: up, down, crash, status, logs

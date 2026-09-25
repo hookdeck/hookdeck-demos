@@ -37,6 +37,7 @@ import {
 } from "./config.js";
 import { ciLogin, hookdeckBin, listenerConfigPath } from "./hookdeck.js";
 import { recoverMachine } from "../../per-machine/src/recover.js";
+import { ensureMachineConnection } from "../../per-machine/src/ensure-connection.js";
 
 const [rawApproach, rawName] = process.argv.slice(2);
 if (!rawApproach || !rawName) {
@@ -267,10 +268,52 @@ server.on("error", (err: NodeJS.ErrnoException) => {
   process.exit(1);
 });
 
-server.listen(port, "127.0.0.1", () => {
-  log(
-    `READY machine=${name} approach=${approach} port=${port} connection=${connection} ` +
-      `source=${source} path=${cliPath}`,
-  );
-  startListener();
-});
+/**
+ * Self-registration, opt-in with FLEET_SELF_REGISTER=1.
+ *
+ * In production a machine does not wait for anyone to provision it: at launch
+ * it ensures its own connection exists, then starts listening. `connection
+ * upsert` is idempotent, so this is safe on every boot and on a redeploy, and
+ * it is the same call `npm run setup` makes for the whole fleet at once -
+ * central provisioning is this, run from one place.
+ *
+ * It fails closed. If the upsert fails we must not start `listen`, because
+ * `listen` creates a connection called `cli-<source>` when it finds none for
+ * the source, and every machine would then attach to that one - silently
+ * collapsing one connection per machine into one per group, which is the exact
+ * thing this demo argues against.
+ *
+ * Only for per-machine. Under one connection per group, N machines would race
+ * to own one shared connection: idempotent, so it would not error, but a
+ * machine booting from a stale config would quietly rewrite the filter for the
+ * whole group. Those machines rely on central provisioning instead.
+ */
+async function selfRegister(): Promise<void> {
+  if (process.env.FLEET_SELF_REGISTER !== "1") return;
+  if (approach !== "per-machine") {
+    log(`REGISTER skipped: ${approach} connections are provisioned centrally`);
+    return;
+  }
+  log(`REGISTER ensuring ${connection} exists before listening`);
+  try {
+    await ensureMachineConnection(name, { quiet: true });
+    log(`REGISTER ${connection} ready`);
+  } catch (err: unknown) {
+    log(`FATAL could not ensure ${connection}: ${err instanceof Error ? err.message : err}`);
+    log("FATAL refusing to listen without its own connection");
+    process.exit(1);
+  }
+}
+
+async function start(): Promise<void> {
+  await selfRegister();
+  server.listen(port, "127.0.0.1", () => {
+    log(
+      `READY machine=${name} approach=${approach} port=${port} connection=${connection} ` +
+        `source=${source} path=${cliPath}`,
+    );
+    startListener();
+  });
+}
+
+void start();

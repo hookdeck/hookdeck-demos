@@ -40,7 +40,7 @@ is no per-connection charge and no cap - connections are unlimited on every plan
 same in the billed unit either way.
 
 What it does cost is config surface: one entry per machine to keep in sync
-rather than one per group. `fleet.yaml` and an idempotent upsert on launch are
+rather than one per group. The scenario file and an idempotent upsert on launch are
 what keep that from being toil.
 
 ## At machine launch
@@ -61,7 +61,7 @@ connection must exist before `listen` runs - see the note about `cli-<source>`
 in the root README.
 
 In production this is the machine's launch script: read its entry from
-`fleet.yaml`, upsert, then exec `hookdeck listen`.
+its entry in the scenario, upsert, then exec `hookdeck listen`.
 
 ## Recovery
 

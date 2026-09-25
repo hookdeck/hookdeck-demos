@@ -11,7 +11,7 @@ Open the viz. Click **Teardown** so the project is empty and the picture shows
 the source with no routes. Starting from zero makes the setup step meaningful
 and proves the demo is not pre-baked.
 
-## 2. Walk through `fleet.yaml`
+## 2. Walk through `scenarios/fleet.yaml`
 
 Put the file on screen. This is the whole configuration, and it maps one-to-one
 onto Hookdeck:

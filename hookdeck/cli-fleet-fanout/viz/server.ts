@@ -169,7 +169,7 @@ function connectionCounts(): Record<Approach, number> {
 
 function snapshot(): {
   scenario: string;
-  /** The approaches from fleet.yaml, as the UI's tabs. */
+  /** The approaches from the scenario, as the UI's tabs. */
   tabs: { id: Approach; label: string }[];
   /** Changes when a watched file changes; null unless running in watch mode. */
   reloadToken: string | null;
@@ -552,9 +552,9 @@ async function handleSend(req: IncomingMessage, res: ServerResponse): Promise<vo
     throw new Error("approach must be per-machine, per-group, or both.");
   }
   const repo = typeof body.repo === "string" ? body.repo : fleet().groups[0]?.repos[0];
-  if (!repo) throw new Error("No repo given and none found in fleet.yaml.");
+  if (!repo) throw new Error("No repo given and none found in this scenario.");
   const known = fleet().groups.some((group) => group.repos.includes(repo));
-  if (!known) throw new Error(`Repo ${repo} is not in fleet.yaml.`);
+  if (!known) throw new Error(`Repo ${repo} is not in this scenario.`);
   const event = typeof body.event === "string" ? body.event : "push";
   if (!EVENTS.has(event)) throw new Error(`Unknown event ${event}.`);
 

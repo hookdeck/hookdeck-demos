@@ -23,7 +23,7 @@ export async function ensureGroupConnection(
   const spec = group(groupName);
   const conn = connectionFor("per-group", spec.hosts[0]!);
   const sourceType = fleet().sources.find((s) => s.name === conn.source)?.type;
-  if (!sourceType) throw new Error(`Unknown source ${conn.source} in fleet.yaml.`);
+  if (!sourceType) throw new Error(`Unknown source ${conn.source} in this scenario.`);
 
   const description = `${spec.name} :: ${conn.hosts.length} host(s) listen on this connection`;
   if (opts.dryRun) {

@@ -4,7 +4,7 @@
  *   npm run teardown              prompt-free; deletes by name prefix
  *   npm run teardown -- --dry-run list what would be deleted
  *
- * Every resource the demo creates is named with the prefix from fleet.yaml, so
+ * Every resource the demo creates is named with the prefix from the scenario, so
  * teardown can select on that and leave the rest of the project untouched.
  * CLI sessions are stopped first, so they drop before the connection is gone.
  * Connections are deleted next, then the destinations and sources they used.

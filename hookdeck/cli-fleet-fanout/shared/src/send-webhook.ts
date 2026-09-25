@@ -160,7 +160,7 @@ async function main(): Promise<void> {
   const count = Number(values.count);
   const delayMs = Number(values.delay);
   const which = values.approach;
-  if (!repo) throw new Error("No repo given and none found in fleet.yaml");
+  if (!repo) throw new Error("No repo given and none found in this scenario");
 
   const approaches: Approach[] =
     which === "both" ? ["per-machine", "per-group"] : [which as Approach];
