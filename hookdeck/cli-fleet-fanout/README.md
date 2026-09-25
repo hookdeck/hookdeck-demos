@@ -139,20 +139,49 @@ itself partway through a demo is the last thing you want.
 
 ## When a machine goes down
 
-Crash a host and send events. What happens depends only on how long it has been
-gone, and the boundary is the ~2 minute reconnect grace window:
+Three different things get called "down", and they behave differently. What
+separates them is whether the CLI *session* survives.
 
-| | Inside the window | Past it |
-|---|---|---|
-| Session | still held | gone |
-| Event | created, then `FAILED` with `CLI_UNAVAILABLE` | **never created** |
-| Recorded as | an event on that connection | `CLI_DISCONNECTED` ignored event |
-| Recovered by | retrying the event | retrying the request, scoped to that connection |
+| | `offline` | `crash`, back inside ~2 min | `crash`, back later |
+|---|---|---|---|
+| What happened | link lost, process alive | process gone | process gone |
+| Session | same one, reconnects | dropped, new one on return | gone |
+| Event | delivered on reconnect | created, then `FAILED` with `CLI_UNAVAILABLE` | **never created** |
+| Recorded as | a normal delivery | an event on that connection | `CLI_DISCONNECTED` ignored event |
+| Recovered by | nothing needed | retrying the event | retrying the request, scoped to that connection |
 
-Both are recovered automatically. When a machine's CLI session reconnects,
-`machine.ts` runs `recoverMachine()`, which finds what that connection missed
-and replays only that - failed events by event retry, never-created events by a
-request retry scoped to its connection. Nothing reaches its peers.
+The first column is the common case in practice - a flapping VPN, a sleeping
+laptop, a brief network partition - and it self-heals. Try it:
+
+```bash
+npm run fleet -- offline per-machine group-a-host-03
+npm run send   -- --approach per-machine --repo demo-org/service-api
+npm run fleet -- online  per-machine group-a-host-03
+```
+
+The log shows the link go, the event arrive on reconnect, and the session come
+back - without any recovery running:
+
+```
+OFFLINE link lost listener pid 15088
+ONLINE link restored listener pid 15088
+LISTEN Connection lost, reconnecting...
+RECV push repo=demo-org/service-api delivery=53bb53e1-... event=evt_h4YCLSO2sFd73Rdiec
+```
+
+The other two columns do need recovery, and get it automatically: when a
+machine's CLI session reconnects, `machine.ts` runs `recoverMachine()`, which
+finds what that connection missed and replays only that - failed events by event
+retry, never-created events by a request retry scoped to its connection. Nothing
+reaches its peers.
+
+**Your handler needs to be idempotent.** That is true of any webhook consumer,
+and it is true here: an attempt can time out from Hookdeck's side after the CLI
+has already delivered locally, so a later retry can deliver the same event
+again. Deduplicate on `X-GitHub-Delivery`, or on the Hookdeck event id in
+`X-Hookdeck-Eventid`. The demo does not do this for you - the stub server
+records every delivery it gets, precisely so duplicates are visible rather than
+hidden.
 
 Run it by hand to watch it work:
 
@@ -217,7 +246,7 @@ npm run group-recovery-problem -- group-a --retry    # and the duplicates a retr
 npm run setup [-- --dry-run]                    # upsert everything in the scenario
 npm run viz                                     # live visualization + controls
 npm run viz:watch                               # same, restarting on file changes
-npm run fleet -- up|down|crash <approach> [host]
+npm run fleet -- up|down|crash|offline|online <approach> [host]
 npm run fleet -- status|logs <approach> [host]
 npm run send -- --approach <a> --repo <r> [--event push] [--count N]
 npm run inspect -- --approach <a>               # per request, what each connection did

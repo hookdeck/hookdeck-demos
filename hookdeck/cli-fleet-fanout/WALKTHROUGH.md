@@ -73,6 +73,17 @@ Back to the viz, start the machine. When its CLI session reconnects,
 missed and replays only that. The host catches up; the two healthy peers do not
 move. No duplicates, no manual step.
 
+## 9b. The case that needs nothing
+
+Select `group-a-host-03` and click **Offline**. The machine is still running -
+only its link to Hookdeck is gone, which is what a flapping VPN or a sleeping
+laptop looks like. Send a push, then click **Online**.
+
+The event arrives on reconnect, with no recovery involved. The session was
+never dropped, so Hookdeck still had somewhere to deliver it. Worth showing
+because it is the most common kind of "down" and the one that needs no script -
+it separates a genuine outage from a blip.
+
 ## 10. The harder case
 
 Crash it again and leave it down **past two minutes**, then send. This time

@@ -127,6 +127,51 @@ export function up(approach: Approach, names: string[]): void {
   }
 }
 
+const listenerPidFile = (approach: Approach, name: string): string =>
+  resolve(runDir(), `${approach}.${name}.listener.pid`);
+
+/**
+ * Take a machine's link to Hookdeck offline, or bring it back.
+ *
+ * Implemented by suspending the `hookdeck listen` process, which is the
+ * closest we can get to a severed link without root. The machine itself is
+ * fine and the process is alive - only its connection to Hookdeck goes away,
+ * which is what a network blip, a sleeping laptop or a flapping VPN looks
+ * like. The session is not dropped, so coming back online reconnects the same
+ * session rather than starting a new one.
+ *
+ * Contrast with the two we already had:
+ *   down     clean stop, session dropped immediately
+ *   crash    process gone, session held for the grace window, new session on return
+ *   offline  same session, reconnects and picks up what it missed
+ */
+export function setLink(approach: Approach, names: string[], online: boolean): void {
+  for (const name of names) {
+    const file = listenerPidFile(approach, name);
+    if (!existsSync(file)) {
+      console.log(`  = ${name} has no listener running`);
+      continue;
+    }
+    const pid = Number(readFileSync(file, "utf8").trim());
+    try {
+      process.kill(pid, online ? "SIGCONT" : "SIGSTOP");
+    } catch {
+      console.log(`  = ${name} listener ${pid} is gone`);
+      rmSync(file, { force: true });
+      continue;
+    }
+    appendFileSync(
+      logPath(approach, name),
+      `${new Date().toISOString()} ${online ? "ONLINE link restored" : "OFFLINE link lost"} listener pid ${pid}\n`,
+    );
+    console.log(
+      online
+        ? `  ~ ${name} back online - reconnects the same session`
+        : `  ~ ${name} offline - link to Hookdeck is gone, the machine itself is still up`,
+    );
+  }
+}
+
 function signal(approach: Approach, names: string[], sig: "SIGTERM" | "SIGKILL"): void {
   for (const name of names) {
     const pid = readPid(approach, name);
@@ -258,7 +303,7 @@ function main(): void {
   const approach = rest[0] as Approach;
   if (!APPROACHES.includes(approach)) {
     console.error(
-      `usage: npm run fleet -- <up|down|crash> <per-machine|per-group> [machine...]\n` +
+      `usage: npm run fleet -- <up|down|crash|offline|online> <per-machine|per-group> [machine...]\n` +
         `       npm run fleet -- status [approach]\n` +
         `       npm run fleet -- logs <approach> <machine>`,
     );
@@ -278,6 +323,14 @@ function main(): void {
     case "crash":
       console.log(`Crashing ${names.length} machine(s) for ${approach}:`);
       crash(approach, names);
+      break;
+    case "offline":
+      console.log(`Taking ${names.length} machine(s) offline on ${approach}:`);
+      setLink(approach, names, false);
+      break;
+    case "online":
+      console.log(`Bringing ${names.length} machine(s) back online on ${approach}:`);
+      setLink(approach, names, true);
       break;
     default:
       console.error(`Unknown command ${command}`);

@@ -24,8 +24,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import {
   connectionFor,
   connectionName,
@@ -34,6 +34,7 @@ import {
   portOf,
   sourceName,
   type Approach,
+  runDir,
 } from "./config.js";
 import { ciLogin, hookdeckBin, listenerConfigPath } from "./hookdeck.js";
 import { recoverMachine } from "../../per-machine/src/recover.js";
@@ -53,6 +54,7 @@ const connection = connectionName(approach, name);
 const cliPath = connectionFor(approach, name).destination.path;
 const source = sourceName(approach);
 const humanLog = logPath(approach, name);
+const listenerPidFile = resolve(runDir(), `${approach}.${name}.listener.pid`);
 const jsonLog = eventLogPath(approach, name);
 
 mkdirSync(dirname(humanLog), { recursive: true });
@@ -184,7 +186,17 @@ function startListener(): void {
   child.stdout?.on("data", pipe("LISTEN"));
   child.stderr?.on("data", pipe("LISTEN"));
 
+  // Record the listener's own pid. `fleet pause` freezes just this process, so
+  // the machine stays up and only its link to Hookdeck goes away - a network
+  // problem rather than a crash.
+  try {
+    writeFileSync(listenerPidFile, String(child.pid));
+  } catch {
+    /* best effort: pause is a convenience, not required for the demo to run */
+  }
+
   child.on("exit", (code, signal) => {
+    rmSync(listenerPidFile, { force: true });
     log(`LISTEN exited code=${code} signal=${signal}`);
     if (!shuttingDown) process.exit(code ?? 1);
   });

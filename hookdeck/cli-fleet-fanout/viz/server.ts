@@ -10,7 +10,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { activeScenario, approaches as approachSpecs, eventLogPath, fleet, machines, useScenario, type Approach } from "../shared/src/config.js";
-import { crash, down, status, stopSessions, up, type MachineStatus } from "../shared/src/fleet.js";
+import { crash, down, setLink, status, stopSessions, up, type MachineStatus } from "../shared/src/fleet.js";
 import {
   deleteAllConnections,
   getRequest,
@@ -541,7 +541,9 @@ async function handleFleet(req: IncomingMessage, res: ServerResponse): Promise<v
   if (body.action === "up") up(body.approach, names);
   else if (body.action === "down") down(body.approach, names);
   else if (body.action === "crash") crash(body.approach, names);
-  else throw new Error("action must be up, down, or crash.");
+  else if (body.action === "offline") setLink(body.approach, names, false);
+  else if (body.action === "online") setLink(body.approach, names, true);
+  else throw new Error("action must be up, down, crash, offline, or online.");
   sendJson(res, 200, await buildState());
 }
 

@@ -228,7 +228,15 @@
           const hostUpButton = button("Up", "", () => hostAction("up"));
           const hostDownButton = button("Down", "", () => hostAction("down"));
           const hostCrashButton = button("Crash", "danger", () => hostAction("crash"));
-          hostBar.append(hostMenu, hostUpButton, hostDownButton, hostCrashButton);
+          // Offline suspends the listener: the machine stays up, only its link
+          // to Hookdeck goes. Coming back online reconnects the same session,
+          // which is why it behaves differently from Down and Crash.
+          const hostOfflineButton = button("Offline", "", () => hostAction("offline"));
+          const hostOnlineButton = button("Online", "", () => hostAction("online"));
+          hostBar.append(
+            hostMenu, hostUpButton, hostDownButton, hostCrashButton,
+            hostOfflineButton, hostOnlineButton,
+          );
           document.addEventListener("click", (event) => {
             if (!menuOpen || hostMenu.contains(event.target)) return;
             menuOpen = false;
@@ -354,6 +362,8 @@
               hostUpButton.disabled = true;
               hostDownButton.disabled = true;
               hostCrashButton.disabled = true;
+              hostOfflineButton.disabled = true;
+              hostOnlineButton.disabled = true;
             }
           }
 
@@ -447,6 +457,8 @@
             hostUpButton.disabled = !ready;
             hostDownButton.disabled = !ready;
             hostCrashButton.disabled = !ready;
+            hostOfflineButton.disabled = !ready;
+            hostOnlineButton.disabled = !ready;
           }
 
           async function hostAction(action) {
