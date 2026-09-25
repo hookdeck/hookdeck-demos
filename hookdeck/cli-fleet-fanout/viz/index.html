@@ -83,8 +83,14 @@
       }
       .switch.on { border-color: #3f6e5e; color: #8fd4ae; }
       .switch.on::before { background: #5dcaa5; }
-      .switch.off { border-color: #8a6f3f; color: #f0b429; }
-      .switch.off::before { background: #f0b429; }
+      /* Off-state colours mirror the diagram: red down, grey no session,
+         amber offline. */
+      .switch.off-down { border-color: #8a4b55; color: #f09196; }
+      .switch.off-down::before { background: #f09196; }
+      .switch.off-muted { border-color: #4a5468; color: #aeb6c6; }
+      .switch.off-muted::before { background: #8b95a8; }
+      .switch.off-warn { border-color: #8a6f3f; color: #f0b429; }
+      .switch.off-warn::before { background: #f0b429; }
       .switch.neutral { color: #6b7384; }
       .switch.neutral::before { background: #3a4152; }
       .seg button.selected { background: #243044; border-color: #6ea8fe; }
@@ -249,7 +255,7 @@
            * each other: is the machine running, does it have a CLI session,
            * and does that session have a working link.
            */
-          function toggle(label, onText, offText, onAction, offAction) {
+          function toggle(label, onText, offText, onAction, offAction, offTone) {
             const wrap = document.createElement("div");
             wrap.className = "seg";
             const tag = document.createElement("span");
@@ -267,24 +273,28 @@
             // down has no session, and a stopped session has no network state.
             // Showing "Offline" there would assert something untrue.
             wrap.setState = (on, disabled, neutral) => {
+              btn.classList.remove("off-down", "off-muted", "off-warn");
               btn.dataset.on = on ? "1" : "0";
               btn.textContent = neutral ? "–" : on ? onText : offText;
               btn.classList.toggle("on", !neutral && on);
+              // Each toggle's off state uses the colour that state has in the
+              // diagram, so the control and the picture agree at a glance.
               btn.classList.toggle("off", !neutral && !on);
+              btn.classList.toggle("off-" + offTone, !neutral && !on);
               btn.classList.toggle("neutral", !!neutral);
               btn.disabled = disabled;
             };
             return wrap;
           }
 
-          const machineToggle = toggle("machine", "Up", "Down", "up", "down");
+          const machineToggle = toggle("machine", "Up", "Down", "up", "down", "down");
           // Stopping the session closes the WebSocket cleanly, so Hookdeck
           // drops it at once and the next event is CLI_DISCONNECTED.
-          const sessionToggle = toggle("session", "Connected", "Disconnected", "connect", "disconnect");
+          const sessionToggle = toggle("session", "Connected", "Disconnected", "connect", "disconnect", "muted");
           // Offline suspends the listener: the machine stays up and its socket
           // stays open, so events fail rather than being ignored. It models a
           // network problem, not a stopped session.
-          const networkToggle = toggle("network", "Online", "Offline", "online", "offline");
+          const networkToggle = toggle("network", "Online", "Offline", "online", "offline", "warn");
 
           hostBar.append(hostMenu, machineToggle, sessionToggle, networkToggle, hostCrashButton);
           document.addEventListener("click", (event) => {
