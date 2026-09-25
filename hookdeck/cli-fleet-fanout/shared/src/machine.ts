@@ -22,6 +22,8 @@
  * session attached and quietly invalidate the scenario.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { connect } from "node:net";
+import type { Duplex } from "node:stream";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -56,6 +58,8 @@ const source = sourceName(approach);
 const humanLog = logPath(approach, name);
 const listenerPidFile = resolve(runDir(), `${approach}.${name}.listener.pid`);
 const sessionFile = resolve(runDir(), `${approach}.${name}.session`);
+const networkFile = resolve(runDir(), `${approach}.${name}.network`);
+const networkStateFile = resolve(runDir(), `${approach}.${name}.network.state`);
 const jsonLog = eventLogPath(approach, name);
 
 mkdirSync(dirname(humanLog), { recursive: true });
@@ -143,6 +147,76 @@ const server = createServer((req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// This machine's link to the outside
+// ---------------------------------------------------------------------------
+
+/**
+ * A CONNECT proxy that the machine's `hookdeck listen` dials through.
+ *
+ * The CLI's Go transport honours HTTPS_PROXY, and its websocket goes through
+ * it too, so routing the listener through a proxy we own means we can sever
+ * the link for real: existing sockets are destroyed and new connections
+ * refused. The CLI sees its connection drop and reconnects, exactly as it
+ * would if the machine lost the network.
+ *
+ * The earlier approach suspended the listener process, which does not close
+ * anything - the kernel keeps the socket open and keeps buffering, so Hookdeck
+ * saw a live connection with an unresponsive peer. That models a hung machine,
+ * not an offline one.
+ *
+ * It lives in this process, so each machine has its own and going offline
+ * affects only that machine. The CLI keeps its own TLS end to end; we only
+ * pass bytes, so there are no certificates to manage.
+ */
+let linkUp = true;
+const openSockets = new Set<Duplex>();
+
+const proxy = createServer((_req, res) => {
+  res.writeHead(405).end();
+});
+
+proxy.on("connect", (req, clientSocket, head) => {
+  if (!linkUp) {
+    clientSocket.destroy();
+    return;
+  }
+  const [host, port] = (req.url ?? "").split(":");
+  if (!host) {
+    clientSocket.destroy();
+    return;
+  }
+  const upstream = connect(Number(port || 443), host, () => {
+    clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    upstream.write(head);
+    upstream.pipe(clientSocket);
+    clientSocket.pipe(upstream);
+  });
+  for (const socket of [clientSocket, upstream]) {
+    openSockets.add(socket);
+    socket.on("close", () => openSockets.delete(socket));
+    socket.on("error", () => socket.destroy());
+  }
+});
+
+function setLinkUp(up: boolean): void {
+  if (up === linkUp) return;
+  linkUp = up;
+  if (!up) {
+    // Destroy what is open. This is what the CLI experiences as the network
+    // going away, and what makes Hookdeck drop the session into its grace
+    // window rather than keep it registered.
+    for (const socket of openSockets) socket.destroy();
+    openSockets.clear();
+  }
+  log(up ? "ONLINE link restored" : "OFFLINE link cut - sockets destroyed, new connections refused");
+  try {
+    writeFileSync(networkStateFile, up ? "online" : "offline");
+  } catch {
+    /* best effort */
+  }
+}
+
+// ---------------------------------------------------------------------------
 // hookdeck listen
 // ---------------------------------------------------------------------------
 
@@ -172,7 +246,11 @@ function startListener(): void {
   ];
   log(`EXEC hookdeck ${args.join(" ")}`);
 
+  const proxyUrl = `http://127.0.0.1:${(proxy.address() as { port: number }).port}`;
   const child = spawn(hookdeckBin(), [...args, "--hookdeck-config", configPath], {
+    // Everything the CLI sends - API calls and the websocket - leaves through
+    // this machine's own proxy, so the link can be cut for this machine alone.
+    env: { ...process.env, HTTPS_PROXY: proxyUrl, HTTP_PROXY: proxyUrl },
     stdio: ["ignore", "pipe", "pipe"],
   });
   listener = child;
@@ -187,13 +265,13 @@ function startListener(): void {
   child.stdout?.on("data", pipe("LISTEN"));
   child.stderr?.on("data", pipe("LISTEN"));
 
-  // Record the listener's own pid. `fleet pause` freezes just this process, so
-  // the machine stays up and only its link to Hookdeck goes away - a network
-  // problem rather than a crash.
+  // Record the listener's own pid. Its presence is how `fleet status` tells a
+  // machine with a CLI session from one that is up with no session, which is
+  // the difference between a failed delivery and CLI_DISCONNECTED.
   try {
     writeFileSync(listenerPidFile, String(child.pid));
   } catch {
-    /* best effort: pause is a convenience, not required for the demo to run */
+    /* best effort: status reporting only, not required for the demo to run */
   }
 
   child.on("exit", (code, signal) => {
@@ -269,9 +347,6 @@ function shutdown(signal: string): void {
   log(`SHUTDOWN clean (${signal}) - sending SIGINT to hookdeck listen`);
   // SIGINT is what Ctrl+C sends. The CLI closes the WebSocket with code 1000
   // and Hookdeck drops the session straight away rather than holding it.
-  // SIGCONT first, in case the machine is offline: a suspended process would
-  // never see the SIGINT and we would escalate to SIGKILL for no reason.
-  listener?.kill("SIGCONT");
   listener?.kill("SIGINT");
 
   const done = () => {
@@ -323,17 +398,22 @@ function readSessionWish(): boolean {
   }
 }
 
+function readNetworkWish(): boolean {
+  try {
+    return readFileSync(networkFile, "utf8").trim() !== "offline";
+  } catch {
+    return true; // no file means online, which is the default
+  }
+}
+
 setInterval(() => {
   if (shuttingDown) return;
+  setLinkUp(readNetworkWish());
   const wanted = readSessionWish();
   if (wanted === listenerWanted) return;
   listenerWanted = wanted;
   if (!wanted) {
     log("SESSION stopping hookdeck listen (clean close)");
-    // A suspended process cannot act on SIGINT - the signal just queues. Thaw
-    // it first so that stopping an offline machine's session still closes the
-    // WebSocket cleanly rather than timing out into a SIGKILL.
-    listener?.kill("SIGCONT");
     listener?.kill("SIGINT");
   } else {
     log("SESSION starting hookdeck listen");
@@ -391,6 +471,12 @@ async function selfRegister(): Promise<void> {
 
 async function start(): Promise<void> {
   await selfRegister();
+  await new Promise<void>((done) => proxy.listen(0, "127.0.0.1", done));
+  try {
+    writeFileSync(networkStateFile, "online");
+  } catch {
+    /* best effort */
+  }
   server.listen(port, "127.0.0.1", () => {
     log(
       `READY machine=${name} approach=${approach} port=${port} connection=${connection} ` +

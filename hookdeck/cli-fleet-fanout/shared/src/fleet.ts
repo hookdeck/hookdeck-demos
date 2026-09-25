@@ -13,7 +13,7 @@
  * scenarios 2, 3 and 5: a clean stop drops the Hookdeck session immediately, a
  * kill leaves it in the reconnect grace window.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   appendFileSync,
   existsSync,
@@ -87,10 +87,10 @@ export interface MachineStatus {
   group: string;
   up: boolean;
   /**
-   * The machine is running but its listener is suspended, so it has no link to
-   * Hookdeck. Distinct from `up: false`, where the machine itself is gone - and
-   * the distinction matters, because an offline machine keeps its session and
-   * picks up what it missed when it comes back.
+   * The machine is running, and its listener too, but the link out has been
+   * cut. Distinct from `up: false`, where the machine itself is gone: an
+   * offline machine reconnects on its own and recovers what it missed, so the
+   * process it needs is a reconnect rather than a restart.
    */
   offline: boolean;
   /** A CLI session is attached. False once `disconnect` stops the listener. */
@@ -100,15 +100,13 @@ export interface MachineStatus {
   pid?: number;
 }
 
-/** True when the listener process exists but is stopped (SIGSTOP). */
-function listenerSuspended(approach: Approach, name: string): boolean {
-  const file = listenerPidFile(approach, name);
-  if (!existsSync(file)) return false;
-  const pid = Number(readFileSync(file, "utf8").trim());
-  if (!Number.isFinite(pid)) return false;
-  const res = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
-  // A stopped process reports a state beginning with T on macOS and Linux.
-  return (res.stdout ?? "").trim().startsWith("T");
+/** The machine reports its own link state; absent means online. */
+function linkOffline(approach: Approach, name: string): boolean {
+  try {
+    return readFileSync(resolve(runDir(), `${approach}.${name}.network.state`), "utf8").trim() === "offline";
+  } catch {
+    return false;
+  }
 }
 
 export function up(approach: Approach, names: string[]): void {
@@ -121,6 +119,7 @@ export function up(approach: Approach, names: string[]): void {
     // and stops a disconnected machine from coming up and immediately
     // stopping its listener again on the next poll.
     rmSync(resolve(runDir(), `${approach}.${name}.session`), { force: true });
+    rmSync(resolve(runDir(), `${approach}.${name}.network`), { force: true });
 
     const existing = readPid(approach, name);
     if (existing && groupAlive(existing)) {
@@ -159,47 +158,52 @@ const listenerPidFile = (approach: Approach, name: string): string =>
 /**
  * Take a machine's link to Hookdeck offline, or bring it back.
  *
- * Implemented by suspending the `hookdeck listen` process, which is the
- * closest we can get to a severed link without root. The machine itself is
- * fine and the process is alive - only its connection to Hookdeck goes away,
- * which is what a network blip, a sleeping laptop or a flapping VPN looks
- * like. The session is not dropped, so coming back online reconnects the same
- * session rather than starting a new one.
+ * Writes the wish to `<approach>.<name>.network` and waits for the machine to
+ * acknowledge it. The machine does the work: each one runs its `hookdeck
+ * listen` through a CONNECT proxy it hosts itself, so going offline destroys
+ * that machine's sockets and refuses new ones. The CLI sees its connection
+ * drop and reconnects, which is what a lost network actually looks like - and
+ * needs no firewall rules or root.
  *
- * Contrast with the two we already had:
- *   down     clean stop, session dropped immediately
- *   crash    process gone, session held for the grace window, new session on return
- *   offline  same session, reconnects and picks up what it missed
+ * An earlier version suspended the listener process instead. That closes
+ * nothing: the kernel keeps the connection open and keeps buffering, so
+ * Hookdeck saw a live session with an unresponsive peer. That models a hung
+ * machine, not an offline one.
+ *
+ * Contrast with the other three:
+ *   down        clean stop, session dropped immediately
+ *   disconnect  listener stopped, machine still up, session dropped immediately
+ *   crash       process gone, session held for the grace window
+ *   offline     session dropped, and the CLI reconnects when the link returns
  */
 export function setLink(approach: Approach, names: string[], online: boolean): string[] {
-  // Machines started before their listener pidfile existed cannot be signalled.
-  // Report them rather than doing nothing quietly: from the UI a silent no-op
-  // is indistinguishable from the feature not working.
   const skipped: string[] = [];
   for (const name of names) {
-    const file = listenerPidFile(approach, name);
-    if (!existsSync(file)) {
-      console.log(`  = ${name} has no listener pidfile - restart it with \`fleet up\``);
+    const pid = readPid(approach, name);
+    if (!pid || !groupAlive(pid)) {
+      console.log(`  = ${name} is not running`);
       skipped.push(name);
       continue;
     }
-    const pid = Number(readFileSync(file, "utf8").trim());
-    try {
-      process.kill(pid, online ? "SIGCONT" : "SIGSTOP");
-    } catch {
-      console.log(`  = ${name} listener ${pid} is gone`);
-      rmSync(file, { force: true });
-      skipped.push(name);
-      continue;
+    writeFileSync(
+      resolve(runDir(), `${approach}.${name}.network`),
+      online ? "online" : "offline",
+    );
+    // Wait for the machine to apply it, so a caller reading state straight
+    // afterwards sees the change rather than the state it asked to leave.
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      if (linkOffline(approach, name) === !online) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
     }
     appendFileSync(
       logPath(approach, name),
-      `${new Date().toISOString()} ${online ? "ONLINE link restored" : "OFFLINE link lost"} listener pid ${pid}\n`,
+      `${new Date().toISOString()} ${online ? "ONLINE requested" : "OFFLINE requested"}\n`,
     );
     console.log(
       online
-        ? `  ~ ${name} back online - reconnects the same session`
-        : `  ~ ${name} offline - link to Hookdeck is gone, the machine itself is still up`,
+        ? `  ~ ${name} back online - the CLI reconnects`
+        : `  ~ ${name} offline - link cut, the machine itself is still up`,
     );
   }
   return skipped;
@@ -337,7 +341,7 @@ export function status(
         name: m.name,
         group: groupOf(m.name).name,
         up: alive,
-        offline: alive && listenerSuspended(approach, m.name),
+        offline: alive && linkOffline(approach, m.name),
         listening: alive && existsSync(listenerPidFile(approach, m.name)),
         port: portOf(approach, m.name),
         connection: connectionName(approach, m.name),

@@ -127,10 +127,12 @@ webhook. The host menu on the Setup row picks a machine, and three toggles act o
 **machine** (Up/Down), **session** (Connected/Disconnected) and **network**
 (Online/Offline) - plus **Crash**. They are independent: a machine can be
 running with no session, or with a session whose network is gone. Each toggle
-shows the state the host is in, greys out when it does not apply, and takes its
-off colour from that state in the diagram. **Teardown** removes everything. The animations above are the default scenario,
-`scenarios/fleet.yaml`, and only its group of three. `scenarios/multi-region.yaml` is a
-larger fleet: `npm run viz -- --scenario multi-region`.
+shows the state the host is in, grays out when it does not apply, and takes its
+off color from that state in the diagram. **Teardown** removes everything.
+
+The animations above are the default scenario, `scenarios/fleet.yaml`, and only
+its group of three. `scenarios/multi-region.yaml` is a larger fleet:
+`npm run viz -- --scenario multi-region`.
 
 Prefer the terminal? `npm run setup`, then `npm run fleet -- up per-machine`,
 then `npm run send -- --approach per-machine --repo demo-org/service-api`.
@@ -144,49 +146,78 @@ itself partway through a demo is the last thing you want.
 
 ## When a machine goes away
 
-"Down" covers several situations that behave differently. What separates them
-is what happens to the CLI **session**, and each one is a control in the demo.
-Every row below was measured against a live project.
+"Down" covers several situations that behave differently, and what separates
+them is the CLI **session**: whether one was registered when the event arrived,
+and how long it had been gone. Each is a control in the demo.
 
-| What you do | Session | Hookdeck records | How the machine catches up |
-|---|---|---|---|
-| **network offline**, back within ~2 min | survives; the socket stays open | event created, then `FAILED` with `CLI_UNAVAILABLE` once the attempt times out | arrives on its own - the push was already on the wire, and the CLI processes it when it unfreezes |
-| **network offline**, longer | server gives up and drops it | `CLI_DISCONNECTED`, no event created | recovery retries the request, scoped to that connection |
-| **session disconnected** | closed cleanly, dropped at once | `CLI_DISCONNECTED`, no event created | recovery retries the request, scoped to that connection |
-| **machine down** | closed cleanly, dropped at once | `CLI_DISCONNECTED`, no event created | recovery, when the machine next starts |
-| **crash**, back within ~2 min | held for the grace window, new session on return | event created, then `FAILED` with `CLI_UNAVAILABLE` | recovery retries the event |
-| **crash**, back later | expires with the grace window | `CLI_DISCONNECTED`, no event created | recovery retries the request |
+Two clocks decide it:
 
-Two things are worth drawing out.
+- **~10 seconds** - how long Hookdeck keeps retrying a delivery while it waits
+  for the session to come back. `MAX_CLI_RETRIES` (5) at `CLI_RETRY_DELAY` (2s).
+- **~2 minutes** - how long a session survives an abnormal disconnect. Inside
+  it an event is still created against that connection; past it no event is
+  created at all.
 
-**Hookdeck does not re-send any of these.** The first row looks like a re-send
-and is not: the event had already been written to the socket before the client
-froze, so it is the original delivery completing late. Hookdeck had already
-given up on the attempt, which is why the event stays `FAILED` even though the
-machine has it.
+What matters is where the event lands between those two, not when the machine
+comes back. Coming back triggers recovery; it does not change what Hookdeck
+already recorded.
 
-**`CLI_DISCONNECTED` means no event was created at all**, so there is nothing
-to retry. That is why recovery goes back to the *request* and replays it scoped
-to one connection - and why being able to aim at one connection is the whole
+| When the event arrives | Hookdeck records | How the machine catches up |
+|---|---|---|
+| the link is back within ~10s | event created and **delivered** | nothing - Hookdeck's own retries land it |
+| session gone, inside the ~2 min window | event created, then `FAILED` with `CLI_UNAVAILABLE` | recovery retries the **event** |
+| session gone for more than ~2 min | `CLI_DISCONNECTED`, no event created | recovery retries the **request**, scoped to that connection |
+| session closed cleanly - **down** or **disconnected** | `CLI_DISCONNECTED`, no event created | recovery retries the **request** |
+
+The control you use decides which rows are reachable. **offline** and **crash**
+drop the session abnormally, so they enter the grace window and the timing
+decides. **down** and **session disconnected** close the WebSocket cleanly, so
+the session goes at once and there is no window to be inside.
+
+Measured against a live project, one row at a time:
+
+| What was run | Result |
+|---|---|
+| link cut, send, restored after 4s | delivered, no recovery involved |
+| link cut, send, restored after 15s and after 33s | event `FAILED`, recovery needed |
+| crash, send 4s later, machine back after 25s | event `FAILED` / `CLI_UNAVAILABLE`, recovery retried the event to `SUCCESSFUL` |
+| crash, send 4s later, machine back after 150s | same - the event existed, so the wait changed nothing |
+| link cut, nothing sent for 150s, then send | `CLI_DISCONNECTED`, no event; recovery retried the request |
+| clean **down**, then send | `CLI_DISCONNECTED`, no event; recovery on restart |
+
+`offline` cuts the link for real. Each machine runs its `hookdeck listen`
+through a small CONNECT proxy inside its own supervisor, and going offline
+destroys those sockets and refuses new ones. The CLI sees its connection drop
+and reconnects, exactly as it would if the machine lost the network - which
+also means the session is dropped rather than left registered. Earlier this
+suspended the process instead, which closes nothing: the kernel kept the socket
+open and Hookdeck saw a live connection with an unresponsive peer, which models
+a hung machine rather than an offline one.
+
+`CLI_DISCONNECTED` means no event was created at all, so there is nothing to
+retry. Recovery goes back to the *request* and replays it scoped to one
+connection, which is why being able to aim at a single connection is the whole
 argument for a connection per machine.
 
-Recovery is automatic: when a session reconnects, `machine.ts` runs
-`recoverMachine()`, which looks back over a window, finds what that connection
-missed and replays only that. Because it looks back over a window rather than
-at one event, a machine that misses a recovery still catches up on its next
-reconnect.
+**One script covers every row.** When a session reconnects, `machine.ts` runs
+`recoverMachine()`, which finds what that connection missed and replays only
+that - the event where one exists, the request where none does. It skips
+anything already delivered on that connection, so it is safe when Hookdeck got
+there first, and safe to run twice.
 
 ```bash
-npm run fleet -- disconnect per-machine group-a-host-03   # session gone, machine up
+npm run fleet -- offline per-machine group-a-host-03   # link cut, machine up
 npm run send   -- --approach per-machine --repo demo-org/service-api
-npm run fleet -- connect    per-machine group-a-host-03   # reconnects, then recovers
+sleep 15                                               # past the retry budget
+npm run fleet -- online  per-machine group-a-host-03   # reconnects, then recovers
 ```
 
-**Your handler needs to be idempotent.** Row one is exactly why: the event is
-recorded `FAILED` while the machine already has it, so recovery retries it and
-the machine receives it twice. Deduplicate on `X-GitHub-Delivery` or
-`X-Hookdeck-Eventid`. The stub server records every delivery and the
-visualization counts them, so a duplicate is visible rather than hidden.
+Drop the `sleep` and you get the first row instead: the link is back before the
+retries run out, the event is delivered, and recovery finds nothing to do.
+
+Handlers should still be idempotent - that is true of any webhook consumer, and
+an attempt can time out on Hookdeck's side after a handler has already done the
+work. This demo does not manufacture a duplicate to prove it.
 
 ## How CLI destinations behave
 
@@ -196,9 +227,9 @@ Worth knowing before you rely on any of this. Verified against
 - A CLI destination delivers only to sessions attached **at the time**. Events
   arriving while nothing is listening are not queued.
 - A clean shutdown (Ctrl+C, SIGINT) closes the WebSocket and drops the session
-  **immediately**. An abnormal exit holds it for about 2 minutes. That is the
-  difference between the two columns above, so how you stop `listen` changes
-  what happens to events sent moments later.
+  **immediately**. An abnormal exit holds it for about 2 minutes. That is what
+  separates the clean-close row above from the grace-window ones, so how you
+  stop `listen` changes what happens to events sent moments later.
 - Several sessions on one connection produce **one event per session**. Sessions
   do not compete.
 - `CLI_UNAVAILABLE` is an attempt error code on an event that exists.
@@ -294,3 +325,7 @@ per-group/src/                        connection per group: upsert, why recovery
   ([#429](https://github.com/hookdeck/hookdeck-cli/issues/429)), so the demo
   runs the platform binary directly. Without that, a clean stop behaves like a
   crash.
+- The CLI honors `HTTPS_PROXY`, and its websocket goes through it too. That is
+  what lets the demo cut one machine's link without touching the host's
+  network, and it is worth knowing if you run `listen` somewhere with an egress
+  proxy.
