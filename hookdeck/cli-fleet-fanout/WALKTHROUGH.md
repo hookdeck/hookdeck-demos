@@ -76,8 +76,8 @@ move. No duplicates, no manual step.
 ## 9b. The case that needs nothing
 
 Select `group-a-host-03` and click **Offline**. The machine is still running -
-only its link to Hookdeck is gone, which is what a flapping VPN or a sleeping
-laptop looks like. Send a push, then click **Online**.
+only its link to Hookdeck is gone - it has stopped responding, the way a
+paused container or a CPU-starved VM does. Send a push, then click **Online**.
 
 The event arrives on reconnect, with no recovery involved. The session was
 never dropped, so Hookdeck still had somewhere to deliver it. Worth showing
