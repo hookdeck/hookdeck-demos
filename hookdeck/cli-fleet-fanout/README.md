@@ -89,6 +89,11 @@ larger fleet: `npm run viz -- --scenario multi-region`.
 Prefer the terminal? `npm run setup`, then `npm run fleet -- up per-machine`,
 then `npm run send -- --approach per-machine --repo demo-org/service-api`.
 
+Working on the visualization itself? `npm run viz:watch` restarts the server
+when a `.ts` file changes and reloads the page when `index.html`, `scene.js` or
+the scenario YAML does. It is deliberately not the default - a page reloading
+itself partway through a demo is the last thing you want.
+
 [WALKTHROUGH.md](WALKTHROUGH.md) is the demo script for showing this to someone.
 
 ## When a machine goes down
@@ -170,6 +175,7 @@ npm run group-recovery-problem -- group-a --retry    # and the duplicates a retr
 ```bash
 npm run setup [-- --dry-run]                    # upsert everything in fleet.yaml
 npm run viz                                     # live visualization + controls
+npm run viz:watch                               # same, restarting on file changes
 npm run fleet -- up|down|crash <approach> [host]
 npm run fleet -- status|logs <approach> [host]
 npm run send -- --approach <a> --repo <r> [--event push] [--count N]

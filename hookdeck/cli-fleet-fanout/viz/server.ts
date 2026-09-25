@@ -25,6 +25,34 @@ import { send, type SendResult } from "../shared/src/send-webhook.js";
 import { clearCachedConnections, runSetup } from "../shared/src/setup.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Watch mode, opt-in via `npm run viz:watch`.
+ *
+ * `tsx watch` restarts this process when a .ts file changes, which covers the
+ * server. It cannot help with index.html, scene.js or the scenario YAML, which
+ * are read by the browser - so in watch mode the state carries a token derived
+ * from their mtimes and the page reloads when it changes. The page already
+ * polls /api/state, so this needs no second channel.
+ *
+ * Off by default: a page reloading itself mid-demo is the last thing you want
+ * while recording.
+ */
+const WATCHING = process.env.FLEET_VIZ_WATCH === "1";
+
+function reloadToken(): string | null {
+  if (!WATCHING) return null;
+  const files = [resolve(HERE, "index.html"), resolve(HERE, "scene.js"), activeScenario().file];
+  return files
+    .map((file) => {
+      try {
+        return String(statSync(file).mtimeMs);
+      } catch {
+        return "0";
+      }
+    })
+    .join("-");
+}
 const PORT = Number(process.env.VIZ_PORT ?? 4173);
 
 function scenarioFromArgv(): string {
@@ -143,6 +171,8 @@ function snapshot(): {
   scenario: string;
   /** The approaches from fleet.yaml, as the UI's tabs. */
   tabs: { id: Approach; label: string }[];
+  /** Changes when a watched file changes; null unless running in watch mode. */
+  reloadToken: string | null;
   groups: { name: string; repos: string[]; machines: string[] }[];
   approaches: Record<Approach, MachineStatus[]>;
   connections: Record<Approach, number>;
@@ -163,6 +193,7 @@ function snapshot(): {
   return {
     scenario: activeScenario().name,
     tabs: approachSpecs().map((a) => ({ id: a.id, label: a.label })),
+    reloadToken: reloadToken(),
     groups: fleet().groups.map((group) => ({
       name: group.name,
       repos: group.repos,

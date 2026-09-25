@@ -289,7 +289,23 @@
             return names.length ? names : viz.MACHINES.map((spec) => spec.name);
           }
 
+          // In watch mode the server sends a token derived from the mtimes of
+          // index.html, scene.js and the scenario YAML. When it changes, the
+          // files behind this page changed, so reload. null when not watching.
+          let seenReloadToken = null;
+
+          function checkReload() {
+            const token = snapshot && snapshot.reloadToken;
+            if (!token) return;
+            if (seenReloadToken === null) {
+              seenReloadToken = token;
+              return;
+            }
+            if (token !== seenReloadToken) location.reload();
+          }
+
           function paint() {
+            checkReload();
             // Tabs are data, so resync them when the scenario's approaches
             // arrive or change. Only rebuild the buttons when they differ, or
             // every poll would flicker the selection.
