@@ -75,6 +75,6 @@ Run on 2026-10-02 against production (`https://api.hookdeck.com/2026-09-01`) wit
 | Serialisation (`application/x-protobuf`, `application/protobuf`, `application/cbor`, `application/msgpack`, `application/vnd.apache.avro+binary`) | ❌ `UNSUPPORTED_CONTENT_TYPE` | ✅ byte-exact, arrives as `application/octet-stream` |
 | Other (`application/wasm`, `font/woff2`) | ❌ `UNSUPPORTED_CONTENT_TYPE` | ✅ byte-exact, arrives as `application/octet-stream` |
 
-The override sets the request's content type, so these arrive as `application/octet-stream`, as requested. Using it to get past the allowlist means the receiver no longer gets the real type (`audio/mpeg` and so on) and has to know the format from context.
+So every rejected type tested here already works end to end: once a request is past the allowlist, it's delivered with its bytes unchanged (and a retried MP3 was redelivered byte-exact in the Deepgram demo). The allowlist is the only thing rejecting them.
 
-The override is a query parameter on the source URL, so it only works where the sender lets you set the full URL, such as a callback URL (Deepgram) or a webhook URL you register with the parameter included. It doesn't help if a provider strips query strings, and every integrator has to know to add it.
+The override is a workaround, not a fix. It relabels the request as `application/octet-stream`, so the receiver gets that instead of the real type (`audio/mpeg` and so on), and it's a query parameter on the source URL that has to be added by hand.
