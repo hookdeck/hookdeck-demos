@@ -13,8 +13,9 @@ a { color: var(--primary-fg); }
 .back { text-decoration: none; }
 .back:hover { text-decoration: underline; }
 
-/* Cards and sections */
-.card { display: grid; gap: var(--s4); padding: var(--s6); }
+/* Cards and sections. The design system's `.card:not(.flex) { display: block }` would drop the gaps,
+   so match its specificity to lay cards out as a grid. */
+.card:not(.flex) { display: grid; gap: var(--s4); padding: var(--s6); }
 .card h2 { margin: 0; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
 
@@ -51,7 +52,12 @@ textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focused-
 
 /* Landing page demo cards */
 .demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s4); }
-a.demo { display: grid; gap: var(--s3); align-content: start; text-decoration: none; color: var(--neutral-fg-1); transition: 200ms ease-in-out background-color; }
+/* A column, so the status badge sits at the bottom and lines up across cards */
+.card:not(.flex).demo { display: flex; flex-direction: column; gap: var(--s3); }
+.demo .chip { margin-bottom: var(--s2); }
+.demo h2 { margin: 0; }
+.demo .status { margin-top: auto; padding-top: var(--s3); }
+a.demo { text-decoration: none; color: var(--neutral-fg-1); transition: 200ms ease-in-out background-color; }
 a.demo:hover { background-color: var(--bg-0-hover); color: var(--neutral-fg-1); }
 .demo p { color: var(--neutral-fg-2); }
 .demo.disabled { opacity: 0.6; }
@@ -67,5 +73,5 @@ footer { color: var(--neutral-fg-3); }
 
 @media (max-width: 744px) {
   .hero .lined__box { padding: var(--s5); }
-  .card { padding: var(--s4); }
+  .card:not(.flex) { padding: var(--s4); }
 }
