@@ -37,7 +37,7 @@ Fixtures are real files: audio, video, images and archives in [`fixtures/`](fixt
 
 ## Run it
 
-Use a dedicated test project: the script creates a source, a CLI destination and a connection, all named `binary-formats`.
+Use a dedicated test project: the script creates a source, a CLI destination and a connection, all named `binary-payloads`.
 
 ```bash
 npm install

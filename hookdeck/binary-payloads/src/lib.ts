@@ -21,9 +21,9 @@ export const API_BASE = process.env.HOOKDECK_API_BASE || "https://api.hookdeck.c
 export const HOOKDECK_CLI = process.env.HOOKDECK_CLI || bundledCli();
 export const PORT = Number(process.env.PORT || 4300);
 
-const CONNECTION = "binary-formats";
-const SOURCE = "binary-formats";
-const DESTINATION = "local-binary-formats";
+const CONNECTION = "binary-payloads";
+const SOURCE = "binary-payloads";
+const DESTINATION = "local-binary-payloads";
 const RECEIVE_PATH = "/receive";
 
 export interface Received {
