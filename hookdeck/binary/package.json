@@ -1,0 +1,20 @@
+{
+  "name": "hookdeck-binary-formats-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Sends a fixture for each content type through Hookdeck to a CLI listener and reports which arrive byte-exact.",
+  "scripts": {
+    "test": "tsx src/run.ts",
+    "ui": "tsx src/ui.ts",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "hookdeck-cli": "3.1.0"
+  }
+}

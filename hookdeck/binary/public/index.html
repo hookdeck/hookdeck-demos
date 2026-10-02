@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Binary Payload Formats</title>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <script>
+    // The design system's dark mode is a class on <html>; follow the OS setting
+    const dark = matchMedia('(prefers-color-scheme: dark)');
+    const applyTheme = () => document.documentElement.classList.toggle('dark', dark.matches);
+    applyTheme();
+    dark.addEventListener('change', applyTheme);
+  </script>
+  <style>
+    body { background: var(--tan-bg); }
+    main { padding: var(--s10) var(--s4) var(--s16); max-width: 1320px; }
+    a { color: var(--primary-fg); }
+
+    /* Header: the "lined" blueprint frame */
+    .hero { margin-bottom: var(--s8); }
+    .hero .lined__box { border-right: none; border-bottom: none; display: grid; gap: var(--s3); }
+    .eyebrow { color: var(--neutral-fg-3); text-transform: uppercase; }
+    .hero h1 { margin: 0; }
+    .hero p { color: var(--neutral-fg-2); max-width: 760px; }
+    .hero p code { font-size: 0.9em; color: var(--neutral-fg-1); }
+    .meta { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s6); align-items: center; color: var(--neutral-fg-3); }
+    .meta code { color: var(--neutral-fg-1); }
+    .meta .button--minimal { display: inline-flex; padding: 0 var(--s2); }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s4); }
+    .summary { display: flex; flex-wrap: wrap; gap: var(--s2); margin-left: auto; }
+
+    /* Results table */
+    .results { padding: 0; overflow-x: auto; }
+    /* Fixed layout: column widths never change with the results, so nothing shifts as rows update */
+    table { width: 100%; border-collapse: collapse; min-width: 1080px; table-layout: fixed; }
+    th, td { text-align: left; padding: var(--s2) var(--s3); border-bottom: 1px dashed var(--neutral-outline-2); vertical-align: top; }
+    th { vertical-align: middle; }
+    /* Each cell's main label sits on a first line as tall as the Send button, so labels align across a row whatever is shown beneath them */
+    .line { display: flex; align-items: center; gap: var(--s2); min-height: 30px; }
+    th { color: var(--neutral-fg-3); font-weight: 400; text-transform: uppercase; border-bottom-style: solid; white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    tr.group td { background: var(--bg-1); border-bottom-style: solid; padding-top: var(--s3); }
+    tr.group .group-row { display: flex; align-items: center; gap: var(--s3); }
+    tr.group .title { font-weight: 600; }
+    tr.group .hint { color: var(--neutral-fg-3); }
+    tr.group .button { margin-left: auto; }
+    td code { font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+    .sub { overflow-wrap: anywhere; }
+    .sub { color: var(--neutral-fg-3); }
+    .none { color: var(--disabled-fg); }
+    .links { display: flex; gap: var(--s2); align-items: center; white-space: nowrap; }
+    .links a { text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+    td .button { white-space: nowrap; }
+
+    /* Preview */
+    tr.preview td { background: var(--bg-1); padding: var(--s4) var(--s4) var(--s5); }
+    /* minmax(0, 1fr): a wide hex dump scrolls inside its box instead of widening the table */
+    .preview-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s3); justify-items: start; min-width: 0; }
+    .preview-body .note { color: var(--neutral-fg-2); overflow-wrap: anywhere; }
+    .preview-body img {
+      max-width: min(320px, 100%); image-rendering: pixelated; border-radius: var(--radius-s); box-shadow: var(--elevation-small);
+      background: repeating-conic-gradient(var(--bg-3) 0% 25%, var(--bg-0) 0% 50%) 50% / 12px 12px;
+    }
+    .preview-body img.tiny { width: 48px; height: 48px; }
+    .preview-body video { max-width: min(320px, 100%); border-radius: var(--radius-s); }
+    .preview-body iframe { width: 100%; max-width: 480px; height: 180px; border: none; border-radius: var(--radius-s); box-shadow: var(--elevation-small); background: #fff; }
+    .preview-body pre {
+      width: 100%; max-width: 100%; box-sizing: border-box; padding: var(--s3); background: var(--bg-0); border-radius: var(--radius); box-shadow: var(--elevation-small);
+      overflow-x: auto; max-height: 240px; font-size: 12px; line-height: 18px; color: var(--neutral-fg-1);
+    }
+    .entries { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s3); width: 100%; min-width: 0; }
+    .entry { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1-5); justify-items: start; min-width: 0; }
+
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: var(--s1-5); background: var(--disabled-fg); }
+    .dot.connected { background: var(--color-success); }
+    .dot.connecting { background: var(--color-warning); }
+    .dot.stopped { background: var(--color-danger); }
+
+    @media (max-width: 744px) {
+      .summary { margin-left: 0; width: 100%; }
+      .hero .lined__box { padding: var(--s5); }
+    }
+  </style>
+</head>
+<body>
+  <main class="max" style="max-width: 1320px">
+    <section class="hero lined">
+      <div class="lined__box">
+        <span class="eyebrow mono-xs">{ Hookdeck Event Gateway }</span>
+        <h1 class="title-2xl">Binary payload <em>formats</em></h1>
+        <p class="body-m">
+          Each row sends a fixture to a Hookdeck source. Hookdeck either rejects it at ingestion or delivers it through
+          <code>hookdeck listen</code> to this server, which compares the SHA-256 with what was sent.
+          Stop the listener to see that nothing arrives without it.
+        </p>
+        <div class="meta body-xs">
+          <span>Source <code id="source">…</code></span>
+          <span>CLI <code id="cli">…</code></span>
+          <span><span class="dot" id="listener-dot"></span>Listener <span id="listener-state">…</span>
+            <button class="button button--minimal" id="listener-toggle"></button></span>
+        </div>
+      </div>
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+    <div class="toolbar">
+      <button class="button" id="send-all">Send all</button>
+      <button class="button button--secondary" id="reset">Clear results</button>
+      <div class="summary" id="summary"></div>
+    </div>
+
+    <div class="card results">
+      <table class="body-xs">
+        <colgroup>
+          <col style="width: 84px">
+          <col style="width: 15%">
+          <col>
+          <col style="width: 12%">
+          <col style="width: 15%">
+          <col style="width: 8%">
+          <col style="width: 15%">
+          <col style="width: 190px">
+        </colgroup>
+        <thead>
+          <tr class="mono-xs">
+            <th></th>
+            <th>Case</th>
+            <th>Sent as</th>
+            <th>Ingestion</th>
+            <th>Delivered via CLI</th>
+            <th>Byte-exact</th>
+            <th>Received as</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const GROUPS = {
+      text: { title: 'Text controls', hint: 'Always supported' },
+      allowlist: { title: 'Binary allowlist', hint: 'octet-stream, pdf, image/*, multipart, gzip encoding' },
+      'off-list': { title: 'Not on the allowlist', hint: 'Sent with their real Content-Type' },
+      override: { title: 'With the override', hint: '?x-hookdeck-content-type=application/octet-stream' },
+    };
+
+    let cases = [];
+    let listenerState = 'connecting';
+    const state = {}; // latest run per case id
+    const open = new Set(); // case ids with the preview expanded
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const BADGE = { ok: 'badge--success', bad: 'badge--danger', wait: 'badge--warning' };
+    const pill = (cls, text) => `<span class="badge ${BADGE[cls]}">${esc(text)}</span>`;
+    const line = (html) => `<div class="line">${html}</div>`;
+    const dash = line('<span class="none">-</span>');
+
+    function cells(c) {
+      const s = state[c.id];
+      if (!s) return `<td>${dash}</td><td>${dash}</td><td>${dash}</td><td>${dash}</td><td></td>`;
+
+      const rejected = s.ingestion && s.ingestion !== 'accepted';
+      const ingestion = !s.ingestion
+        ? pill('wait', s.requestId ? 'checking…' : 'sending…')
+        : rejected ? null : pill('ok', 'accepted');
+      const delivered = s.delivered
+        ? `${line(`<span class="badge badge--success badge--mono">${s.ms != null ? `${s.ms} ms` : 'yes'}</span>`)}<div class="sub"><code>${esc(s.eventId || '')}</code></div>`
+        : rejected ? dash : line(s.noListener ? pill('bad', 'no listener') : pill('wait', 'waiting…'));
+      const exact = s.delivered ? line(s.exact ? pill('ok', 'match') : pill('bad', 'mismatch')) : dash;
+      const received = s.delivered ? `${line(`<code>${esc(s.contentType.split(';')[0])}</code>`)}<div class="sub">${s.bytes} bytes</div>` : dash;
+      const links = [
+        s.delivered && `<button class="button button--minimal" data-preview="${esc(c.id)}">${open.has(c.id) ? 'Hide' : 'Preview'}</button>`,
+        s.requestId && `<a href="https://dashboard.hookdeck.com/requests/${esc(s.requestId)}" target="_blank" rel="noopener">request</a>`,
+        s.eventUrl && `<a href="${esc(s.eventUrl)}" target="_blank" rel="noopener">event</a>`,
+      ].filter(Boolean).join('');
+      const cause = rejected ? s.ingestion.replace('rejected: ', '') : '';
+      const ingestionCell = rejected
+        ? `${line(pill('bad', 'rejected'))}<div class="sub" title="${esc(cause)}">${esc(cause.charAt(0) + cause.slice(1).toLowerCase().replace(/_/g, ' '))}</div>`
+        : line(ingestion);
+      return `<td>${ingestionCell}</td><td>${delivered}</td><td>${exact}</td><td>${received}</td><td>${line(`<span class="links">${links}</span>`)}</td>`;
+    }
+
+    function row(c) {
+      const note = c.note && c.note !== 'override' && c.note !== 'control' ? `<div class="sub">${esc(c.note)}</div>` : '';
+      const main = `
+        <tr data-id="${esc(c.id)}">
+          <td><button class="button button--secondary" data-send="${esc(c.id)}">Send</button></td>
+          <td>${line(`<code>${esc(c.id)}</code>`)}${note}</td>
+          <td>${line(`<code>${esc(c.contentType)}</code>`)}<div class="sub">${c.bytes} bytes${c.utf8 ? '' : ' · <span style="white-space: nowrap">not UTF-8</span>'}</div></td>
+          ${cells(c)}
+        </tr>`;
+      return main + previewRow(c);
+    }
+
+    function previewRow(c) {
+      const s = state[c.id];
+      return open.has(c.id) && s?.delivered
+        ? `<tr class="preview" data-preview-for="${esc(c.id)}" data-run="${esc(s.run)}"><td colspan="8"><div class="preview-body" id="preview-${esc(c.id)}">Loading…</div></td></tr>`
+        : '';
+    }
+
+    function render() {
+      let html = '';
+      for (const [kind, group] of Object.entries(GROUPS)) {
+        const inGroup = cases.filter((c) => c.kind === kind);
+        if (!inGroup.length) continue;
+        html += `<tr class="group"><td colspan="8"><div class="group-row"><span class="title body-s">${esc(group.title)}</span><code class="hint">${esc(group.hint)}</code><button class="button button--secondary" data-send-group="${kind}">Send group</button></div></td></tr>`;
+        html += inGroup.map(row).join('');
+      }
+      $('rows').innerHTML = html;
+      open.forEach(loadPreview);
+      renderSummary();
+    }
+
+    function renderRow(id) {
+      const c = cases.find((x) => x.id === id);
+      const tr = document.querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+      if (!c || !tr) return;
+      // Keep an open preview for the same send in place, so audio or video
+      // that is playing isn't recreated when a later update re-renders the row
+      const existing = document.querySelector(`tr[data-preview-for="${CSS.escape(id)}"]`);
+      const keep = existing && open.has(id) && existing.dataset.run === state[id]?.run;
+      if (!keep) existing?.remove();
+      tr.outerHTML = keep ? row(c).replace(previewRow(c), '') : row(c);
+      if (open.has(id) && !keep) loadPreview(id);
+      renderSummary();
+    }
+
+    function renderSummary() {
+      const runs = Object.values(state);
+      const exact = runs.filter((s) => s.exact).length;
+      const rejected = runs.filter((s) => s.ingestion && s.ingestion !== 'accepted').length;
+      const pending = runs.length - exact - rejected - runs.filter((s) => s.delivered && !s.exact).length;
+      $('summary').innerHTML = runs.length
+        ? `<span class="badge">Sent ${runs.length}</span><span class="badge badge--success">Byte-exact ${exact}</span><span class="badge badge--danger">Rejected ${rejected}</span><span class="badge badge--warning">Pending ${pending}</span>`
+        : '';
+    }
+
+    function media(kind, src, type, name) {
+      if (kind.startsWith('image/')) return `<img src="${src}" alt="${esc(name)}"${type === 'webp' ? ' class="tiny"' : ''}>`;
+      if (kind.startsWith('audio/')) return `<audio controls src="${src}"></audio>`;
+      if (kind.startsWith('video/')) return `<video controls src="${src}"></video>`;
+      if (kind === 'application/pdf') return `<iframe src="${src}" title="${esc(name)}"></iframe>`;
+      return '';
+    }
+
+    async function loadPreview(id) {
+      const s = state[id];
+      const el = $(`preview-${id}`);
+      if (!s || !el) return;
+      const p = await fetch(`/api/preview/${id}/${s.run}`).then((r) => r.json());
+      const src = `/api/raw/${id}/${s.run}`;
+      const parts = [];
+
+      if (s.contentType.split(';')[0] !== p.realType) {
+        parts.push(`<div class="note">Arrived as <code>${esc(s.contentType.split(';')[0])}</code>. Previewed as <code>${esc(p.realType)}</code>, which this page knows from the case, not from the delivery.</div>`);
+      }
+      if (p.text !== undefined) parts.push(`<pre>${esc(p.text)}</pre>`);
+      const shown = media(p.realType, src, id.startsWith('webp') ? 'webp' : '', id);
+      if (shown) parts.push(shown);
+      if (p.entries.length) {
+        parts.push(`<div class="entries">${p.entries.map((e) => `
+          <div class="entry">
+            <div class="sub"><code>${esc(e.name)}</code> · ${esc(e.contentType)} · ${e.bytes} bytes</div>
+            ${e.text !== undefined ? `<pre>${esc(e.text)}</pre>` : media(e.contentType, `${src}?entry=${e.index}`, '', e.name)}
+          </div>`).join('')}</div>`);
+      }
+      parts.push(`<div class="sub mono-xs">FIRST BYTES${p.utf8 ? '' : ' · NOT VALID UTF-8'}</div><pre>${esc(p.hex)}</pre>`);
+      el.innerHTML = parts.join('');
+    }
+
+    async function sendCase(id) {
+      const res = await fetch(`/api/send/${encodeURIComponent(id)}`, { method: 'POST' });
+      const { run } = await res.json();
+      state[id] = { run, noListener: listenerState !== 'connected' };
+      open.delete(id);
+      renderRow(id);
+    }
+
+    function setListener(stateName) {
+      listenerState = stateName;
+      $('listener-dot').className = `dot ${stateName}`;
+      $('listener-state').textContent = stateName;
+      const toggle = $('listener-toggle');
+      toggle.textContent = stateName === 'connected' ? 'Stop' : stateName === 'stopped' ? 'Start' : '';
+      toggle.dataset.next = stateName === 'connected' ? 'stopped' : 'connected';
+    }
+
+    document.addEventListener('click', (e) => {
+      const one = e.target.closest('[data-send]');
+      if (one) return sendCase(one.dataset.send);
+      const group = e.target.closest('[data-send-group]');
+      if (group) return cases.filter((c) => c.kind === group.dataset.sendGroup).forEach((c) => sendCase(c.id));
+      const preview = e.target.closest('[data-preview]');
+      if (preview) {
+        const id = preview.dataset.preview;
+        open.has(id) ? open.delete(id) : open.add(id);
+        return renderRow(id);
+      }
+    });
+    $('send-all').addEventListener('click', () => cases.forEach((c) => sendCase(c.id)));
+    $('reset').addEventListener('click', () => {
+      for (const k of Object.keys(state)) delete state[k];
+      open.clear();
+      render();
+    });
+    $('listener-toggle').addEventListener('click', (e) => {
+      fetch(`/api/listener?state=${e.target.dataset.next}`, { method: 'POST' });
+    });
+
+    const events = new EventSource('/api/events');
+    events.onmessage = (msg) => {
+      const e = JSON.parse(msg.data);
+      if (e.type === 'listener') return setListener(e.state);
+      const s = state[e.id];
+      if (!s || s.run !== e.run) return; // an earlier send of the same case
+      if (e.type === 'sent') s.requestId = e.requestId;
+      if (e.type === 'ingestion') s.ingestion = e.ingestion;
+      if (e.type === 'delivered') Object.assign(s, { delivered: true, exact: e.exact, bytes: e.bytes, contentType: e.contentType, eventId: e.eventId, eventUrl: e.eventUrl, ms: e.ms });
+      if (e.type === 'error') s.ingestion = `rejected: ${e.error}`;
+      renderRow(e.id);
+    };
+
+    fetch('/api/cases').then((r) => r.json()).then((data) => {
+      cases = data.cases;
+      $('source').textContent = data.sourceUrl;
+      $('cli').textContent = data.cli;
+      setListener(data.listener);
+      render();
+    });
+  </script>
+</body>
+</html>
