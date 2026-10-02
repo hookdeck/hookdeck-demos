@@ -205,6 +205,18 @@ that - the event where one exists, the request where none does. It skips
 anything already delivered on that connection, so it is safe when Hookdeck got
 there first, and safe to run twice.
 
+It also waits. Recovery fires two seconds after a session reconnects, and that
+lands inside a window where the event is not settled yet. Measured on a cut
+link: the event sat at `QUEUED` with `attempts=0` from t+3s to t+7.5s and only
+settled as `FAILED` at t+8.7s. A retry during those five seconds publishes the
+event for delivery *and* leaves any scheduled retry armed - `POST
+/events/{id}/retry` checks neither - so the machine receives it twice.
+
+So an unsettled event is left alone until it settles, and only a `FAILED` one is
+retried. If it has not settled in 30 seconds, recovery reports it and does
+nothing: Hookdeck finishing the job beats a duplicate, and the next run picks it
+up because the watermark does not advance past it.
+
 ```bash
 npm run fleet -- offline per-machine group-a-host-03   # link cut, machine up
 npm run send   -- --approach per-machine --repo demo-org/service-api
@@ -235,6 +247,12 @@ Worth knowing before you rely on any of this. Verified against
 - `CLI_UNAVAILABLE` is an attempt error code on an event that exists.
   `CLI_DISCONNECTED` is an ignored-event cause where no event was created. Only
   the second means there is nothing to retry.
+- An event is only yours to retry once it is settled. `SUCCESSFUL`, `FAILED` and
+  `CANCELLED` are terminal; `QUEUED`, `SCHEDULED` and `HOLD` all mean Hookdeck
+  still intends to deliver it. `POST /events/{id}/retry` does not check: a
+  manual retry publishes the event straight away and deliberately leaves
+  `next_attempt_at` set, so any scheduled retry fires as well and the
+  destination receives it twice.
 - Sessions are not exposed to you. The CLI binary references a `/cli-sessions`
   endpoint, but it returns 401 with a project API key, and nothing surfaces
   sessions in the dashboard. That is the root of every limitation in the
