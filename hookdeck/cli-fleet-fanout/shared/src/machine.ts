@@ -321,11 +321,15 @@ function maybeRecover(line: string): void {
   recovering = true;
   // Belt and braces: whatever happens to the promise, allow the next
   // reconnect to try again.
+  //
+  // Generous, because recovery waits for unsettled events to finish rather than
+  // retrying them (see recover.ts). Releasing early would let a second
+  // recovery run alongside the first, and the two could retry the same event.
   const release = setTimeout(() => {
     if (!recovering) return;
-    log("RECOVER timed out after 60s - allowing the next reconnect to retry");
+    log("RECOVER timed out after 180s - allowing the next reconnect to retry");
     recovering = false;
-  }, 60_000);
+  }, 180_000);
   release.unref();
   // The "Connected" line is local. Give the session a moment to register
   // before asking Hookdeck to deliver what this connection missed.

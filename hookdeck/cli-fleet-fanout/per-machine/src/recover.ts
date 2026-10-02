@@ -18,6 +18,14 @@
  * Both are possible because the machine has a connection of its own. That is
  * what one connection per group cannot give you.
  *
+ * Either way, only a *settled* event is ours to retry. Recovery runs the moment
+ * a session reconnects, which can land while Hookdeck still has an attempt
+ * queued or a retry scheduled, and `POST /events/{id}/retry` has no guard on
+ * status: it publishes the event for delivery immediately and leaves
+ * `next_attempt_at` alone, so the scheduled retry stays armed and fires too.
+ * That is a duplicate delivery, caused by the recovery meant to prevent a miss.
+ * So wait for the event to settle, and retry only if it settled as FAILED.
+ *
  * `machine.ts` calls this when a machine's CLI session reconnects. The last run
  * is recorded in run/recover.<machine>.json and used as the next --since.
  */
@@ -27,14 +35,49 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { connectionName, runDir } from "../../shared/src/config.js";
 import {
+  getEvent,
+  isSettled,
   listEventsForRequest,
   listIgnoredEventsForRequest,
   listRequests,
   retryEvent,
   retryRequest,
+  type HookdeckEvent,
 } from "../../shared/src/hookdeck.js";
 
 const CAUSE = "CLI_DISCONNECTED";
+
+/**
+ * How long to let an unsettled event finish before deciding about it, and how
+ * often to look. Recovery runs the moment a session reconnects, which can land
+ * while Hookdeck still has an attempt queued or a retry scheduled for the same
+ * event - and retrying one of those delivers it twice. So wait for it to
+ * settle instead, then retry only if it actually failed.
+ *
+ * The CLI retry budget is about 10 seconds (MAX_CLI_RETRIES 5 at
+ * CLI_RETRY_DELAY 2s), so this is a generous ceiling rather than a guess.
+ */
+const SETTLE_TIMEOUT_MS = 30_000;
+const SETTLE_POLL_MS = 2_000;
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Poll one event until it settles, or give up.
+ *
+ * Giving up is not a failure: the event is still Hookdeck's to deliver, and
+ * the next run picks it up. Forcing a retry is the only thing that could
+ * duplicate, so when in doubt, do nothing.
+ */
+async function waitForSettled(event: HookdeckEvent): Promise<HookdeckEvent> {
+  const deadline = Date.now() + SETTLE_TIMEOUT_MS;
+  let current = event;
+  while (!isSettled(current) && Date.now() < deadline) {
+    await sleep(SETTLE_POLL_MS);
+    current = await getEvent(current.id);
+  }
+  return current;
+}
 
 interface SetupState {
   sources: Record<string, { id: string; name: string; url: string }>;
@@ -64,8 +107,13 @@ function defaultSince(machineName: string): string {
 export interface RecoverResult {
   /** Requests where no event was created for this connection. */
   missed: string[];
-  /** Events that exist for this connection but failed to deliver. */
+  /** Events that exist for this connection and settled as FAILED. */
   failedEvents: string[];
+  /**
+   * Events still in flight when we gave up waiting. Deliberately not retried -
+   * Hookdeck will finish them, and a retry now would duplicate.
+   */
+  unsettled: string[];
 }
 
 export async function recoverMachine(
@@ -91,6 +139,7 @@ export async function recoverMachine(
 
   const missed: string[] = [];
   const failedEvents: string[] = [];
+  const unsettled: string[] = [];
   let alreadyDelivered = 0;
 
   for (const request of requests) {
@@ -101,9 +150,15 @@ export async function recoverMachine(
     if (events.length > 0) {
       // An event exists, so retry the event rather than the request - retrying
       // the request would create a second event alongside the failed one.
-      const failed = events.filter((e) => e.status !== "SUCCESSFUL");
-      if (failed.length > 0) failedEvents.push(...failed.map((e) => e.id));
-      else alreadyDelivered += 1; // skipping these is what makes a re-run safe
+      //
+      // Only a settled event is ours to retry. Anything still queued, scheduled
+      // or held is Hookdeck's to finish, and retrying it would deliver it twice.
+      for (const event of events) {
+        const settled = await waitForSettled(event);
+        if (!isSettled(settled)) unsettled.push(settled.id);
+        else if (settled.status === "FAILED") failedEvents.push(settled.id);
+        else alreadyDelivered += 1; // skipping these is what makes a re-run safe
+      }
       continue;
     }
 
@@ -117,12 +172,17 @@ export async function recoverMachine(
 
   console.log(
     `  ${requests.length} request(s) in window: ${failedEvents.length} failed event(s), ` +
-      `${missed.length} never created, ${alreadyDelivered} already delivered\n`,
+      `${missed.length} never created, ${alreadyDelivered} already delivered` +
+      (unsettled.length > 0 ? `, ${unsettled.length} still in flight (left alone)` : "") +
+      "\n",
   );
+  for (const id of unsettled) {
+    console.log(`  in flight ${id} - Hookdeck is still delivering it, leaving it alone`);
+  }
 
   if (missed.length === 0 && failedEvents.length === 0) {
     console.log("Nothing to recover.");
-    return { missed, failedEvents };
+    return { missed, failedEvents, unsettled };
   }
 
   if (opts.dryRun) {
@@ -131,7 +191,7 @@ export async function recoverMachine(
     for (const id of missed) {
       console.log(`  POST /requests/${id}/retry webhook_ids=${connection.id}`);
     }
-    return { missed, failedEvents };
+    return { missed, failedEvents, unsettled };
   }
 
   for (const id of failedEvents) {
@@ -143,16 +203,20 @@ export async function recoverMachine(
     console.log(`  retried request ${id} -> ${(result.events ?? []).length} event(s)`);
   }
 
+  // Only advance the watermark if nothing was left in flight. `since` filters
+  // requests by creation time, so moving it to now would put an unsettled
+  // event's request behind the window and the next run would never see it.
+  const lastRunAt = unsettled.length === 0 ? startedAt : since;
   mkdirSync(runDir(), { recursive: true });
   writeFileSync(
     statePath(machineName),
-    `${JSON.stringify({ machine: machineName, lastRunAt: startedAt, missed, failedEvents }, null, 2)}\n`,
+    `${JSON.stringify({ machine: machineName, lastRunAt, missed, failedEvents, unsettled }, null, 2)}\n`,
   );
 
   console.log(
     `\nRecovered ${missed.length + failedEvents.length} event(s) for ${machineName} only.`,
   );
-  return { missed, failedEvents };
+  return { missed, failedEvents, unsettled };
 }
 
 async function main(): Promise<void> {

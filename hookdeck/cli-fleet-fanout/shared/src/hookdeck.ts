@@ -120,6 +120,27 @@ export const listRequests = (query: {
 
 export const getRequest = (id: string): Promise<HookdeckRequest> => api(`/requests/${id}`);
 
+export const getEvent = (id: string): Promise<HookdeckEvent> => api(`/events/${id}`);
+
+/**
+ * Event statuses, and which of them are settled.
+ *
+ * SUCCESSFUL, FAILED and CANCELLED are terminal: nothing further will happen
+ * on its own. QUEUED, SCHEDULED and HOLD all mean Hookdeck still intends to
+ * deliver - queued for an attempt now, waiting on a scheduled retry, or held
+ * because the connection is paused.
+ *
+ * The distinction matters because `POST /events/{id}/retry` has no guard on
+ * status. A manual retry publishes the event for delivery immediately and
+ * deliberately leaves `next_attempt_at` alone, so a scheduled retry stays
+ * armed and fires as well. Retrying an unsettled event is how you get two
+ * deliveries of it.
+ */
+export const TERMINAL_EVENT_STATUSES = ["SUCCESSFUL", "FAILED", "CANCELLED"] as const;
+
+export const isSettled = (event: Pick<HookdeckEvent, "status">): boolean =>
+  (TERMINAL_EVENT_STATUSES as readonly string[]).includes(event.status);
+
 /**
  * Events for one request.
  *
