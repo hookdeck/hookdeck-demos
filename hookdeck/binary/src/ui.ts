@@ -257,6 +257,12 @@ async function main(): Promise<void> {
       return true;
     }
 
+    if (req.method === "GET" && url.pathname === "/theme.js") {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      res.end(readFileSync(resolve(ROOT, "public/theme.js")));
+      return true;
+    }
+
     if (req.method === "GET" && url.pathname.startsWith("/ds/")) {
       const path = resolve(DS_DIR, decodeURIComponent(url.pathname.slice("/ds/".length)));
       const type = STATIC_TYPES[extname(path)];

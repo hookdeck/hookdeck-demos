@@ -6,13 +6,7 @@
   <title>Binary Payload Formats</title>
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
-  <script>
-    // The design system's dark mode is a class on <html>; follow the OS setting
-    const dark = matchMedia('(prefers-color-scheme: dark)');
-    const applyTheme = () => document.documentElement.classList.toggle('dark', dark.matches);
-    applyTheme();
-    dark.addEventListener('change', applyTheme);
-  </script>
+  <script src="/theme.js"></script>
   <style>
     body { background: var(--tan-bg); }
     main { padding: var(--s10) var(--s4) var(--s16); max-width: 1320px; }
