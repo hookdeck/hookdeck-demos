@@ -1,17 +1,20 @@
+const BADGES = { completed: 'badge--success', failed: 'badge--danger', pending: 'badge--warning' };
+
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
 function renderRequest(req) {
   return `
-    <div class="request-header">
-      <strong>ID: ${req.id}</strong>
-      <span class="status ${req.status}">${req.status.toUpperCase()}</span>
+    <div class="request-head">
+      <span class="badge ${BADGES[req.status] || ''}">${esc(req.status)}</span>
+      <span class="request-meta body-xs"><span>${new Date(req.createdAt).toLocaleString()}</span></span>
     </div>
-    <div class="request-text">"${req.text}"</div>
-    <div class="request-meta">Model: ${req.model} | Created: ${new Date(req.createdAt).toLocaleString()}</div>
-    ${req.status === 'completed' && req.audioFile ? `
-      <audio controls src="/tts/audio/${req.audioFile}"></audio>
-    ` : ''}
-    ${req.status === 'failed' && req.error ? `
-      <div class="error">Error: ${req.error}</div>
-    ` : ''}
+    <div class="request-text body-s">“${esc(req.text)}”</div>
+    ${req.status === 'completed' && req.audioFile ? `<audio controls src="/tts/audio/${esc(req.audioFile)}"></audio>` : ''}
+    ${req.status === 'failed' && req.error ? `<div class="error body-xs">${esc(req.error)}</div>` : ''}
+    <div class="request-meta body-xs">
+      <span>Model <code>${esc(req.model)}</code></span>
+      <span>ID <code>${esc(req.id)}</code></span>
+    </div>
   `;
 }
 
@@ -25,16 +28,16 @@ async function loadRequests() {
 
     const listEl = document.getElementById('requestsList');
     if (requests.length === 0) {
-      listEl.innerHTML = '<p style="color: #888;">No requests yet.</p>';
+      listEl.innerHTML = '<p class="empty body-s">No requests yet.</p>';
       return;
     }
-    listEl.querySelector('p')?.remove();
+    listEl.querySelector('.empty')?.remove();
 
     requests.forEach((req, index) => {
       let item = listEl.querySelector(`[data-id="${req.id}"]`);
       if (!item) {
         item = document.createElement('div');
-        item.className = 'request-item';
+        item.className = 'request';
         item.dataset.id = req.id;
       }
       if (item.dataset.status !== req.status) {
@@ -51,38 +54,42 @@ async function loadRequests() {
   }
 }
 
+function showMessage(text, type) {
+  const messageEl = document.getElementById('message');
+  messageEl.textContent = text;
+  messageEl.className = `message body-s ${type || ''}`;
+}
+
 // Handle form submission
 document.getElementById('ttsForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  
-  const messageEl = document.getElementById('message');
+
   const submitBtn = e.target.querySelector('button[type="submit"]');
-  
   submitBtn.disabled = true;
-  messageEl.innerHTML = '';
-  
+  showMessage('', '');
+
   const formData = {
     text: document.getElementById('text').value,
     model: document.getElementById('model').value
   };
-  
+
   try {
     const response = await fetch('/tts/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
     });
-    
+
     const result = await response.json();
-    
+
     if (response.ok) {
-      messageEl.innerHTML = `<div class="success">✅ Request submitted! ID: ${result.requestId}</div>`;
+      showMessage(`Request submitted (${result.requestId}). Waiting for the audio callback…`, 'success');
       setTimeout(() => loadRequests(), 1000);
     } else {
-      messageEl.innerHTML = `<div class="error">❌ Error: ${result.error}</div>`;
+      showMessage(`Error: ${result.error}`, 'error');
     }
   } catch (error) {
-    messageEl.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+    showMessage(`Error: ${error.message}`, 'error');
   } finally {
     submitBtn.disabled = false;
   }

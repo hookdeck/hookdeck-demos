@@ -152,14 +152,14 @@ deepgram/stt-tts/
 ├── scripts/
 │   └── setup-hookdeck.ts    # Creates Hookdeck connections, writes .env
 ├── public/                  # Static web files
+│   ├── ds/                  # Hookdeck design system (tokens, components CSS, assets)
+│   ├── demo.css             # Page styles shared by the demos
 │   ├── index.html           # Landing page
 │   ├── stt/                 # STT demo UI
 │   │   ├── index.html       # STT interface
-│   │   ├── styles.css       # STT styles
 │   │   └── app.js           # STT client-side JavaScript
 │   └── tts/                 # TTS demo UI
 │       ├── index.html       # TTS interface
-│       ├── styles.css       # TTS styles
 │       └── app.js           # TTS client-side JavaScript
 └── src/
     ├── server.ts            # Main Express server
