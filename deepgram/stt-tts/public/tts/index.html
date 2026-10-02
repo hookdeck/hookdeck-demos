@@ -9,22 +9,12 @@
 <body>
   <h1>🎙️ Hookdeck Deepgram TTS Demo</h1>
   
-  <div class="warning-banner">
-    <h3>⚠️ This Demo is Currently Non-Functional</h3>
-    <p>
-      <strong>Reason:</strong> Deepgram TTS callbacks send binary audio data (audio/mpeg),
-      but Hookdeck only supports JSON webhook payloads. The webhook will be received
-      but the audio data cannot be forwarded.
-    </p>
-    <p>
-      <strong>Purpose:</strong> This demo documents the limitation and shows what would
-      be needed for callback-based TTS if Hookdeck supported binary content types in the future.
-    </p>
-    <p>
-      <a href="/">← Back to Demos</a>
-    </p>
-  </div>
-  
+  <p>
+    Deepgram generates the audio asynchronously and POSTs it as a binary <code>audio/mpeg</code>
+    callback. Hookdeck receives it and forwards the bytes unchanged to this server.
+    <a href="/">← Back to Demos</a>
+  </p>
+
   <div class="container">
     <h2>Generate Speech</h2>
     <form id="ttsForm">

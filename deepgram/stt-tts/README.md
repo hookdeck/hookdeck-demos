@@ -12,61 +12,46 @@ This project showcases various integrations between Deepgram's AI APIs and Hookd
 npm install
 ```
 
-### 2. Set up Hookdeck Connections
-
-Install Hookdeck CLI and create connections for TTS and STT demos:
-
-```bash
-# Install Hookdeck CLI (if not already installed)
-npm install -g hookdeck
-
-# Login to Hookdeck
-hookdeck login
-
-# Create/update TTS connection (idempotent)
-hookdeck connection upsert deepgram-tts \
-  --source-name deepgram-tts \
-  --source-type WEBHOOK \
-  --destination-name local-deepgram \
-  --destination-type CLI \
-  --destination-cli-path /tts/webhook
-
-# Create/update STT connection (idempotent)
-hookdeck connection upsert deepgram-stt \
-  --source-name deepgram-stt \
-  --source-type WEBHOOK \
-  --destination-name local-deepgram \
-  --destination-type CLI \
-  --destination-cli-path /stt/webhook
-```
-
-**Get Source URLs:** After creating the connections, visit your [Hookdeck Dashboard](https://dashboard.hookdeck.com) to find the Source URLs for each connection (format: `https://hkdk.events/...`)
-
-Listen for events:
-
-```bash
-hookdeck listen 4000 '*'
-```
-
-### 3. Configure Environment
-
-Copy the example environment file:
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and add your configuration:
+Add your Deepgram API key (from the [Deepgram Console](https://console.deepgram.com/)) to `.env`:
 
 ```env
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
-PORT=4000
-TTS_CALLBACK_URL=https://hkdk.events/your-tts-source-id-here
-STT_CALLBACK_URL=https://hkdk.events/your-stt-source-id-here
 ```
 
-- Get your Deepgram API key from [Deepgram Console](https://console.deepgram.com/)
-- Copy the Source URLs from Hookdeck dashboard for TTS_CALLBACK_URL and STT_CALLBACK_URL
+### 3. Set up Hookdeck Connections
+
+The Hookdeck CLI is an npm dependency (`hookdeck-cli` 3.1.0, the first release that forwards binary bodies such as the TTS audio), installed by `npm install`. Log in:
+
+```bash
+npx hookdeck login
+```
+
+Create the connections and write their Source URLs into `.env`:
+
+```bash
+npm run setup
+```
+
+The script is idempotent. It creates one connection per demo, each with its own CLI destination:
+
+| Connection | Source | Destination | CLI path |
+|---|---|---|---|
+| `deepgram-tts` | `deepgram-tts` | `local-deepgram-tts` | `/tts/webhook` |
+| `deepgram-stt` | `deepgram-stt` | `local-deepgram-stt` | `/stt/webhook` |
+
+To use a different CLI binary (for example a local build), set `HOOKDECK_CLI=/path/to/hookdeck`.
+
+Listen for events:
+
+```bash
+npm run listen
+```
 
 ### 4. Start the Server
 
@@ -82,15 +67,13 @@ Open your browser to `http://localhost:4000` to see available demos.
 
 ## Available Demos
 
-### 🎧 Speech-to-Text (STT) - ✅ WORKING
+### 🎧 Speech-to-Text (STT)
 
 Record audio in your browser and transcribe it to text using Deepgram's STT API with Hookdeck webhook callbacks.
 
 **URL:** `http://localhost:4000/stt`
 
-**✅ CURRENT STATUS: FULLY FUNCTIONAL WITH HOOKDECK**
-
-This demo showcases the complete Hookdeck + Deepgram integration using callbacks. Unlike TTS, STT callbacks return JSON transcriptions which are fully compatible with Hookdeck.
+Deepgram returns the transcription as a JSON callback, delivered through Hookdeck.
 
 **How it Works:**
 
@@ -98,9 +81,9 @@ This demo showcases the complete Hookdeck + Deepgram integration using callbacks
 2. Recorded audio is uploaded to the server
 3. Server sends audio file to Deepgram STT API with callback URL (pointing to Hookdeck Source)
 4. Deepgram accepts the request and processes transcription asynchronously
-5. ✅ **Deepgram sends JSON transcription to Hookdeck** (content-type: `application/json`)
-6. ✅ **Hookdeck forwards the JSON webhook** to your local server
-7. ✅ **Server receives transcription** and updates the request status
+5. **Deepgram sends JSON transcription to Hookdeck** (content-type: `application/json`)
+6. **Hookdeck forwards the JSON webhook** to your local server
+7. **Server receives transcription** and updates the request status
 8. User sees the transcription in real-time
 
 **Features:**
@@ -126,27 +109,23 @@ This demo showcases the complete Hookdeck + Deepgram integration using callbacks
 - Callback response: JSON with transcription text
 - Auto-refresh: Every 3 seconds when pending requests exist
 
-### 🗣️ Text-to-Speech (TTS) - ⚠️ NOT CURRENTLY WORKING
+### 🗣️ Text-to-Speech (TTS)
 
-Generate natural-sounding speech from text using Deepgram's TTS API.
+Generate natural-sounding speech from text using Deepgram's TTS API, with the generated audio delivered as a binary webhook through Hookdeck.
 
 **URL:** `http://localhost:4000/tts`
 
-**⚠️ CURRENT STATUS: NON-FUNCTIONAL WITH HOOKDECK**
+**How it Works:**
 
-This demo is configured to use Deepgram's callback-based approach but **does not work** with Hookdeck due to a fundamental limitation:
+1. User enters text and picks a voice model
+2. Server calls Deepgram's `/v1/speak` API with a callback URL (pointing to the Hookdeck Source)
+3. Deepgram accepts the request and generates the audio asynchronously
+4. **Deepgram POSTs the audio to Hookdeck** as a raw binary body (content-type: `audio/mpeg`)
+5. **Hookdeck forwards the bytes unchanged** to your local server via the CLI, as `application/octet-stream`
+6. **Server writes the body to disk** as an MP3 and marks the request completed
+7. User plays the audio in the browser
 
-**The Problem:**
-- Deepgram TTS callbacks send binary audio data with `audio/mpeg` content-type
-- Hookdeck is designed for JSON webhook payloads only
-- Hookdeck rejects binary data from Deepgram
-- The webhook endpoint never receives the callback
-
-**Why This Demo Exists:**
-This demo serves as documentation of the limitation and shows what would be needed for callback-based TTS if Hookdeck supported binary content types in the future.
-
-**Alternative Approach:**
-For a working TTS demo, use direct API responses instead of callbacks (synchronous mode where audio is returned immediately in the HTTP response).
+Hookdeck ingests binary bodies sent as `application/octet-stream`, `application/pdf`, `image/*` or `multipart/form-data`. `audio/mpeg` isn't on that list, so the callback URL includes `x-hookdeck-content-type=application/octet-stream` to tell Hookdeck to treat the body as binary. A retried event is redelivered byte-exact.
 
 ### 📊 Audio Intelligence - Coming Soon
 
@@ -170,6 +149,8 @@ deepgram/stt-tts/
 │   └── tts/                 # TTS demo data
 │       ├── audio/           # Generated audio files
 │       └── requests.json    # Request tracking
+├── scripts/
+│   └── setup-hookdeck.ts    # Creates Hookdeck connections, writes .env
 ├── public/                  # Static web files
 │   ├── index.html           # Landing page
 │   ├── stt/                 # STT demo UI
@@ -198,21 +179,21 @@ deepgram/stt-tts/
 - `GET /` - Landing page with demo links
 - `GET /api/health` - Health check endpoint
 
-### STT Demo (✅ Working)
+### STT Demo
 
 - `GET /stt` - STT demo interface
 - `GET /stt/api/requests` - Get all transcription requests (JSON)
 - `POST /stt/api/upload` - Upload audio file (multipart/form-data with `audio` field)
 - `POST /stt/api/transcribe` - Start transcription (accepts `{ requestId, model }`)
-- `POST /stt/webhook` - **Webhook callback handler** (✅ receives JSON transcriptions from Deepgram via Hookdeck)
+- `POST /stt/webhook` - **Webhook callback handler** (receives JSON transcriptions from Deepgram via Hookdeck)
 - `GET /stt/audio/:filename` - Serve uploaded audio files
 
-### TTS Demo (⚠️ Non-functional)
+### TTS Demo
 
 - `GET /tts` - TTS demo interface
 - `GET /tts/api/requests` - Get all TTS requests (JSON)
 - `POST /tts/api/generate` - Generate TTS with callback (accepts `{ text, model }`)
-- `POST /tts/webhook` - Webhook callback handler (⚠️ never called - Hookdeck rejects binary audio)
+- `POST /tts/webhook` - **Webhook callback handler** (receives binary `audio/mpeg` from Deepgram via Hookdeck)
 - `GET /tts/audio/:filename` - Serve generated audio files
 
 ---
@@ -256,7 +237,7 @@ To add a new demo:
 - Verify STT_CALLBACK_URL is correct in `.env`
 - Check server console for webhook callback logs
 - Inspect Hookdeck dashboard for webhook delivery status
-- Ensure the webhook path matches: `/webhooks/deepgram/stt`
+- Ensure the webhook path matches: `/stt/webhook`
 
 **Recording not working:**
 - Ensure you're using a modern browser (Chrome, Firefox, Edge)
@@ -272,7 +253,9 @@ To add a new demo:
 
 ### TTS Demo
 
-**This demo does not work with Hookdeck** - See the demo page for explanation of the limitation.
+**Request stuck in "pending" status:**
+- Check that `hookdeck listen` is running and that TTS_CALLBACK_URL is correct in `.env`
+- Check the Hookdeck dashboard: a failed attempt with `CLI_BINARY_UNSUPPORTED` means your CLI is too old to forward binary bodies. Upgrade it, then retry the event
 
 ### General Issues
 
@@ -282,9 +265,11 @@ To add a new demo:
 - Get your API key from [Deepgram Console](https://console.deepgram.com/)
 
 **"TTS_CALLBACK_URL/STT_CALLBACK_URL not configured" error:**
-- Create Hookdeck connections using the commands in setup section
-- Copy Source URLs from Hookdeck dashboard
-- Add them to your `.env` file
+- Run `npm run setup` to create the connections and write the Source URLs to `.env`
+
+**`npm run setup` says a connection points at the wrong destination:**
+- Earlier versions of this demo shared one `local-deepgram` destination between both connections, so TTS callbacks went to `/stt/webhook`
+- A connection's destination can't be changed. Delete the connection with the command the script prints, then run `npm run setup` again
 
 **Server won't start:**
 - Make sure you've run `npm install`
