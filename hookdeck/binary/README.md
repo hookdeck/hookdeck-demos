@@ -9,6 +9,18 @@ Sends one fixture per content type through a Hookdeck Event Gateway source to a 
 
 Ingestion answers `200` even when it rejects a request, so the script reads the outcome from the API rather than the ingestion response.
 
+## How ingestion classifies a request
+
+Hookdeck doesn't keep a list of every content type. Ingestion ([`cloudflare/src/common/ingest.ts`](https://github.com/hookdeck/http-ingestion/blob/main/cloudflare/src/common/ingest.ts)) applies three rules:
+
+| Rule | Matches | Outcome |
+|---|---|---|
+| Text | `text/*`; `application/json`, `+json`, the AWS JSON types; `application/xml`, `+xml`; `application/x-ndjson`, `application/x-www-form-urlencoded`, `application/jwt`; no `Content-Type` | Accepted as text |
+| Binary allowlist | `application/octet-stream`, `application/pdf`, any `image/*`, `multipart/form-data`, or gzip `Content-Encoding` | Accepted, bytes preserved |
+| Everything else | Any other media type, e.g. `audio/*`, `video/*`, `font/*`, archives, protobuf | Rejected with `UNSUPPORTED_CONTENT_TYPE` |
+
+The cases below are representatives of each rule plus formats people commonly send as webhooks: 25 content types in 26 cases, and an override variant of each of the 17 rejected ones, for 43 sends. "Everything else is rejected" is from the code; the demo tests the types listed, not every possible type.
+
 ## Cases
 
 | Group | Content types |
