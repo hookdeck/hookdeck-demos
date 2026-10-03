@@ -45,8 +45,8 @@ app.use('/tts', ttsRouter);
 app.use('/stt', sttRouter);
 
 // Note: Webhook endpoints are handled directly by the demo routers
-// - STT webhook: /stt/webhook (working - receives JSON)
-// - TTS webhook: /tts/webhook (not working - Hookdeck rejects binary data)
+// - STT webhook: /stt/webhook (receives JSON)
+// - TTS webhook: /tts/webhook (receives binary audio)
 
 // Landing page (served from public/index.html)
 app.get('/', (req: Request, res: Response) => {
@@ -70,4 +70,5 @@ app.listen(PORT, () => {
   console.log('');
   console.log('Available demos:');
   console.log(`  - TTS (Text-to-Speech): http://localhost:${PORT}/tts`);
+  console.log(`  - STT (Speech-to-Text): http://localhost:${PORT}/stt`);
 });

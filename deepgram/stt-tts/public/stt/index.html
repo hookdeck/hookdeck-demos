@@ -3,44 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hookdeck Deepgram STT Demo</title>
-  <link rel="stylesheet" href="/stt/styles.css">
+  <title>Deepgram Speech-to-Text</title>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="stylesheet" href="/demo.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
-  <h1>🎧 Hookdeck Deepgram STT Demo</h1>
-  
-  <div class="info-banner">
-    <h3>✅ This Demo Works with Hookdeck!</h3>
-    <p>
-      Speech-to-Text callbacks return <strong>JSON transcriptions</strong> 
-      which are fully compatible with Hookdeck's webhook management.
-    </p>
-    <p>
-      <a href="/">← Back to Demos</a>
-    </p>
-  </div>
-  
-  <div class="container">
-    <h2>Record Audio</h2>
-    
-    <div class="recorder-section">
-      <div class="recorder-controls">
-        <button id="startBtn" class="btn-primary">🎤 Start Recording</button>
-        <button id="stopBtn" class="btn-danger" disabled>⏹️ Stop Recording</button>
-        <button id="clearBtn" class="btn-secondary" disabled>🗑️ Clear</button>
+  <main>
+    <section class="hero lined">
+      <div class="lined__box">
+        <a class="back body-xs" href="/">← All demos</a>
+        <span class="eyebrow mono-xs">{ Deepgram speech-to-text }</span>
+        <h1 class="title-2xl">Transcriptions as a <em>JSON webhook</em></h1>
+        <p class="body-m">
+          Record audio and send it to Deepgram with a callback URL. Deepgram transcribes it asynchronously and POSTs
+          the result as JSON, which Hookdeck delivers to this server.
+        </p>
       </div>
-      
-      <div id="recorderStatus" class="status-message">
-        Ready to record. Click "Start Recording" to begin.
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+    <section class="card">
+      <h2 class="title-l">Record audio</h2>
+      <div class="actions">
+        <button id="startBtn" class="button">Start recording</button>
+        <button id="stopBtn" class="button button--secondary" disabled>Stop recording</button>
+        <button id="clearBtn" class="button button--minimal" disabled>Clear</button>
       </div>
-      
-      <div id="audioPreview" class="audio-preview" style="display: none;">
-        <h3>Recorded Audio:</h3>
+      <div id="recorderStatus" class="message info body-s">Ready to record. Click "Start recording" to begin.</div>
+
+      <div id="audioPreview" style="display: none; gap: var(--s4)">
         <audio id="audioPlayer" controls></audio>
-        <div class="upload-section">
-          <label for="model">Deepgram Model:</label>
+        <label class="field">
+          <span class="subtitle-xs">Deepgram model</span>
           <select id="model" name="model">
-            <option value="nova-2">Nova 2 (Recommended)</option>
+            <option value="nova-2">Nova 2 (recommended)</option>
             <option value="nova-2-general">Nova 2 General</option>
             <option value="nova-2-meeting">Nova 2 Meeting</option>
             <option value="nova-2-phonecall">Nova 2 Phone Call</option>
@@ -49,25 +50,26 @@
             <option value="enhanced">Enhanced</option>
             <option value="base">Base</option>
           </select>
-          <button id="uploadBtn" class="btn-primary">📤 Upload & Transcribe</button>
+        </label>
+        <div class="actions">
+          <button id="uploadBtn" class="button">Upload and transcribe</button>
         </div>
       </div>
-    </div>
-    
-    <div id="message"></div>
-  </div>
 
-  <div class="container requests">
-    <h2>Transcription Requests</h2>
-    <div class="requests-controls">
-      <button id="refreshBtn" class="btn-secondary">🔄 Refresh</button>
-      <label>
-        <input type="checkbox" id="autoRefresh" checked>
-        Auto-refresh every 3s
-      </label>
-    </div>
-    <div id="requestsList"></div>
-  </div>
+      <div id="message" class="message body-s"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2 class="title-l">Transcription requests</h2>
+        <div class="actions">
+          <label class="check body-xs"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 3s</label>
+          <button id="refreshBtn" class="button button--secondary">Refresh</button>
+        </div>
+      </div>
+      <div id="requestsList" class="requests"></div>
+    </section>
+  </main>
 
   <script src="/stt/app.js"></script>
 </body>
