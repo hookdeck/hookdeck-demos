@@ -84,10 +84,7 @@ router.post('/api/generate', async (req: Request, res: Response) => {
 
   // Call Deepgram API with callback parameter
   try {
-    // Hookdeck ingests binary bodies for application/octet-stream, application/pdf,
-    // image/* and multipart/form-data. Deepgram sends audio/mpeg, so the
-    // x-hookdeck-content-type override tells Hookdeck to treat it as octet-stream.
-    const callbackUrl = `${CALLBACK_URL}?requestId=${requestId}&x-hookdeck-content-type=application/octet-stream`;
+    const callbackUrl = `${CALLBACK_URL}?requestId=${requestId}`;
     const deepgramUrl = `https://api.deepgram.com/v1/speak?model=${model}&encoding=mp3&callback=${encodeURIComponent(callbackUrl)}`;
     
     console.log(`🔗 [TTS] Calling Deepgram API with callback:`);
@@ -142,8 +139,7 @@ router.post('/api/generate', async (req: Request, res: Response) => {
 
 // Webhook endpoint to receive callback from Deepgram (via Hookdeck)
 // Deepgram POSTs the generated audio as the raw request body (audio/mpeg).
-// Hookdeck forwards it byte-exact, as application/octet-stream because of the
-// content-type override on the callback URL, so the body is the MP3 file.
+// Hookdeck forwards it byte-exact with its Content-Type, so the body is the MP3 file.
 const AUDIO_EXTENSIONS: { [contentType: string]: string } = {
   'audio/mpeg': '.mp3',
   'audio/mp3': '.mp3',

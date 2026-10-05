@@ -121,11 +121,11 @@ Generate natural-sounding speech from text using Deepgram's TTS API, with the ge
 2. Server calls Deepgram's `/v1/speak` API with a callback URL (pointing to the Hookdeck Source)
 3. Deepgram accepts the request and generates the audio asynchronously
 4. **Deepgram POSTs the audio to Hookdeck** as a raw binary body (content-type: `audio/mpeg`)
-5. **Hookdeck forwards the bytes unchanged** to your local server via the CLI, as `application/octet-stream`
+5. **Hookdeck forwards the bytes unchanged** to your local server via the CLI, still as `audio/mpeg`
 6. **Server writes the body to disk** as an MP3 and marks the request completed
 7. User plays the audio in the browser
 
-Hookdeck ingests binary bodies sent as `application/octet-stream`, `application/pdf`, `image/*` or `multipart/form-data`. `audio/mpeg` isn't on that list, so the callback URL includes `x-hookdeck-content-type=application/octet-stream` to tell Hookdeck to treat the body as binary. A retried event is redelivered byte-exact.
+A retried event is redelivered byte-exact.
 
 ### 📊 Audio Intelligence - Coming Soon
 
