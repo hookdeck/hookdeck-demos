@@ -21,6 +21,7 @@ _shared/        Shared utilities used across demos
 
 | Demo | Description |
 |------|-------------|
+| [binary-payloads](hookdeck/binary-payloads/) | Send audio, video, images, archives, PDFs and binary serialization formats through a source to `hookdeck listen`, and check which content types arrive byte-exact |
 | [cli-fleet-fanout](hookdeck/cli-fleet-fanout/) | Fan out webhooks to a fleet of machines on a private network with CLI destinations: connection-per-machine vs connection-per-group |
 | [cli-overview](hookdeck/cli-overview/) | Overview of the Hookdeck CLI capabilities |
 | [deduplication](hookdeck/deduplication/) | Event deduplication with payload-based and ID-based modes |
@@ -51,7 +52,7 @@ _shared/        Shared utilities used across demos
 
 | Demo | Description |
 |------|-------------|
-| [stt-tts](deepgram/stt-tts/) | Speech-to-text and text-to-speech demos using Deepgram's AI APIs |
+| [stt-tts](deepgram/stt-tts/) | Deepgram callbacks through Hookdeck: speech-to-text as JSON, and text-to-speech as binary `audio/mpeg` |
 
 ## Shared Utilities
 
