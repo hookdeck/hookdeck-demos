@@ -158,29 +158,37 @@ function baseCases(): Case[] {
     multipart(),
     { ...allowed("json-gzip", "application/json", gzipSync(json), "gzip", "Content-Encoding: gzip"), headers: { "Content-Encoding": "gzip" } },
 
+    // Added to the allowlist on 2026-10-02 (http-ingestion f4e490d5)
     // Audio and video: speech, voice agents, call recordings, media pipelines
-    offList("mp3", "audio/mpeg", file("audio.mp3"), "audio", "Deepgram TTS callback"),
-    offList("wav", "audio/wav", file("audio.wav"), "audio"),
-    offList("ogg", "audio/ogg", file("audio.ogg"), "audio"),
-    offList("webm-audio", "audio/webm", file("audio.webm"), "audio"),
-    offList("m4a", "audio/mp4", file("audio.m4a"), "audio"),
-    offList("mp4", "video/mp4", file("video.mp4"), "video"),
-    offList("webm-video", "video/webm", file("video.webm"), "video"),
+    allowed("mp3", "audio/mpeg", file("audio.mp3"), "audio", "Deepgram TTS callback"),
+    allowed("wav", "audio/wav", file("audio.wav"), "audio"),
+    allowed("ogg", "audio/ogg", file("audio.ogg"), "audio"),
+    allowed("webm-audio", "audio/webm", file("audio.webm"), "audio"),
+    allowed("m4a", "audio/mp4", file("audio.m4a"), "audio"),
+    allowed("mp4", "video/mp4", file("video.mp4"), "video"),
+    allowed("webm-video", "video/webm", file("video.webm"), "video"),
 
     // Archives and compressed bodies
-    offList("zip", "application/zip", file("archive.zip"), "zip"),
-    offList("gzip", "application/gzip", file("archive.gz"), "gzip", "gzipped WAV"),
-    offList("tar", "application/x-tar", file("archive.tar"), "tar"),
+    allowed("zip", "application/zip", file("archive.zip"), "zip"),
+    allowed("gzip", "application/gzip", file("archive.gz"), "gzip", "gzipped WAV"),
+    allowed("tar", "application/x-tar", file("archive.tar"), "tar"),
 
     // Binary serialisation formats: the same small record in each
-    offList("protobuf", "application/x-protobuf", PROTOBUF, "hex"),
-    offList("protobuf-iana", "application/protobuf", PROTOBUF, "hex"),
-    offList("cbor", "application/cbor", CBOR, "hex"),
-    offList("msgpack", "application/msgpack", MSGPACK, "hex"),
-    offList("avro", "application/vnd.apache.avro+binary", AVRO, "hex"),
+    allowed("protobuf", "application/x-protobuf", PROTOBUF, "hex"),
+    allowed("protobuf-iana", "application/protobuf", PROTOBUF, "hex"),
+    allowed("cbor", "application/cbor", CBOR, "hex"),
+    allowed("msgpack", "application/msgpack", MSGPACK, "hex"),
+    allowed("avro", "application/vnd.apache.avro+binary", AVRO, "hex"),
 
     // Other
-    offList("wasm", "application/wasm", WASM, "hex", "exports add()"),
-    offList("woff2", "font/woff2", Buffer.concat([str("wOF2"), noise(2048, 41)]), "hex", "synthetic"),
+    allowed("wasm", "application/wasm", WASM, "hex", "exports add()"),
+    allowed("woff2", "font/woff2", Buffer.concat([str("wOF2"), noise(2048, 41)]), "hex", "synthetic"),
+
+    // Still not on the allowlist: common aliases and formats providers send
+    offList("mp3-alias", "audio/mp3", file("audio.mp3"), "audio", "non-standard MP3 type"),
+    offList("wav-alias", "audio/x-wav", file("audio.wav"), "audio", "common WAV alias"),
+    offList("flac", "audio/flac", file("audio.flac"), "audio"),
+    offList("aac", "audio/aac", file("audio.aac"), "audio"),
+    offList("mov", "video/quicktime", file("video.mov"), "video"),
   ];
 }

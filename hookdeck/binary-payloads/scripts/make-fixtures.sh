@@ -14,11 +14,14 @@ ff "${TONE[@]}" -c:a pcm_s16le -ar 8000 audio.wav
 ff "${TONE[@]}" -c:a libopus -b:a 24k audio.ogg
 ff "${TONE[@]}" -c:a libopus -b:a 24k audio.webm
 ff "${TONE[@]}" -c:a aac -b:a 32k audio.m4a
+ff "${TONE[@]}" -c:a flac -ar 8000 audio.flac
+ff "${TONE[@]}" -c:a aac -b:a 32k -f adts audio.aac
 
 # 2s test pattern with a tone
 VIDEO=(-f lavfi -i "testsrc=size=160x90:rate=12:duration=2" -f lavfi -i "sine=frequency=440:duration=2")
 ff "${VIDEO[@]}" -c:v libx264 -pix_fmt yuv420p -crf 32 -c:a aac -b:a 32k -shortest -movflags +faststart video.mp4
 ff "${VIDEO[@]}" -c:v libvpx -b:v 64k -c:a libopus -b:a 24k -shortest video.webm
+ff "${VIDEO[@]}" -c:v libx264 -pix_fmt yuv420p -crf 32 -c:a aac -b:a 32k -shortest video.mov
 
 # Single frames of the same pattern
 ff -f lavfi -i "testsrc=size=160x90:rate=1" -frames:v 1 image.png
