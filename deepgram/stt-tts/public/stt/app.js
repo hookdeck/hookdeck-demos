@@ -3,6 +3,8 @@ let mediaRecorder = null;
 let audioChunks = [];
 let recordedBlob = null;
 let autoRefreshInterval = null;
+// The request submitted from this page, so the message can follow its status
+let awaitingId = null;
 
 // DOM elements
 const startBtn = document.getElementById('startBtn');
@@ -135,9 +137,10 @@ uploadBtn.addEventListener('click', async () => {
     
     const transcribeData = await transcribeResponse.json();
     
+    awaitingId = requestId;
     showMessage(
       `Transcription started (${requestId}). Waiting for the callback…`,
-      'success'
+      'info'
     );
     
     // Refresh requests list
@@ -211,6 +214,13 @@ function displayRequests(requests) {
   }
   requestsList.querySelector('.empty, .error')?.remove();
 
+  const awaited = requests.find((req) => req.id === awaitingId);
+  if (awaited && awaited.status !== 'pending') {
+    awaitingId = null;
+    if (awaited.status === 'completed') showMessage('Transcription received from Deepgram via Hookdeck. See it below.', 'success');
+    else showMessage(`Failed: ${awaited.error || 'unknown error'}`, 'error');
+  }
+
   requests.forEach((req, index) => {
     let item = requestsList.querySelector(`[data-id="${req.id}"]`);
     if (!item) {
@@ -233,17 +243,9 @@ function displayRequests(requests) {
 // Auto-refresh functionality
 function startAutoRefresh() {
   stopAutoRefresh(); // Clear any existing interval
-  autoRefreshInterval = setInterval(async () => {
-    // Only auto-refresh if there are pending requests
-    const response = await fetch('/stt/api/requests');
-    if (response.ok) {
-      const requests = await response.json();
-      const hasPending = requests.some(r => r.status === 'pending');
-      if (hasPending) {
-        await loadRequests();
-      }
-    }
-  }, 3000);
+  // Rows update in place, so redrawing every poll is cheap and catches the
+  // poll where a pending request completes
+  autoRefreshInterval = setInterval(loadRequests, 3000);
 }
 
 function stopAutoRefresh() {

@@ -1,5 +1,8 @@
 const BADGES = { completed: 'badge--success', failed: 'badge--danger', pending: 'badge--warning' };
 
+// The request submitted from this page, so the message can follow its status
+let awaitingId = null;
+
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 function renderRequest(req) {
@@ -32,6 +35,13 @@ async function loadRequests() {
       return;
     }
     listEl.querySelector('.empty')?.remove();
+
+    const awaited = requests.find((req) => req.id === awaitingId);
+    if (awaited && awaited.status !== 'pending') {
+      awaitingId = null;
+      if (awaited.status === 'completed') showMessage('Audio received from Deepgram via Hookdeck. Play it below.', 'success');
+      else showMessage(`Failed: ${awaited.error || 'unknown error'}`, 'error');
+    }
 
     requests.forEach((req, index) => {
       let item = listEl.querySelector(`[data-id="${req.id}"]`);
@@ -83,7 +93,8 @@ document.getElementById('ttsForm').addEventListener('submit', async (e) => {
     const result = await response.json();
 
     if (response.ok) {
-      showMessage(`Request submitted (${result.requestId}). Waiting for the audio callback…`, 'success');
+      awaitingId = result.requestId;
+      showMessage(`Request submitted (${result.requestId}). Waiting for the audio callback…`, 'info');
       setTimeout(() => loadRequests(), 1000);
     } else {
       showMessage(`Error: ${result.error}`, 'error');
