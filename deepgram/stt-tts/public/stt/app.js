@@ -3,6 +3,8 @@ let mediaRecorder = null;
 let audioChunks = [];
 let recordedBlob = null;
 let autoRefreshInterval = null;
+// The request submitted from this page, so the message can follow its status
+let awaitingId = null;
 
 // DOM elements
 const startBtn = document.getElementById('startBtn');
@@ -40,14 +42,14 @@ startBtn.addEventListener('click', async () => {
       audioPlayer.src = audioUrl;
       
       // Show preview
-      audioPreview.style.display = 'block';
+      audioPreview.style.display = 'grid';
       clearBtn.disabled = false;
       
       // Stop all tracks
       stream.getTracks().forEach(track => track.stop());
       
       recorderStatus.textContent = 'Recording stopped. You can now upload and transcribe.';
-      recorderStatus.className = 'status-message success';
+      recorderStatus.className = 'message body-s success';
     };
     
     // Start recording
@@ -56,14 +58,14 @@ startBtn.addEventListener('click', async () => {
     // Update UI
     startBtn.disabled = true;
     stopBtn.disabled = false;
-    recorderStatus.textContent = '🔴 Recording... Click "Stop Recording" when done.';
-    recorderStatus.className = 'status-message recording';
+    recorderStatus.textContent = 'Recording… Click "Stop recording" when done.';
+    recorderStatus.className = 'message body-s recording';
     
   } catch (error) {
     console.error('Error accessing microphone:', error);
     showMessage(`Error: ${error.message}`, 'error');
     recorderStatus.textContent = 'Error accessing microphone. Please grant permission.';
-    recorderStatus.className = 'status-message error';
+    recorderStatus.className = 'message body-s error';
   }
 });
 
@@ -83,8 +85,8 @@ clearBtn.addEventListener('click', () => {
   audioPlayer.src = '';
   audioPreview.style.display = 'none';
   clearBtn.disabled = true;
-  recorderStatus.textContent = 'Ready to record. Click "Start Recording" to begin.';
-  recorderStatus.className = 'status-message';
+  recorderStatus.textContent = 'Ready to record. Click "Start recording" to begin.';
+  recorderStatus.className = 'message body-s info';
   showMessage('', '');
 });
 
@@ -135,9 +137,10 @@ uploadBtn.addEventListener('click', async () => {
     
     const transcribeData = await transcribeResponse.json();
     
+    awaitingId = requestId;
     showMessage(
-      `✅ Transcription started! Request ID: ${requestId}. Waiting for callback...`,
-      'success'
+      `Transcription started (${requestId}). Waiting for the callback…`,
+      'info'
     );
     
     // Refresh requests list
@@ -177,84 +180,72 @@ async function loadRequests() {
     
   } catch (error) {
     console.error('Error loading requests:', error);
-    requestsList.innerHTML = `<div class="error">Error loading requests: ${error.message}</div>`;
+    requestsList.innerHTML = `<p class="error body-s">Error loading requests: ${escapeHtml(error.message)}</p>`;
   }
 }
 
-// Display requests
+const BADGES = { completed: 'badge--success', failed: 'badge--danger', pending: 'badge--warning' };
+
+function renderRequest(req) {
+  return `
+    <div class="request-head">
+      <span class="badge ${BADGES[req.status] || ''}">${escapeHtml(req.status)}</span>
+      <span class="request-meta body-xs"><span>${new Date(req.createdAt).toLocaleString()}</span></span>
+    </div>
+    ${req.status === 'completed' && req.transcription ? `<div class="request-text body-s">“${escapeHtml(req.transcription)}”</div>` : ''}
+    ${req.filename ? `<audio controls src="/stt/audio/${escapeHtml(req.filename)}"></audio>` : ''}
+    ${req.status === 'failed' && req.error ? `<div class="error body-xs">${escapeHtml(req.error)}</div>` : ''}
+    <div class="request-meta body-xs">
+      ${req.model ? `<span>Model <code>${escapeHtml(req.model)}</code></span>` : ''}
+      ${req.duration ? `<span>Duration ${req.duration.toFixed(2)}s</span>` : ''}
+      ${req.completedAt ? `<span>Completed ${new Date(req.completedAt).toLocaleString()}</span>` : ''}
+      <span>ID <code>${escapeHtml(req.id)}</code></span>
+    </div>
+  `;
+}
+
+// Display requests. Items are updated in place by ID, and only when they
+// change, so an <audio> element that is playing is never replaced by the
+// auto-refresh.
 function displayRequests(requests) {
   if (requests.length === 0) {
-    requestsList.innerHTML = '<p>No transcription requests yet. Record and upload audio to get started!</p>';
+    requestsList.innerHTML = '<p class="empty body-s">No transcription requests yet. Record and upload audio to get started.</p>';
     return;
   }
-  
-  requestsList.innerHTML = requests.map(req => {
-    const statusClass = req.status === 'completed' ? 'completed' : 
-                       req.status === 'failed' ? 'failed' : 'pending';
-    
-    let statusBadge = `<span class="status ${statusClass}">${req.status.toUpperCase()}</span>`;
-    
-    let transcriptionHtml = '';
-    if (req.status === 'completed' && req.transcription) {
-      transcriptionHtml = `
-        <div class="transcription">
-          <strong>Transcription:</strong>
-          <p>${escapeHtml(req.transcription)}</p>
-        </div>
-      `;
+  requestsList.querySelector('.empty, .error')?.remove();
+
+  const awaited = requests.find((req) => req.id === awaitingId);
+  if (awaited && awaited.status !== 'pending') {
+    awaitingId = null;
+    if (awaited.status === 'completed') showMessage('Transcription received from Deepgram via Hookdeck. See it below.', 'success');
+    else showMessage(`Failed: ${awaited.error || 'unknown error'}`, 'error');
+  }
+
+  requests.forEach((req, index) => {
+    let item = requestsList.querySelector(`[data-id="${req.id}"]`);
+    if (!item) {
+      item = document.createElement('div');
+      item.className = 'request';
+      item.dataset.id = req.id;
     }
-    
-    let errorHtml = '';
-    if (req.status === 'failed' && req.error) {
-      errorHtml = `<div class="error">Error: ${escapeHtml(req.error)}</div>`;
+    const version = `${req.status}|${req.model || ''}`;
+    if (item.dataset.version !== version) {
+      item.dataset.version = version;
+      item.innerHTML = renderRequest(req);
     }
-    
-    let metaInfo = `<div class="request-meta">`;
-    metaInfo += `ID: ${req.id}<br>`;
-    metaInfo += `Created: ${new Date(req.createdAt).toLocaleString()}<br>`;
-    if (req.model) metaInfo += `Model: ${req.model}<br>`;
-    if (req.duration) metaInfo += `Duration: ${req.duration.toFixed(2)}s<br>`;
-    if (req.completedAt) metaInfo += `Completed: ${new Date(req.completedAt).toLocaleString()}`;
-    metaInfo += `</div>`;
-    
-    let audioHtml = '';
-    if (req.filename) {
-      audioHtml = `
-        <div class="audio-playback">
-          <audio controls src="/stt/audio/${req.filename}"></audio>
-        </div>
-      `;
+    // Most recent first
+    if (requestsList.children[index] !== item) {
+      requestsList.insertBefore(item, requestsList.children[index] || null);
     }
-    
-    return `
-      <div class="request-item">
-        <div class="request-header">
-          ${statusBadge}
-          <span class="request-date">${new Date(req.createdAt).toLocaleString()}</span>
-        </div>
-        ${transcriptionHtml}
-        ${audioHtml}
-        ${errorHtml}
-        ${metaInfo}
-      </div>
-    `;
-  }).join('');
+  });
 }
 
 // Auto-refresh functionality
 function startAutoRefresh() {
   stopAutoRefresh(); // Clear any existing interval
-  autoRefreshInterval = setInterval(async () => {
-    // Only auto-refresh if there are pending requests
-    const response = await fetch('/stt/api/requests');
-    if (response.ok) {
-      const requests = await response.json();
-      const hasPending = requests.some(r => r.status === 'pending');
-      if (hasPending) {
-        await loadRequests();
-      }
-    }
-  }, 3000);
+  // Rows update in place, so redrawing every poll is cheap and catches the
+  // poll where a pending request completes
+  autoRefreshInterval = setInterval(loadRequests, 3000);
 }
 
 function stopAutoRefresh() {
@@ -267,7 +258,7 @@ function stopAutoRefresh() {
 // Show message
 function showMessage(text, type) {
   messageDiv.textContent = text;
-  messageDiv.className = type;
+  messageDiv.className = `message body-s ${type || ''}`;
 }
 
 // Escape HTML for safe display

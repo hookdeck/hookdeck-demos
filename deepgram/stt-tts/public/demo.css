@@ -1,0 +1,77 @@
+/* Page styles shared by the Deepgram demos, built on the Hookdeck design system (ds/styles.css) */
+
+body { background: var(--tan-bg); }
+main { max-width: 880px; margin: 0 auto; padding: var(--s10) var(--s4) var(--s16); display: grid; gap: var(--s6); }
+a { color: var(--primary-fg); }
+
+/* Header in the "lined" blueprint frame */
+.hero .lined__box { border-right: none; border-bottom: none; display: grid; gap: var(--s3); }
+.eyebrow { color: var(--neutral-fg-3); text-transform: uppercase; }
+.hero h1 { margin: 0; }
+.hero p { color: var(--neutral-fg-2); max-width: 680px; }
+.hero code { font-size: 0.9em; color: var(--neutral-fg-1); }
+.back { text-decoration: none; }
+.back:hover { text-decoration: underline; }
+
+/* Cards and sections. The design system's `.card:not(.flex) { display: block }` would drop the gaps,
+   so match its specificity to lay cards out as a grid. */
+.card:not(.flex) { display: grid; gap: var(--s4); padding: var(--s6); }
+.card h2 { margin: 0; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+
+/* Form fields, matching the design system's Input */
+.field { display: grid; gap: var(--s1-5); }
+.field > span { color: var(--neutral-fg-2); }
+.input, textarea, select {
+  font-family: var(--font-sans); font-size: 14px; line-height: 20px; padding: 7px 12px;
+  border-radius: var(--radius); border: 1px solid var(--neutral-outline-2); background: var(--bg-0);
+  color: var(--neutral-fg-1); width: 100%; box-shadow: var(--button-box-shadow);
+}
+textarea { min-height: 96px; resize: vertical; }
+textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.check { display: inline-flex; gap: var(--s2); align-items: center; color: var(--neutral-fg-2); }
+
+/* Messages */
+.message:empty { display: none; }
+.message { padding: var(--s2) var(--s3); border-radius: var(--radius); border: 1px solid; }
+.message.success { color: var(--color-success); border-color: var(--color-success-outline); background: var(--color-success-surface); }
+.message.error { color: var(--color-danger); border-color: var(--color-danger-outline); background: var(--color-danger-surface); }
+.message.info, .message.recording { color: var(--primary-badge-fg); border-color: var(--primary-badge-outline); background: var(--blue-badge-bg); }
+
+/* Request lists */
+.requests { display: grid; gap: var(--s3); }
+.requests .empty { color: var(--neutral-fg-3); }
+.request { display: grid; gap: var(--s2); padding: var(--s4); border-radius: var(--radius); background: var(--bg-1); border: 1px dashed var(--neutral-outline-3); }
+.request-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+.request-text { color: var(--neutral-fg-1); }
+.request-meta { color: var(--neutral-fg-3); display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); }
+.request-meta code { font-size: 12px; line-height: 18px; color: var(--neutral-fg-2); }
+.request audio { width: 100%; max-width: 420px; }
+.request .error { color: var(--color-danger); }
+
+/* Landing page demo cards */
+.demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s4); }
+/* A column, so the status badge sits at the bottom and lines up across cards */
+.card:not(.flex).demo { display: flex; flex-direction: column; gap: var(--s3); }
+.demo .chip { margin-bottom: var(--s2); }
+.demo h2 { margin: 0; }
+.demo .status { margin-top: auto; padding-top: var(--s3); }
+a.demo { text-decoration: none; color: var(--neutral-fg-1); transition: 200ms ease-in-out background-color; }
+a.demo:hover { background-color: var(--bg-0-hover); color: var(--neutral-fg-1); }
+.demo p { color: var(--neutral-fg-2); }
+.demo.disabled { opacity: 0.6; }
+
+/* Icon chip: a Material Symbols glyph in a light-blue rounded square */
+.chip {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; font-size: 22px;
+  border-radius: var(--s1-5); color: var(--primary-fg); border: 1px solid var(--primary-badge-outline);
+  background: var(--blue-badge-bg); box-shadow: 0 1px 0 0 var(--primary-badge-outline);
+}
+
+footer { color: var(--neutral-fg-3); }
+
+@media (max-width: 744px) {
+  .hero .lined__box { padding: var(--s5); }
+  .card:not(.flex) { padding: var(--s4); }
+}

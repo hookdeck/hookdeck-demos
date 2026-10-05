@@ -1,0 +1,6 @@
+node_modules/
+run/
+results/
+
+# Fixtures are committed test data, including archives a global gitignore may exclude
+!fixtures/*

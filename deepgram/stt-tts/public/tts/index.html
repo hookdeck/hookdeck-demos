@@ -3,57 +3,62 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hookdeck Deepgram TTS Demo</title>
-  <link rel="stylesheet" href="/tts/styles.css">
+  <title>Deepgram Text-to-Speech</title>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="stylesheet" href="/demo.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
-  <h1>🎙️ Hookdeck Deepgram TTS Demo</h1>
-  
-  <div class="warning-banner">
-    <h3>⚠️ This Demo is Currently Non-Functional</h3>
-    <p>
-      <strong>Reason:</strong> Deepgram TTS callbacks send binary audio data (audio/mpeg),
-      but Hookdeck only supports JSON webhook payloads. The webhook will be received
-      but the audio data cannot be forwarded.
-    </p>
-    <p>
-      <strong>Purpose:</strong> This demo documents the limitation and shows what would
-      be needed for callback-based TTS if Hookdeck supported binary content types in the future.
-    </p>
-    <p>
-      <a href="/">← Back to Demos</a>
-    </p>
-  </div>
-  
-  <div class="container">
-    <h2>Generate Speech</h2>
-    <form id="ttsForm">
-      <div class="form-group">
-        <label for="text">Text to speak:</label>
-        <textarea id="text" name="text" required placeholder="Enter text to convert to speech...">Hello, welcome to Deepgram!</textarea>
+  <main>
+    <section class="hero lined">
+      <div class="lined__box">
+        <a class="back body-xs" href="/">← All demos</a>
+        <span class="eyebrow mono-xs">{ Deepgram text-to-speech }</span>
+        <h1 class="title-2xl">Speech as a <em>binary webhook</em></h1>
+        <p class="body-m">
+          Deepgram generates the audio asynchronously and POSTs it as a binary <code>audio/mpeg</code> callback.
+          Hookdeck receives it and forwards the bytes unchanged to this server.
+        </p>
       </div>
-      <div class="form-group">
-        <label for="model">Voice Model:</label>
-        <select id="model" name="model">
-          <option value="aura-asteria-en">Aura Asteria (EN)</option>
-          <option value="aura-luna-en">Aura Luna (EN)</option>
-          <option value="aura-stella-en">Aura Stella (EN)</option>
-          <option value="aura-athena-en">Aura Athena (EN)</option>
-          <option value="aura-hera-en">Aura Hera (EN)</option>
-          <option value="aura-orion-en">Aura Orion (EN)</option>
-          <option value="aura-arcas-en">Aura Arcas (EN)</option>
-          <option value="aura-perseus-en">Aura Perseus (EN)</option>
-        </select>
-      </div>
-      <button type="submit">Generate Speech</button>
-    </form>
-    <div id="message"></div>
-  </div>
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
 
-  <div class="container requests">
-    <h2>Recent Requests</h2>
-    <div id="requestsList"></div>
-  </div>
+    <section class="card">
+      <h2 class="title-l">Generate speech</h2>
+      <form id="ttsForm" style="display: grid; gap: var(--s4)">
+        <label class="field">
+          <span class="subtitle-xs">Text to speak</span>
+          <textarea id="text" name="text" required placeholder="Enter text to convert to speech">Hello, welcome to Deepgram!</textarea>
+        </label>
+        <label class="field">
+          <span class="subtitle-xs">Voice model</span>
+          <select id="model" name="model">
+            <option value="aura-asteria-en">Aura Asteria (EN)</option>
+            <option value="aura-luna-en">Aura Luna (EN)</option>
+            <option value="aura-stella-en">Aura Stella (EN)</option>
+            <option value="aura-athena-en">Aura Athena (EN)</option>
+            <option value="aura-hera-en">Aura Hera (EN)</option>
+            <option value="aura-orion-en">Aura Orion (EN)</option>
+            <option value="aura-arcas-en">Aura Arcas (EN)</option>
+            <option value="aura-perseus-en">Aura Perseus (EN)</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button type="submit" class="button">Generate speech</button>
+        </div>
+      </form>
+      <div id="message" class="message body-s"></div>
+    </section>
+
+    <section class="card">
+      <h2 class="title-l">Recent requests</h2>
+      <div id="requestsList" class="requests"></div>
+    </section>
+  </main>
 
   <script src="/tts/app.js"></script>
 </body>

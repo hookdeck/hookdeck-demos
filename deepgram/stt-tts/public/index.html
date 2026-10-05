@@ -4,190 +4,56 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hookdeck + Deepgram Demos</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      padding: 40px 20px;
-      max-width: 1000px;
-      margin: 0 auto;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-    }
-
-    .container {
-      background: white;
-      border-radius: 12px;
-      padding: 40px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    }
-
-    h1 {
-      color: #333;
-      margin-bottom: 10px;
-      font-size: 2.5em;
-    }
-
-    .subtitle {
-      color: #666;
-      margin-bottom: 40px;
-      font-size: 1.2em;
-    }
-
-    .demos {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 20px;
-      margin-top: 30px;
-    }
-
-    .demo-card {
-      background: #f9f9f9;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      padding: 25px;
-      transition: all 0.3s ease;
-      cursor: pointer;
-      text-decoration: none;
-      color: inherit;
-      display: block;
-    }
-
-    .demo-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-      border-color: #667eea;
-    }
-
-    .demo-icon {
-      font-size: 3em;
-      margin-bottom: 15px;
-    }
-
-    .demo-title {
-      font-size: 1.5em;
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 10px;
-    }
-
-    .demo-description {
-      color: #666;
-      line-height: 1.6;
-    }
-
-    .demo-status {
-      display: inline-block;
-      margin-top: 10px;
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 0.85em;
-      font-weight: 500;
-    }
-
-    .status-active {
-      background: #d4edda;
-      color: #155724;
-    }
-
-    .status-wip {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .status-broken {
-      background: #f8d7da;
-      color: #721c24;
-    }
-
-    .demo-card.disabled {
-      opacity: 0.7;
-      border-color: #ffc107;
-    }
-
-    .demo-card.disabled:hover {
-      transform: none;
-      box-shadow: none;
-      border-color: #ffc107;
-    }
-
-    .warning-text {
-      color: #856404;
-      font-size: 0.9em;
-      margin-top: 8px;
-      font-weight: 500;
-    }
-
-    .footer {
-      margin-top: 40px;
-      padding-top: 30px;
-      border-top: 1px solid #e0e0e0;
-      color: #666;
-      text-align: center;
-    }
-
-    .footer a {
-      color: #667eea;
-      text-decoration: none;
-    }
-
-    .footer a:hover {
-      text-decoration: underline;
-    }
-  </style>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+  <link rel="stylesheet" href="/demo.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
-  <div class="container">
-    <h1>🎙️ Hookdeck + Deepgram</h1>
-    <p class="subtitle">Demos showcasing Deepgram AI APIs with Hookdeck webhook management</p>
+  <main>
+    <section class="hero lined">
+      <div class="lined__box">
+        <span class="eyebrow mono-xs">{ Hookdeck + Deepgram }</span>
+        <h1 class="title-2xl">Voice AI callbacks, <em>delivered</em></h1>
+        <p class="body-m">
+          Deepgram processes audio asynchronously and calls you back. Hookdeck receives those callbacks, queues and
+          retries them, and delivers them to your local server through the Hookdeck CLI.
+        </p>
+      </div>
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
 
     <div class="demos">
-      <a href="/stt" class="demo-card">
-        <div class="demo-icon">🎧</div>
-        <div class="demo-title">Speech-to-Text</div>
-        <div class="demo-description">
-          Record audio and transcribe it to text using Deepgram's STT API with Hookdeck webhooks.
-        </div>
-        <span class="demo-status status-active">✅ ACTIVE</span>
+      <a href="/stt" class="card demo">
+        <span class="chip material-symbols-outlined" aria-hidden="true">graphic_eq</span>
+        <h2 class="title-l">Speech-to-text</h2>
+        <p class="body-s">Record audio in the browser and get the transcription back as a JSON callback.</p>
+        <span class="status"><span class="badge badge--success">Working</span></span>
       </a>
 
-      <a href="/tts" class="demo-card disabled">
-        <div class="demo-icon">🗣️</div>
-        <div class="demo-title">Text-to-Speech</div>
-        <div class="demo-description">
-          Generate natural-sounding speech from text using Deepgram's TTS API.
-        </div>
-        <span class="demo-status status-broken">⚠️ NOT WORKING</span>
-        <div class="warning-text">
-          Deepgram sends binary audio data which Hookdeck cannot forward (JSON only)
-        </div>
+      <a href="/tts" class="card demo">
+        <span class="chip material-symbols-outlined" aria-hidden="true">record_voice_over</span>
+        <h2 class="title-l">Text-to-speech</h2>
+        <p class="body-s">Generate speech from text and receive the MP3 as a binary callback, byte for byte.</p>
+        <span class="status"><span class="badge badge--success">Working</span></span>
       </a>
 
-      <div class="demo-card" style="opacity: 0.6; cursor: not-allowed;">
-        <div class="demo-icon">📊</div>
-        <div class="demo-title">Audio Intelligence</div>
-        <div class="demo-description">
-          Extract insights from audio using Deepgram's intelligence features.
-        </div>
-        <span class="demo-status status-wip">COMING SOON</span>
+      <div class="card demo disabled">
+        <span class="chip material-symbols-outlined" aria-hidden="true">insights</span>
+        <h2 class="title-l">Audio intelligence</h2>
+        <p class="body-s">Extract summaries, topics and sentiment from audio.</p>
+        <span class="status"><span class="badge">Coming soon</span></span>
       </div>
     </div>
 
-    <div class="footer">
-      <p>
-        <strong>About:</strong> These demos showcase how to integrate Deepgram's AI APIs with Hookdeck for reliable webhook delivery and observability.
-      </p>
-      <p style="margin-top: 10px;">
-        Learn more: 
-        <a href="https://deepgram.com" target="_blank">Deepgram</a> • 
-        <a href="https://hookdeck.com" target="_blank">Hookdeck</a>
-      </p>
-    </div>
-  </div>
+    <footer class="body-xs">
+      Learn more: <a href="https://deepgram.com" target="_blank" rel="noopener">Deepgram</a> ·
+      <a href="https://hookdeck.com" target="_blank" rel="noopener">Hookdeck</a>
+    </footer>
+  </main>
 </body>
 </html>
