@@ -9,7 +9,7 @@ Status: in progress, paused on 2026-10-08 while related Event Gateway changes fo
 | **Proposal** | A demo of Hookdeck Event Gateway acting as the forward proxy that MCP Events describes for webhook delivery. Phase 1 delivers to the agent's HTTP endpoint, including a deployed agent. Phase 2 delivers to a local agent through the Hookdeck CLI. Afterward, share the results with the MCP Triggers & Events working group as a field report. |
 | **Why** | SEP-3415 calls a forward proxy "a common deployment" for webhook delivery. The only receiver-side implementation reported to the working group so far is evdock, a self-hosted relay published on 2026-10-06. Event Gateway already does what the SEP asks of a receiver (consent, verification, dedup, storing before `2xx`) and adds what a tunnel doesn't (queueing, retries with backoff, rate limits, replay). |
 | **What's new for local agents** | The SEP assumes a client behind NAT polls. Event Gateway with the CLI gives that client push delivery while the MCP server stays in webhook mode. |
-| **Risk** | The CLI path isn't durable while `hookdeck listen` is disconnected. After a short grace window no event is created; the request is stored, and has to be retried (or replayed as a new request) to create the event. That's a product gap (CLI destinations should queue like HTTP destinations), and the demo has to say so. |
+| **Risk** | The CLI path isn't durable while `hookdeck listen` is disconnected. After a clean stop, or about 2 minutes after a crash, no event is created; the request is stored, and the agent has to retry it to create the event. Within those 2 minutes an event is created but only the retry rule gets it to the next session. The demo's agent recovers both on start, but that's a product gap (CLI destinations should queue like HTTP destinations), and the demo has to say so. |
 | **Next steps** | See [Remaining work](#remaining-work-in-order). |
 
 ## Status (2026-10-08)
@@ -19,9 +19,10 @@ Status: in progress, paused on 2026-10-08 while related Event Gateway changes fo
 - **Stand-in sender** (`src/sender/`): an MCP server offering `incident.created` (optional `minSeverity` argument) over Streamable HTTP, protocol `2026-07-28`, following OpenAI's MCP Events profile (top-level `capabilities.events`, `-32015`, idempotent unsubscribe). Challenge before activation, TTL grants with a sweeper, dual-signing on secret rotation, Standard Webhooks signing on every attempt, bounded retries (no retry on `410`/`413`), and demo options to send a duplicate or a badly signed delivery.
 - **Agent** (`src/agent/`): an MCP client that owns its forward proxy. Per subscription it creates an `MCP Events` source with a fresh `whsec_` secret and a connection (dedup rule on `headers.webhook-id`, linear retry rule), subscribes with the source URL, refreshes before `refreshBefore`, and on exit unsubscribes and deletes the source and connection. All Event Gateway calls go through `src/agent/proxy.ts`.
   - **CLI mode** (default locally): the connection has a CLI destination and the agent supervises `hookdeck listen`, logged in with its own config under `run/`.
+  - **Restart and recovery:** with `--keep`, the agent leaves its subscription, source and connection in place on exit. On start it picks up the endpoint made for the same subscription (reading the secret back with `GET /sources/{id}?include=config.auth`), re-subscribes with the same URL and secret, and runs recovery (`src/agent/recover.ts`): it retries `CLI_DISCONNECTED` requests scoped to its connection, retries events that settled as `FAILED` (not on a `4xx`), and leaves anything queued or scheduled to Event Gateway. It repeats every 60 s until a later pass finds nothing, for up to 5 minutes. The same recovery runs when `listen` is brought back with `npm run agent:listen -- start`.
   - **HTTP mode** (`AGENT_PUBLIC_URL` set, used on Fly.io): the connection has an HTTP destination, and the agent checks `x-hookdeck-signature` with the project's signing secret.
   - **The event endpoint** re-checks the MCP server's Standard Webhooks signature without the 5-minute window, handles each `eventId` once, ignores `verification` bodies, and answers `503` for an unknown subscription ID.
-- **Scripts:** `npm run emit`, `npm run agent:status`, `npm run agent:fail`, `npm run teardown`, and `npm run scenarios`, which runs the verified table below against a running sender and agent and prints pass or fail with evidence (6 of 6 passed against the deployed services on 2026-10-08).
+- **Scripts:** `npm run emit`, `npm run agent:status`, `npm run agent:fail`, `npm run agent:listen` (stop, kill or start `listen`), `npm run teardown`, and `npm run scenarios`, which runs the verified table below against a running sender and agent and prints pass or fail with evidence (7 of 7 locally in CLI mode; 6 of 6 against the deployed services, where the two `listen` cases don't apply).
 - **Deployment:** `Dockerfile`, `fly.sender.toml`, `fly.agent.toml`. Both services were deployed on Fly.io (apps `mcp-events-receive-sender` and `mcp-events-receive-agent`, region `ams`).
 
 ### Verified
@@ -38,10 +39,14 @@ Against a dedicated Event Gateway test project, 2026-10-08.
 | Agent answers `503`, then recovers | Retried every 15 s; handled on attempt 3; sender saw one `200` | Handled on attempt 4; sender saw one `200` |
 | Refresh before `refreshBefore` | Not observed | Yes, with `deliveryStatus` from the sender |
 | Ctrl+C: unsubscribe, stop `listen`, delete source and connection | Yes | n/a |
+| `listen` stopped cleanly, event sent, `listen` back | Request ignored as `CLI_DISCONNECTED`; the agent's recovery retried it; handled once | n/a |
+| `listen` killed, event sent, `listen` back 30 s later | Event created; attempts 1 and 2 failed `CLI_UNAVAILABLE`; the retry rule delivered attempt 3; recovery left it alone; handled once | n/a |
+| `listen` killed until the retry rule ran out (about 3.5 minutes) | All 11 attempts failed `CLI_UNAVAILABLE` and the event settled `FAILED`; recovery retried it on reconnect; handled once, attempt 12 | n/a |
+| Agent stopped with `--keep`, two events sent, agent restarted | Picked up the same source and subscription; both requests `CLI_DISCONNECTED`; recovery retried both; each handled once | n/a |
 
 Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source MUST 6/10 because it grades by status code; every MUST case it fails is rejected by Event Gateway as `VERIFICATION_FAILED` but answered `200`. Dedup on `headers.webhook-id` absorbs replays and re-signed retries.
 
-**Observed, not explained:** through the CLI destination, the first events after `listen` connected stayed `QUEUED` for about 75 s before their first attempt, and one stayed queued for 1 min 40 s until another event arrived. Once flowing, delivery took about 1 s. The HTTP destination showed no delay. Needs a controlled repeat before it's reported.
+**Observed once, not reproduced:** in one early run through the CLI destination, three events waited 75 to 101 s before their first attempt, with no failed attempt recorded, and each was delivered once. In 7 controlled runs afterwards (23 timed events, fresh and reused sources, CLI configs and sessions, the same timing), every event arrived 0.2 to 0.5 s after it was sent. The hold was on the platform side before the first attempt, so the demo treats it as an intermittent delivery delay, not a CLI behavior. Recovery doesn't treat a `QUEUED` event as missed, so a delay like it can't cause a duplicate.
 
 ### Changes from the plan
 
@@ -52,13 +57,14 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 
 ### Remaining work, in order
 
-1. **R4:** repeat the CLI queueing observation under control, then the remaining CLI cases: `listen` stopped cleanly, dropped abnormally, connection paused.
-2. **Recovery on agent start (CLI mode):** retry `CLI_DISCONNECTED` requests and settled `FAILED` events for the agent's connections, adapted from `cli-fleet-fanout`.
+1. ~~**R4**~~ done: the CLI cases are measured (see Phase 2), and the 75 s hold didn't reproduce.
+2. ~~**Recovery on agent start**~~ done, with the two `listen` cases in `npm run scenarios`.
 3. ~~**Scenarios script**~~ done: `npm run scenarios`.
-4. **README** completed from the verified results. The stub folder `hookdeck/mcp-events-outpost/` and the repo README rows are done.
-5. **One run against the Outpost demo's MCP server** as a real second sender.
-6. **Phase 3:** the evdock spike.
-7. **Field report drafts** in `docs/`, after Phase 2.
+4. **Redeploy the agent** to Fly.io with the recovery and naming changes, and re-run the scenarios deployed.
+5. **README** completed from the verified results. The stub folder `hookdeck/mcp-events-outpost/` and the repo README rows are done.
+6. **One run against the Outpost demo's MCP server** as a real second sender.
+7. **Phase 3:** the evdock spike.
+8. **Field report drafts** in `docs/`, after Phase 2.
 
 ## Background
 
@@ -295,14 +301,21 @@ What Event Gateway adds over the agent receiving directly ([destinations](https:
 | evdock (daemon plus relay) | The daemon fetches from its relay every 5 seconds | The relay stores deliveries until the daemon fetches them |
 | Event Gateway plus CLI | Pushed through `listen`'s WebSocket to `localhost` | Retried while `listen` is connected; requests stored once it isn't (below) |
 
-What the CLI does today ([CLI docs](https://hookdeck.com/docs/cli), and measurements in this repo's [cli-fleet-fanout](../../cli-fleet-fanout/) demo):
+What the CLI does today, measured with `hookdeck-cli` 3.1.0 against an `MCP Events` source (R4, 2026-10-08):
 
-1. **`listen` connected, agent down:** delivery is at least once "with the same retry behavior as any other destination", so the retry rule applies.
-2. **`listen` dropped abnormally:** a grace window (about 2 minutes measured) in which events are held as pending and deliver when the CLI reconnects. After it, the attempt fails with `CLI_UNAVAILABLE`, and a retry goes to another session on the same connection.
-3. **`listen` stopped cleanly, or gone past the grace window:** no event is created. Event Gateway still ingests and stores the request, recorded as ignored with cause `CLI_DISCONNECTED`. Retrying the request creates the event; replaying it does the same on a new request ([requests](https://hookdeck.com/docs/requests)). The demo's agent does this on start, adapted from `cli-fleet-fanout`'s recovery.
-4. **Planned downtime:** pause the connection; held events deliver on unpause.
+1. **`listen` connected, agent down:** the retry rule applies, as for any destination. An agent answering `503` was retried every 15 s and delivered on attempt 4. A refused connection is recorded as a `500` attempt, not a CLI error code.
+2. **`listen` dropped abnormally (killed, or the network lost):** for about 2 minutes Event Gateway still creates an event, but events aren't held: the attempt fails with `CLI_UNAVAILABLE` about 10 s after the request arrives. The connection's retry rule delivers it to a reconnected `listen` while retries remain. Once they run out, the event settles as `FAILED` and needs an event retry. The [CLI docs](https://hookdeck.com/docs/cli) describe this window as holding events "as pending", which isn't what 3.1.0 does.
+3. **`listen` stopped cleanly, or gone more than about 2 minutes:** no event is created. Event Gateway still ingests and stores the request, recorded as ignored with cause `CLI_DISCONNECTED`, and nothing is delivered when `listen` reconnects. Retrying the request creates the event and delivers it ([requests](https://hookdeck.com/docs/requests)). Replay does too, on a new request, but leaves the original marked `CLI_DISCONNECTED`, so a recovery that runs again finds it again. A second retry of the same request is refused with `400`, so the agent uses retry.
+4. **Pausing the connection** holds events only while a session exists: connected, or inside the 2-minute window after a crash. Held events deliver 6 to 7 s after unpause, to a new session if `listen` restarted. A request that arrives after a clean stop is `CLI_DISCONNECTED` even while the connection is paused, so pausing before a planned stop doesn't avoid recovery.
 
-**Product gap: CLI destinations should queue.** A CLI destination should hold events while no session is attached and deliver them when one connects, as an HTTP destination does when its endpoint is down. Today case 3 needs a replay step the agent has to know to run.
+Two details recovery depends on:
+
+- **`FAILED` isn't always settled.** Between automatic retries an event shows `FAILED` with `next_attempt_at` set. A manual retry at that point delivers it, and the scheduled retry still fires afterward: two deliveries. Settled means `SUCCESSFUL`, `CANCELLED`, or `FAILED` with no `next_attempt_at`.
+- **A request's `events_count` doesn't include CLI events;** they're counted in `cli_events_count`. And the API can show a delivered event as missing or `QUEUED` for 30 s or more, so recovery repeats rather than deciding on one look.
+
+The demo's agent runs recovery after `listen` connects, on start and whenever `listen` comes back: retry each `CLI_DISCONNECTED` request scoped to its connection, retry each settled `FAILED` event unless the agent answered `4xx`, and leave the rest to Event Gateway.
+
+**Product gap: CLI destinations should queue.** A CLI destination should hold events while no session is attached and deliver them when one connects, as an HTTP destination does when its endpoint is down. Today a client has to know to run recovery for cases 2 and 3, and to tell a settled `FAILED` event from one between retries.
 
 ## Alternatives
 
@@ -361,7 +374,7 @@ All live checks run against a dedicated Event Gateway test project (`HOOKDECK_AP
 - **R1. Conformance (done 2026-10-08):** evdock's receiver checker (at `213d08b`) against fresh `MCP Events` sources, with and without the dedup rule. The checker grades by HTTP status code: MUST 6/10 both times. Every MUST case it graded as failed (a bad signature, each missing Standard Webhooks header) was rejected by Event Gateway as `VERIFICATION_FAILED`, but answered `200`, because the edge verifies the challenge and core verifies deliveries after storing them. The challenge itself is answered `200` with the echo when correctly signed, even immediately after the source is created, and `401` otherwise. With the dedup rule, a replay and a re-signed retry of the same `webhook-id` each produced one event. `gap` and `terminated` envelopes are forwarded as events.
 - **R2. Wire format:** SEP-3415 versus OpenAI's guide. Known differences: the capability under `capabilities.extensions["io.modelcontextprotocol/events"]` versus a top-level `capabilities.events`; error codes `-32023` to `-32027` versus the design sketch's `-32011` to `-32015` (OpenAI's guide uses at least `-32015`); unsubscribe of an unknown subscription returns NotFound versus `{}`. Lean: the stand-in sender follows OpenAI's profile, as ChatGPT-facing servers do today, with the differences in the README.
 - **R3. Setup:** create an `MCP_EVENTS` source with a `whsec_` secret, an HTTP or CLI destination, and the dedup and retry rules, through the CLI (`hookdeck gateway connection upsert`) or the API.
-- **R4. Agent down, both phases:** an HTTP destination down then back; the four CLI cases, including retrying and replaying a `CLI_DISCONNECTED` request for an `MCP Events` source, and which one recovery should use.
+- **R4. Agent down, both phases (done 2026-10-08):** an HTTP destination down then back; the four CLI cases, including retrying and replaying a `CLI_DISCONNECTED` request for an `MCP Events` source, and which one recovery should use. Results are in Phase 2: recovery uses request retry, retries only settled `FAILED` events, and never acts on a queued or scheduled one.
 - **R5. What reaches the agent:** body and headers unchanged; what a retried or replayed delivery carries (the original `webhook-timestamp`). Lean: the agent verifies `x-hookdeck-signature` (an HMAC of the body with the project's signing secret, with no timestamp, so retries and replays verify), re-checks the Standard Webhooks signature without the timestamp window, and handles each `eventId` once.
 - **R6. Dedup:** two requests with the same `webhook-id` but a fresh timestamp and signature produce one event; a replay or manual retry isn't blocked.
 - **R7. Tooling:** `hookdeck-cli` version and the minimum for `MCP_EVENTS`; MCP SDK v2 against TypeScript `^5.9`; signal handling in the npm shim ([hookdeck-cli#429](https://github.com/hookdeck/hookdeck-cli/issues/429)).
@@ -396,8 +409,8 @@ hookdeck/mcp-events-outpost/
 ### Phase 2 steps
 
 6. Add a CLI mode: the connection uses a CLI destination, and a supervisor runs `hookdeck listen` (restarted when a source is added, logged).
-7. Recovery on agent start: retry `CLI_DISCONNECTED` requests and retry settled `FAILED` events for this agent's connections.
-8. Scenarios for the four CLI cases.
+7. Recovery on agent start: retry `CLI_DISCONNECTED` requests and retry settled `FAILED` events for this agent's connections. Done.
+8. Scenarios for the CLI cases: `listen` stopped cleanly and killed are in `npm run scenarios`; retries running out and the agent restarted with `--keep` were run by hand (see Status).
 
 ### Phase 3 (spike): evdock with Event Gateway as its relay
 

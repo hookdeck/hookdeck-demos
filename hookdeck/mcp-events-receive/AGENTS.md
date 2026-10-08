@@ -12,6 +12,7 @@ A demo of Hookdeck Event Gateway acting as the MCP Events "forward proxy" from S
 - **Event Gateway is driven through the REST API** (`src/agent/hookdeck.ts`), not the CLI, so per-subscription secrets never appear on a command line. The CLI is used only for `hookdeck listen`.
 - **Local development uses `hookdeck listen` (CLI destination); the HTTP destination is tested deployed** on Fly.io. No third-party tunnels.
 - **The stand-in sender follows OpenAI's MCP Events profile** (top-level `capabilities.events`, `-32015`, idempotent unsubscribe). SEP-3415 differs; note differences rather than switching.
+- **Recovery uses request retry, never replay,** and retries an event only once it's settled (`next_attempt_at` null). Both rules prevent duplicate deliveries; see Phase 2 in `docs/PLAN.md`.
 - **The agent re-checks the MCP server's signature without the 5-minute window,** because Event Gateway delivers the stored request with its original `webhook-timestamp`. In HTTP mode it also checks `x-hookdeck-signature`.
 
 ## Working conventions
@@ -28,4 +29,5 @@ A demo of Hookdeck Event Gateway acting as the MCP Events "forward proxy" from S
 - npm may hold back esbuild's install script; tsx works without it.
 - `hookdeck listen` runs the CLI binary from `node_modules/hookdeck-cli/binaries/`, not the `.bin` wrapper, so SIGINT reaches it. Other `hookdeck listen` processes on the machine may belong to other projects; leave them alone.
 - Ctrl+C can deliver SIGINT several times; the agent's shutdown runs once.
+- The agent owns resources named `<AGENT_NAME>-<8 hex>` and matches that exactly. The deployed agent uses `AGENT_NAME=mcp-events-agent-fly` in the same test project, so a looser prefix match from a local agent deletes the deployed agent's source (it happened once).
 - Event Gateway answers `200` to a badly signed delivery and rejects it afterwards as `VERIFICATION_FAILED`. Check outcomes in the request log, not by status code.
