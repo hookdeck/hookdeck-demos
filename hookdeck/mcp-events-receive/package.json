@@ -1,0 +1,33 @@
+{
+  "name": "hookdeck-mcp-events-receive-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Receive MCP Events through Hookdeck Event Gateway acting as the forward proxy: an agent subscribes with an MCP Events source as its callback URL, and Event Gateway verifies, dedupes, stores and delivers.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sender": "tsx src/sender/index.ts",
+    "agent": "tsx src/agent/index.ts",
+    "emit": "tsx scripts/emit.ts",
+    "agent:status": "tsx scripts/agent.ts status",
+    "agent:fail": "tsx scripts/agent.ts fail",
+    "scenarios": "tsx scripts/scenarios.ts",
+    "teardown": "tsx scripts/teardown.ts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/node": "2.1.0",
+    "@modelcontextprotocol/server": "2.2.0",
+    "hookdeck-cli": "3.1.0",
+    "standardwebhooks": "1.1.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.9.2"
+  }
+}
