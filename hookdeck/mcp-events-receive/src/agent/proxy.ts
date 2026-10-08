@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { canonicalJson } from '../shared/canonical-json.js';
 import { generateWebhookSecret } from '../shared/secret.js';
 import type { HookdeckApi } from './hookdeck.js';
 
@@ -40,9 +41,16 @@ export interface ProxyOptions {
   dedupWindowMs: number;
 }
 
+/** Resource names are the prefix plus 8 hex characters, so `agent` never matches `agent-fly`'s resources. */
+const NAME_SUFFIX_HEX = 8;
+const ownedBy = (namePrefix: string) => {
+  const pattern = new RegExp(`^${namePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-[0-9a-f]{${NAME_SUFFIX_HEX}}$`);
+  return (name: string) => pattern.test(name);
+};
+
 export async function provisionEndpoint(api: HookdeckApi, key: SubscriptionKey, options: ProxyOptions): Promise<ProxyEndpoint> {
   const secret = generateWebhookSecret();
-  const name = `${options.namePrefix}-${randomBytes(4).toString('hex')}`;
+  const name = `${options.namePrefix}-${randomBytes(NAME_SUFFIX_HEX / 2).toString('hex')}`;
   const source = await api.createMcpEventsSource(name, secret, JSON.stringify(key));
   try {
     const destination =
@@ -73,7 +81,7 @@ export async function releaseEndpoint(api: HookdeckApi, endpoint: Pick<ProxyEndp
 
 /** Endpoints left by an earlier run of this agent, with the subscription each was created for. */
 export async function findEndpoints(api: HookdeckApi, namePrefix: string) {
-  const connections = await api.listConnections(`${namePrefix}-`);
+  const connections = await api.listConnections(ownedBy(namePrefix));
   return connections.map((connection) => {
     let key: SubscriptionKey | null = null;
     try {
@@ -87,7 +95,28 @@ export async function findEndpoints(api: HookdeckApi, namePrefix: string) {
       sourceName: connection.source.name,
       connectionId: connection.id,
       destinationId: connection.destination.id,
+      destinationType: connection.destination.type,
       key,
     };
   });
+}
+
+export type FoundEndpoint = Awaited<ReturnType<typeof findEndpoints>>[number];
+
+/** Whether an endpoint left by an earlier run was made for this subscription and delivery type. */
+export const endpointMatches = (found: FoundEndpoint, key: SubscriptionKey, deliverTo: DeliverTo) =>
+  found.key !== null &&
+  canonicalJson(found.key) === canonicalJson(key) &&
+  found.destinationType.toUpperCase() === deliverTo.type.toUpperCase();
+
+/**
+ * Picks up an endpoint an earlier run left behind, reading its secret back from
+ * the source. Reusing it keeps the callback URL, so the MCP server's
+ * subscription carries on and nothing Event Gateway stored meanwhile is lost.
+ */
+export async function resumeEndpoint(api: HookdeckApi, found: FoundEndpoint): Promise<ProxyEndpoint | undefined> {
+  const secret = await api.getSourceSecret(found.sourceId);
+  if (!secret) return undefined;
+  const { url, sourceId, sourceName, connectionId, destinationId } = found;
+  return { url, secret, sourceId, sourceName, connectionId, destinationId };
 }

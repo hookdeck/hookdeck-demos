@@ -65,9 +65,15 @@ export class HookdeckApi {
     });
   }
 
-  async listConnections(namePrefix: string): Promise<Connection[]> {
+  /** The secret an `MCP Events` source verifies with. Only returned when asked for with `include=config.auth`. */
+  async getSourceSecret(sourceId: string): Promise<string | undefined> {
+    const source = await this.request<{ config?: { auth?: { webhook_secret_key?: string } } }>('GET', `/sources/${sourceId}?include=config.auth`);
+    return source.config?.auth?.webhook_secret_key;
+  }
+
+  async listConnections(matches: (name: string) => boolean): Promise<Connection[]> {
     const page = await this.request<{ models: Connection[] }>('GET', `/connections?limit=250`);
-    return page.models.filter((connection) => connection.name.startsWith(namePrefix));
+    return page.models.filter((connection) => matches(connection.name));
   }
 
   /** Deletes a resource; one that's already gone counts as deleted. */

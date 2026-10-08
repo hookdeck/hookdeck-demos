@@ -7,6 +7,9 @@ import { loadEnv } from '../src/shared/env.js';
  *   npm run agent:status          # subscription, counters, handled events
  *   npm run agent:fail            # answer 503 to every delivery (Event Gateway holds and retries)
  *   npm run agent:fail -- --off   # back to normal
+ *   npm run agent:listen -- stop  # stop hookdeck listen cleanly (CLI mode)
+ *   npm run agent:listen -- kill  # kill it, as a crash would
+ *   npm run agent:listen -- start # start it again, then recover what was missed
  */
 
 loadEnv();
@@ -18,5 +21,7 @@ const command = positionals[0] ?? 'status';
 const response =
   command === 'fail'
     ? await fetch(`${base}/demo/fail`, { method: 'POST', headers, body: JSON.stringify({ failing: !values.off }) })
-    : await fetch(`${base}/demo/status`, { headers });
+    : command === 'listen'
+      ? await fetch(`${base}/demo/listen`, { method: 'POST', headers, body: JSON.stringify({ action: positionals[1] }) })
+      : await fetch(`${base}/demo/status`, { headers });
 console.log(JSON.stringify(await response.json(), null, 2));

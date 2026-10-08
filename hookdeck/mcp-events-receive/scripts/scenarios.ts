@@ -9,7 +9,9 @@ import { HookdeckApi } from '../src/agent/hookdeck.js';
  *   npm run scenarios
  *
  * Each scenario opens an incident on the sender, then checks what the agent
- * handled and what Event Gateway recorded for the request.
+ * handled and what Event Gateway recorded for the request. With the agent in
+ * CLI mode, two more take `hookdeck listen` down (stopped cleanly, then killed)
+ * and check how the event gets through once it's back.
  */
 
 loadEnv();
@@ -19,7 +21,8 @@ const agentBase = (process.env.AGENT_URL || process.env.AGENT_PUBLIC_URL || `htt
 const senderAuth = { Authorization: `Bearer ${process.env.SENDER_TOKEN || 'demo-sender-token'}`, 'Content-Type': 'application/json' };
 const agentAuth = { Authorization: `Bearer ${process.env.AGENT_TOKEN || 'demo-agent-token'}`, 'Content-Type': 'application/json' };
 const api = new HookdeckApi(requireEnv('HOOKDECK_API_KEY'), process.env.HOOKDECK_API_BASE || undefined);
-// Through `hookdeck listen` the first deliveries can be slow (see docs/PLAN.md), so allow time.
+// Deliveries usually take about a second, but one CLI run saw a platform-side hold of up to
+// about 100 s before the first attempt (see docs/PLAN.md), so allow time.
 const deliveryTimeoutMs = Number(process.env.SCENARIO_TIMEOUT_MS || 120_000);
 
 interface Handled {
@@ -28,7 +31,10 @@ interface Handled {
   data: Record<string, unknown>;
 }
 interface AgentStatus {
-  subscription?: { id: string; callbackUrl: string; sourceId: string; refreshBefore: string | null };
+  delivery: 'cli' | 'http';
+  listening: boolean | null;
+  recovery: { passes: number; requestsRetried: string[]; eventsRetried: string[] };
+  subscription?: { id: string; callbackUrl: string; sourceId: string; connectionId: string; refreshBefore: string | null };
   failing: boolean;
   counts: Record<string, number>;
   handled: Handled[];
@@ -41,6 +47,8 @@ interface Emitted {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const agentStatus = async (): Promise<AgentStatus> => (await fetch(`${agentBase}/demo/status`, { headers: agentAuth })).json() as Promise<AgentStatus>;
 const setFailing = (failing: boolean) => fetch(`${agentBase}/demo/fail`, { method: 'POST', headers: agentAuth, body: JSON.stringify({ failing }) });
+const setListen = (action: 'stop' | 'kill' | 'start') =>
+  fetch(`${agentBase}/demo/listen`, { method: 'POST', headers: agentAuth, body: JSON.stringify({ action }) });
 const emit = async (input: Record<string, unknown>): Promise<Emitted> =>
   (await fetch(`${senderBase}/demo/incidents`, { method: 'POST', headers: senderAuth, body: JSON.stringify(input) })).json() as Promise<Emitted>;
 const senderStatuses = (emitted: Emitted) => emitted.deliveries.flatMap((d) => d.attempts.map((a) => a.status));
@@ -81,6 +89,18 @@ async function waitForRequests(sourceId: string, webhookId: string, count: numbe
   return found;
 }
 
+/** Waits for Event Gateway to record a request's ignored event for this connection, and returns its cause. */
+async function waitForIgnoredCause(requestId: string, connectionId: string, timeoutMs = 30_000): Promise<string | undefined> {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const ignored = await api.request<{ models: Array<{ webhook_id: string; cause: string }> }>('GET', `/requests/${requestId}/ignored_events`);
+    const cause = ignored.models.find((e) => e.webhook_id === connectionId)?.cause;
+    if (cause) return cause;
+    await sleep(2000);
+  }
+  return undefined;
+}
+
 type Result = { name: string; pass: boolean; evidence: string };
 const results: Result[] = [];
 const record = (name: string, pass: boolean, evidence: string) => {
@@ -95,6 +115,7 @@ if (!subscription) {
   process.exit(1);
 }
 const sourceId = subscription.sourceId;
+const connectionId = subscription.connectionId;
 console.log(`Agent subscription ${subscription.id}, callback ${subscription.callbackUrl}\n`);
 if (status.failing) await setFailing(false);
 
@@ -162,7 +183,56 @@ if (status.failing) await setFailing(false);
   );
 }
 
-// 6. Deployed only: a request that didn't come through Event Gateway is refused.
+// 6. CLI only: `listen` stopped cleanly. No event is created, the request is stored as
+// CLI_DISCONNECTED, and the agent's recovery retries it when `listen` is back.
+if (status.delivery === 'cli') {
+  try {
+    await setListen('stop');
+    const emitted = await emit({ title: 'Scenario: listen stopped cleanly' });
+    const [request] = await waitForRequests(sourceId, emitted.eventId, 1);
+    const cause = request ? await waitForIgnoredCause(request.id, connectionId) : undefined;
+    await setListen('start');
+    const handled = await waitForHandled(emitted.eventId);
+    const recovered = request ? (await agentStatus()).recovery.requestsRetried.includes(request.id) : false;
+    record(
+      'listen stopped cleanly: stored, then recovered by request retry',
+      cause === 'CLI_DISCONNECTED' && Boolean(handled) && recovered,
+      `${emitted.eventId}: sender saw ${JSON.stringify(senderStatuses(emitted))}, request ${request?.id ?? '(none)'} ignored as ${cause ?? '(nothing)'}, ` +
+        `${recovered ? 'retried by the agent on reconnect' : 'not retried by the agent'}, agent ${handled ? 'handled it' : 'never handled it'}`,
+    );
+  } finally {
+    await setListen('start');
+  }
+}
+
+// 7. CLI only: `listen` killed. Event Gateway keeps the session for about 2 minutes, so an
+// event is created; its attempts fail with CLI_UNAVAILABLE until `listen` is back, and the
+// retry rule delivers it. Recovery must leave it alone (a manual retry would deliver twice).
+if (status.delivery === 'cli') {
+  try {
+    await setListen('kill');
+    await sleep(3000);
+    const emitted = await emit({ title: 'Scenario: listen killed' });
+    await sleep(Number(process.env.SCENARIO_KILL_DOWNTIME_MS || 30_000));
+    await setListen('start');
+    const handled = await waitForHandled(emitted.eventId);
+    await sleep(5000);
+    const after = await agentStatus();
+    const times = after.handled.filter((h) => h.eventId === emitted.eventId).length;
+    const [request] = await waitForRequests(sourceId, emitted.eventId, 1);
+    const recoveredByHand = request ? after.recovery.requestsRetried.includes(request.id) : false;
+    record(
+      'listen killed: held by the retry rule, delivered once when back',
+      Boolean(handled) && Number(handled?.attempt) > 1 && times === 1 && !recoveredByHand,
+      `${emitted.eventId}: sender saw ${JSON.stringify(senderStatuses(emitted))}, agent handled it ${times} time(s), on attempt ${handled?.attempt ?? '(never)'}, ` +
+        `${recoveredByHand ? 'after a request retry' : 'with no manual retry'}`,
+    );
+  } finally {
+    await setListen('start');
+  }
+}
+
+// 8. Deployed only: a request that didn't come through Event Gateway is refused.
 if (agentBase.startsWith('https://')) {
   const response = await fetch(`${agentBase}/events`, {
     method: 'POST',

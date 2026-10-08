@@ -13,6 +13,7 @@
     "emit": "tsx scripts/emit.ts",
     "agent:status": "tsx scripts/agent.ts status",
     "agent:fail": "tsx scripts/agent.ts fail",
+    "agent:listen": "tsx scripts/agent.ts listen",
     "scenarios": "tsx scripts/scenarios.ts",
     "teardown": "tsx scripts/teardown.ts",
     "typecheck": "tsc"

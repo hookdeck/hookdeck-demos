@@ -46,11 +46,15 @@ export class ListenSupervisor {
     if (login.status !== 0) throw new Error(`hookdeck ci failed:\n${login.stdout}${login.stderr}`);
   }
 
-  /** Listens to exactly these sources, restarting `listen` if the set changed. */
-  async listenTo(sourceNames: string[]): Promise<void> {
+  get running(): boolean {
+    return this.child !== undefined && this.child.exitCode === null && this.child.signalCode === null;
+  }
+
+  /** Listens to exactly these sources, restarting `listen` if the set changed or it exited. */
+  async listenTo(sourceNames: string[] = this.sources): Promise<void> {
     const next = [...new Set(sourceNames)].sort();
-    if (this.child && next.join(',') === this.sources.join(',')) return;
-    const restarting = this.child !== undefined;
+    if (this.running && next.join(',') === this.sources.join(',')) return;
+    const restarting = this.running;
     await this.stop();
     this.sources = next;
     if (next.length === 0) return;
@@ -82,9 +86,21 @@ export class ListenSupervisor {
   }
 
   /** Stops `listen` cleanly (SIGINT), so its CLI session closes rather than lingering. */
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    return this.end('SIGINT');
+  }
+
+  /**
+   * Kills `listen` without letting it close its session, as a crash or a lost
+   * network would. Event Gateway keeps the session for about 2 minutes.
+   */
+  kill(): Promise<void> {
+    return this.end('SIGKILL');
+  }
+
+  private async end(signal: 'SIGINT' | 'SIGKILL'): Promise<void> {
     const child = this.child;
-    if (!child || child.exitCode !== null) return;
+    if (!child || !this.running) return;
     this.stopping = true;
     this.child = undefined;
     await new Promise<void>((done) => {
@@ -93,7 +109,7 @@ export class ListenSupervisor {
         clearTimeout(timer);
         done();
       });
-      child.kill('SIGINT');
+      child.kill(signal);
     });
   }
 }

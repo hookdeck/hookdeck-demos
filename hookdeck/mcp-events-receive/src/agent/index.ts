@@ -5,9 +5,10 @@ import { loadEnv, numberEnv, requireEnv } from '../shared/env.js';
 import type { SubscribeResult } from '../shared/mcp-events.js';
 import { EventsClient } from './client.js';
 import { HookdeckApi } from './hookdeck.js';
-import { findEndpoints, provisionEndpoint, releaseEndpoint, type ProxyEndpoint, type SubscriptionKey } from './proxy.js';
+import { endpointMatches, findEndpoints, provisionEndpoint, releaseEndpoint, resumeEndpoint, type DeliverTo, type ProxyEndpoint, type SubscriptionKey } from './proxy.js';
 import { ListenSupervisor } from './listen.js';
 import { Receiver } from './receiver.js';
+import { startRecovery } from './recover.js';
 
 /*
  * An agent runtime that receives MCP Events through Event Gateway acting as its
@@ -15,6 +16,10 @@ import { Receiver } from './receiver.js';
  * subscription (with the subscription's secret), subscribes with the source
  * URL as the callback, refreshes before the grant runs out, and on exit
  * unsubscribes and deletes the source.
+ *
+ * With --keep it leaves the subscription and source in place on exit. The MCP
+ * server keeps delivering, Event Gateway keeps storing, and the next start picks
+ * the endpoint back up and recovers what `hookdeck listen` missed.
  */
 
 loadEnv();
@@ -50,6 +55,21 @@ interface Live {
 }
 let live: Live | undefined;
 
+const recovered = { passes: 0, requestsRetried: [] as string[], eventsRetried: [] as string[] };
+let recovery: ReturnType<typeof startRecovery> | undefined;
+function recover() {
+  if (!live) return;
+  recovery?.stop();
+  recovery = startRecovery(api, live.endpoint, log, {
+    intervalMs: numberEnv('AGENT_RECOVERY_INTERVAL_MS', 60_000),
+    onPass: (pass) => {
+      recovered.passes++;
+      recovered.requestsRetried.push(...pass.requestsRetried);
+      recovered.eventsRetried.push(...pass.eventsRetried);
+    },
+  });
+}
+
 const receiver = new Receiver({
   hookdeckSigningSecret,
   secretFor: (subscriptionId) => (live && live.subscription.id === subscriptionId ? live.endpoint.secret : undefined),
@@ -73,11 +93,33 @@ const server = http.createServer(async (req, res) => {
     if (!authorized(req)) return res.writeHead(401, { 'WWW-Authenticate': 'Bearer' }).end();
     if (pathname === '/demo/status' && req.method === 'GET') {
       return json(res, 200, {
+        delivery,
+        listening: listener?.running ?? null,
         subscription: live && { ...live.subscription, callbackUrl: live.endpoint.url, sourceId: live.endpoint.sourceId, connectionId: live.endpoint.connectionId },
         failing: receiver.failing,
         counts: receiver.counts,
+        recovery: recovered,
         handled: receiver.handled,
       });
+    }
+    if (pathname === '/demo/listen' && req.method === 'POST' && listener) {
+      // Takes `hookdeck listen` down or brings it back, to show what Event Gateway does meanwhile.
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const { action } = (chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}) as { action?: string };
+      if (action === 'stop') {
+        log('stopping hookdeck listen cleanly (SIGINT)');
+        await listener.stop();
+      } else if (action === 'kill') {
+        log('killing hookdeck listen (SIGKILL): Event Gateway keeps its session for about 2 minutes');
+        await listener.kill();
+      } else if (action === 'start') {
+        await listener.listenTo();
+        recover();
+      } else {
+        return json(res, 400, { error: 'action must be stop, kill or start' });
+      }
+      return json(res, 200, { listening: listener.running });
     }
     if (pathname === '/demo/fail' && req.method === 'POST') {
       const chunks: Buffer[] = [];
@@ -112,15 +154,25 @@ function scheduleRefresh() {
   live.refreshTimer.unref();
 }
 
-/** Removes endpoints an earlier run left behind, unsubscribing each from the server first. */
-async function cleanUpPreviousRuns() {
+/**
+ * Looks for endpoints an earlier run left behind. One made for this
+ * subscription and delivery type is picked up again; the rest are removed,
+ * after unsubscribing each from the server.
+ */
+async function previousRuns(deliverTo: DeliverTo): Promise<ProxyEndpoint | undefined> {
+  let resumed: ProxyEndpoint | undefined;
   for (const stale of await findEndpoints(api, namePrefix)) {
+    if (!resumed && endpointMatches(stale, key, deliverTo)) {
+      resumed = await resumeEndpoint(api, stale);
+      if (resumed) continue;
+    }
     if (stale.key?.serverUrl === senderUrl) {
       await client.unsubscribe(stale.key, stale.url).catch((error) => log(`unsubscribe of ${stale.url} failed: ${(error as Error).message}`));
     }
     await releaseEndpoint(api, stale);
     log(`removed endpoint ${stale.sourceId} left by an earlier run`);
   }
+  return resumed;
 }
 
 const ttlMs = process.env.AGENT_TTL_MS ? Number(process.env.AGENT_TTL_MS) : undefined;
@@ -130,15 +182,19 @@ log(`event endpoint listening on :${port}${publicUrl ? `, public URL ${publicUrl
 
 await client.connect();
 await client.checkEvent(key.name);
-await cleanUpPreviousRuns();
-
-const endpoint = await provisionEndpoint(api, key, {
-  namePrefix,
-  deliverTo: publicUrl ? { type: 'http', url: `${publicUrl}/events` } : { type: 'cli', path: '/events' },
-  retry: { strategy: 'linear', intervalMs: numberEnv('AGENT_RETRY_INTERVAL_MS', 15_000), count: numberEnv('AGENT_RETRY_COUNT', 10) },
-  dedupWindowMs: numberEnv('AGENT_DEDUP_WINDOW_MS', 60 * 60_000),
-});
-log(`created MCP Events source ${endpoint.sourceId} (${endpoint.url}) and connection ${endpoint.connectionId}`);
+const deliverTo: DeliverTo = publicUrl ? { type: 'http', url: `${publicUrl}/events` } : { type: 'cli', path: '/events' };
+const resumed = await previousRuns(deliverTo);
+const endpoint =
+  resumed ??
+  (await provisionEndpoint(api, key, {
+    namePrefix,
+    deliverTo,
+    retry: { strategy: 'linear', intervalMs: numberEnv('AGENT_RETRY_INTERVAL_MS', 15_000), count: numberEnv('AGENT_RETRY_COUNT', 10) },
+    dedupWindowMs: numberEnv('AGENT_DEDUP_WINDOW_MS', 60 * 60_000),
+  }));
+log(
+  `${resumed ? 'picked up the MCP Events source left by the last run:' : 'created MCP Events source'} ${endpoint.sourceId} (${endpoint.url}) and connection ${endpoint.connectionId}`,
+);
 // Connections must exist before `listen` starts, or it creates its own (cli-<source>).
 await listener?.listenTo([endpoint.sourceName]);
 
@@ -154,13 +210,20 @@ try {
   await releaseEndpoint(api, endpoint);
   process.exit(1);
 }
+// Only now: before `listen` is connected a request retry does nothing, and the
+// subscription has to exist for the endpoint to accept what's recovered.
+if (resumed) recover();
 
 // Ctrl+C can deliver SIGINT more than once (the terminal's process group, plus npm and tsx relaying it),
 // so shutdown runs once and later signals wait for it.
 let shuttingDown: Promise<void> | undefined;
 const shutdown = () => {
   shuttingDown ??= (async () => {
-    if (live && !flags.keep) {
+    recovery?.stop();
+    if (live && flags.keep) {
+      clearTimeout(live.refreshTimer);
+      log(`keeping ${live.subscription.id} and source ${live.endpoint.sourceId}; the next start picks them up`);
+    } else if (live) {
       clearTimeout(live.refreshTimer);
       log(`unsubscribing ${live.subscription.id}`);
       await client.unsubscribe(key, live.endpoint.url).catch((error) => log(`unsubscribe failed: ${(error as Error).message}`));
