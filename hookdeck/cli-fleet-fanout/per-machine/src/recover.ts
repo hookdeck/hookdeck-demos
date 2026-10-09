@@ -1,5 +1,5 @@
 /**
- * Replay what one machine missed, onto that machine only.
+ * Retry what one machine missed, onto that machine only.
  *
  *   npm run recover -- group-a-host-01
  *   npm run recover -- group-a-host-01 --since 2026-09-23T10:00:00Z --dry-run
@@ -54,8 +54,9 @@ const CAUSE = "CLI_DISCONNECTED";
  * event - and retrying one of those delivers it twice. So wait for it to
  * settle instead, then retry only if it actually failed.
  *
- * The CLI retry budget is about 10 seconds (MAX_CLI_RETRIES 5 at
- * CLI_RETRY_DELAY 2s), so this is a generous ceiling rather than a guess.
+ * The CLI retry budget is about 10 seconds (measured: with no session, the
+ * attempt fails 10-11s after the send), so this is a generous ceiling rather
+ * than a guess.
  */
 const SETTLE_TIMEOUT_MS = 30_000;
 const SETTLE_POLL_MS = 2_000;

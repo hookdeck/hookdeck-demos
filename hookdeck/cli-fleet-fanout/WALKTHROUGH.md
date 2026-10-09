@@ -71,7 +71,7 @@ machine is a connection.
 
 Back to the viz, start the machine. When its CLI session reconnects,
 `machine.ts` runs recovery for that connection: it finds what this machine
-missed and replays only that. The host catches up; the two healthy peers do not
+missed and retries only that. The host catches up; the two healthy peers do not
 move. No duplicates, no manual step.
 
 ## 9b. The case that needs nothing
@@ -84,7 +84,7 @@ reconnect when you restore it. Send a push, then click **Online**.
 If you restore it within about ten seconds, the event arrives with no recovery
 involved: Hookdeck waits roughly that long for a session to come back before
 giving up on a delivery. Leave it longer and the attempt is finalized, and
-recovery replays it when the machine reconnects.
+recovery retries it when the machine reconnects.
 
 Worth showing because it separates a blip, which needs nothing, from an outage,
 which needs the script - and the boundary is seconds, not minutes.

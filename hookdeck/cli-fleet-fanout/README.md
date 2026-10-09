@@ -153,7 +153,8 @@ and how long it had been gone. Each is a control in the demo.
 Two clocks decide it:
 
 - **~10 seconds** - how long Hookdeck keeps retrying a delivery while it waits
-  for the session to come back. `MAX_CLI_RETRIES` (5) at `CLI_RETRY_DELAY` (2s).
+  for the session to come back. Measured, not documented: with no session,
+  the attempt fails 10-11s after the send.
 - **~2 minutes** - how long a session survives an abnormal disconnect. Inside
   it an event is still created against that connection; past it no event is
   created at all.
@@ -195,12 +196,12 @@ open and Hookdeck saw a live connection with an unresponsive peer, which models
 a hung machine rather than an offline one.
 
 `CLI_DISCONNECTED` means no event was created at all, so there is nothing to
-retry. Recovery goes back to the *request* and replays it scoped to one
+retry. Recovery goes back to the *request* and retries it scoped to one
 connection, which is why being able to aim at a single connection is the whole
 argument for a connection per machine.
 
 **One script covers every row.** When a session reconnects, `machine.ts` runs
-`recoverMachine()`, which finds what that connection missed and replays only
+`recoverMachine()`, which finds what that connection missed and retries only
 that - the event where one exists, the request where none does. It skips
 anything already delivered on that connection, so it is safe when Hookdeck got
 there first, and safe to run twice.
@@ -234,7 +235,8 @@ work. This demo does not manufacture a duplicate to prove it.
 ## How CLI destinations behave
 
 Worth knowing before you rely on any of this. Verified against
-`hookdeck-cli@2.6.0` and API `2026-09-01`.
+`hookdeck-cli@2.6.0` and API `2026-09-01`. The two clocks and the `CLI_UNAVAILABLE`
+and `CLI_DISCONNECTED` cases were re-checked on `hookdeck-cli@3.1.0`.
 
 - A CLI destination delivers only to sessions attached **at the time**. Events
   arriving while nothing is listening are not queued.
@@ -247,12 +249,15 @@ Worth knowing before you rely on any of this. Verified against
 - `CLI_UNAVAILABLE` is an attempt error code on an event that exists.
   `CLI_DISCONNECTED` is an ignored-event cause where no event was created. Only
   the second means there is nothing to retry.
-- An event is only yours to retry once it is settled. `SUCCESSFUL`, `FAILED` and
-  `CANCELLED` are terminal; `QUEUED`, `SCHEDULED` and `HOLD` all mean Hookdeck
-  still intends to deliver it. `POST /events/{id}/retry` does not check: a
-  manual retry publishes the event straight away and deliberately leaves
-  `next_attempt_at` set, so any scheduled retry fires as well and the
-  destination receives it twice.
+- An event is only yours to retry once it is settled. `SUCCESSFUL` and
+  `CANCELLED` are terminal, and so is `FAILED` once `next_attempt_at` is null.
+  On a connection with a retry rule, an event waiting for its next automatic
+  retry is `FAILED` with `next_attempt_at` set. This demo's connections have no
+  retry rule, so here `FAILED` is always final. `QUEUED`, `SCHEDULED` and
+  `HOLD` all mean Hookdeck still intends to deliver it. `POST
+  /events/{id}/retry` does not check: a manual retry publishes the event
+  straight away and deliberately leaves `next_attempt_at` set, so any
+  scheduled retry fires as well and the destination receives it twice.
 - Sessions are not exposed to you. The CLI binary references a `/cli-sessions`
   endpoint, but it returns 401 with a project API key, and nothing surfaces
   sessions in the dashboard. That is the root of every limitation in the
