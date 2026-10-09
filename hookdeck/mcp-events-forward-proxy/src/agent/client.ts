@@ -10,7 +10,7 @@ const anyResult = z.record(z.string(), z.unknown());
  * `server/discover` and the `events/*` methods are sent as raw requests.
  */
 export class EventsClient {
-  private readonly client = new Client({ name: 'mcp-events-receive-agent', version: '1.0.0' }, { versionNegotiation: { mode: 'auto' } });
+  private readonly client = new Client({ name: 'mcp-events-forward-proxy-agent', version: '1.0.0' }, { versionNegotiation: { mode: 'auto' } });
 
   constructor(
     private readonly serverUrl: string,

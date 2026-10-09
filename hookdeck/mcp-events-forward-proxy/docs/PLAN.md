@@ -399,7 +399,7 @@ All live checks run against a dedicated Event Gateway test project (`HOOKDECK_AP
 ### Layout
 
 ```
-hookdeck/mcp-events-receive/
+hookdeck/mcp-events-forward-proxy/
   README.md              topology, run steps, scenarios, known limits, verified vs assumed
   docs/PLAN.md           this proposal
   docs/FIELD-REPORT*.md  field report drafts, reviewed before posting

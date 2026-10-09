@@ -1,6 +1,7 @@
 # The agent, receiving MCP Events from Event Gateway over HTTP at its public URL.
 # Secrets (fly secrets set -c fly.agent.toml): HOOKDECK_API_KEY, HOOKDECK_SIGNING_SECRET,
 # AGENT_TOKEN, SENDER_TOKEN.
+# The app name is kept from the demo's earlier directory name, mcp-events-receive.
 app = 'mcp-events-receive-agent'
 primary_region = 'ams'
 

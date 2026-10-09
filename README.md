@@ -28,7 +28,7 @@ _shared/        Shared utilities used across demos
 | [demo-scripts](hookdeck/demo-scripts/) | Scripts for automating demo setup and event triggering |
 | [general](hookdeck/general/) | Next.js app for receiving and verifying webhooks from multiple providers |
 | [mcp-events-outpost](hookdeck/mcp-events-outpost/) | Send MCP Events from an MCP server with Hookdeck Outpost (links to [hookdeck/mcp-events-outpost-demo](https://github.com/hookdeck/mcp-events-outpost-demo)) |
-| [mcp-events-receive](hookdeck/mcp-events-receive/) | Receive MCP Events through Event Gateway acting as the agent's forward proxy: challenge, verification, dedup and retries, locally with `hookdeck listen` or deployed over HTTP (work in progress) |
+| [mcp-events-forward-proxy](hookdeck/mcp-events-forward-proxy/) | Receive MCP Events through Event Gateway acting as the agent's forward proxy: challenge, verification, dedup and retries, locally with `hookdeck listen` or deployed over HTTP (work in progress) |
 | [session-filters](hookdeck/session-filters/) | CLI session filters demo |
 | [transformation-reordering](hookdeck/transformation-reordering/) | Transformation and filter rule reordering |
 

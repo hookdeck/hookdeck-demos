@@ -1,5 +1,6 @@
 # The stand-in MCP server, deployed so a deployed agent can subscribe to it.
 # Secrets (fly secrets set -c fly.sender.toml): SENDER_TOKEN.
+# The app name is kept from the demo's earlier directory name, mcp-events-receive.
 app = 'mcp-events-receive-sender'
 primary_region = 'ams'
 

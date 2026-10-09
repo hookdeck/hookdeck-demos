@@ -7,4 +7,4 @@ The sending side of [MCP Events](https://github.com/modelcontextprotocol/modelco
 It's an MCP server that offers `events/list`, `events/subscribe` and `events/unsubscribe`, runs the verification challenge, and uses Hookdeck Outpost to sign, filter, retry and deliver each event to every subscribed agent. It has been tested end to end with ChatGPT as the subscriber.
 
 - **Guide:** [Send MCP Events Webhooks with Outpost](https://hookdeck.com/docs/outpost/guides/send-mcp-events-webhooks-with-outpost)
-- **The receiving side:** [`hookdeck/mcp-events-receive`](../mcp-events-receive/), where an agent receives MCP Events through Hookdeck Event Gateway acting as its forward proxy.
+- **The receiving side:** [`hookdeck/mcp-events-forward-proxy`](../mcp-events-forward-proxy/), where an agent receives MCP Events through Hookdeck Event Gateway acting as its forward proxy.

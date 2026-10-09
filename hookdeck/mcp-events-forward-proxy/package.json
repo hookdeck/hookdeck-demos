@@ -1,5 +1,5 @@
 {
-  "name": "hookdeck-mcp-events-receive-demo",
+  "name": "hookdeck-mcp-events-forward-proxy-demo",
   "version": "1.0.0",
   "private": true,
   "type": "module",
