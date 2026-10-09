@@ -75,7 +75,7 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 4. ~~**Redeploy the agent**~~ done: redeployed with the recovery and naming changes; scenarios 6 of 6 deployed.
 5. ~~**README**~~ done: status, the receiver duties Event Gateway covers, what's verified across both senders and what isn't, and known limits.
 6. ~~**One run against the Outpost demo's MCP server**~~ done: see [Verified](#verified).
-7. **Phase 3:** the evdock spike.
+7. ~~**Phase 3:** the evdock spike~~ done: works with a `--secret-env` patch; holds over 5 minutes fail evdock's timestamp check (see Phase 3).
 8. **Field report drafts** in `docs/`, after Phase 2.
 
 ## Background
@@ -428,7 +428,27 @@ hookdeck/mcp-events-outpost/
 
 ### Phase 3 (spike): evdock with Event Gateway as its relay
 
-evdock's daemon is a ready-made local client: it subscribes, refreshes, verifies, stores and wakes an agent. A spike checks whether it can receive through an `MCP Events` source and `hookdeck listen` instead of its own relay (`--callback-base` set to the source URL). Two evdock changes look necessary: accepting a secret the source already holds, rather than generating one inside `subscribe`, and tolerating deliveries Event Gateway holds for more than 5 minutes. Any change goes to evdock as an upstream proposal, not a fork.
+evdock's daemon is a ready-made local client: it subscribes, refreshes, verifies, stores and wakes an agent. The spike checked whether it can receive through an `MCP Events` source and `hookdeck listen` instead of its own relay, with `--callback-base` set to the source URL.
+
+**Result (2026-10-09, evdock `213d08b`, `hookdeck-cli` 3.1.0, the stand-in sender):** it works with one small evdock change, and holds over 5 minutes fail.
+
+| Step | Result |
+|---|---|
+| Secret | evdock generates the secret inside `subscribe`, so the source can't hold it before the challenge. A local patch added `subscribe --secret-env <VAR>` (18 lines). With it, the spike created the source with a fresh secret and passed the same secret to evdock through the environment |
+| Subscribe | `evdock subscribe sender incident.created --callback-base https://hkdk.events/<id> --secret-env …` succeeded. The callback was the source URL plus evdock's `/hooks/<token>` path; Event Gateway answered the challenge |
+| Path | A CLI destination with path `/` forwarded to `http://127.0.0.1:8797/hooks/<token>`, with no doubled slash |
+| Event | evdock verified the Standard Webhooks signature with the shared secret and stored the event within a second of it being sent |
+| Duplicate, re-signed | The second request was ignored by the dedup rule; evdock stored the event once |
+| Bad signature | `VERIFICATION_FAILED`, never reached evdock |
+| Refresh | evdock refreshed through the same URL and secret |
+| `listen` stopped cleanly, event sent, `listen` back after 5 min 40 s, request retried | evdock answered `401 stale-timestamp`: it checks `webhook-timestamp` against its own receive time in direct mode. Event Gateway retried the `401` every 15 s |
+| Unsubscribe | `evdock unsubscribe` removed the subscription at the sender; the spike deleted the source and connection |
+
+What this means:
+
+- **The secret change is small and general.** Any receiver that has to hold the secret before the challenge (a forward proxy that answers it) needs the client to accept a supplied secret. Proposed upstream as `--secret-env`, so the secret stays off the command line.
+- **The 5-minute window is the real blocker,** and it isn't specific to the CLI. Anything Event Gateway holds or retries for more than 5 minutes reaches evdock with its original timestamp: `listen` down, the daemon down, or retries after an outage. evdock's own relay avoids it because the daemon compares against the time the relay received the request. None of Event Gateway's documented `x-hookdeck-*` headers carries its receive time, so evdock can't do the same here. Options: (a) evdock skips the window for a subscription behind a proxy that checked it on receipt, and verifies the proxy's signature (`x-hookdeck-signature`) instead; (b) Event Gateway adds a signed receive-time header; (c) the SEP says a proxy checks freshness on receipt, so a client behind one doesn't re-check it. (c) is already in [Spec feedback](#spec-feedback-to-verify-during-the-build); (a) is the change to propose to evdock.
+- **A `4xx` from evdock is retried** by the connection's retry rule, which wastes the retries on a delivery that can't succeed. A filter on the retry rule's response codes, or evdock answering a stale timestamp differently, would avoid it.
 
 ### Then
 
