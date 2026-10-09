@@ -37,6 +37,8 @@ export interface HookdeckEvent {
   destination_id: string;
   status: string;
   attempts?: number;
+  /** Set while an automatic retry is scheduled, null once none is. */
+  next_attempt_at?: string | null;
   created_at: string;
 }
 
@@ -125,10 +127,14 @@ export const getEvent = (id: string): Promise<HookdeckEvent> => api(`/events/${i
 /**
  * Event statuses, and which of them are settled.
  *
- * SUCCESSFUL, FAILED and CANCELLED are terminal: nothing further will happen
- * on its own. QUEUED, SCHEDULED and HOLD all mean Hookdeck still intends to
- * deliver - queued for an attempt now, waiting on a scheduled retry, or held
- * because the connection is paused.
+ * SUCCESSFUL and CANCELLED are terminal: nothing further will happen on its
+ * own. FAILED is terminal only once no retry is scheduled: on a connection
+ * with a retry rule, an event waiting for its next automatic retry is FAILED
+ * with `next_attempt_at` set. This demo's connections have no retry rule, so
+ * here FAILED is always final, but the check costs nothing and keeps recovery
+ * safe if a retry rule is added. QUEUED, SCHEDULED and HOLD all mean Hookdeck
+ * still intends to deliver - queued for an attempt now, waiting on a scheduled
+ * retry, or held because the connection is paused.
  *
  * The distinction matters because `POST /events/{id}/retry` has no guard on
  * status. A manual retry publishes the event for delivery immediately and
@@ -138,8 +144,9 @@ export const getEvent = (id: string): Promise<HookdeckEvent> => api(`/events/${i
  */
 export const TERMINAL_EVENT_STATUSES = ["SUCCESSFUL", "FAILED", "CANCELLED"] as const;
 
-export const isSettled = (event: Pick<HookdeckEvent, "status">): boolean =>
-  (TERMINAL_EVENT_STATUSES as readonly string[]).includes(event.status);
+export const isSettled = (event: Pick<HookdeckEvent, "status" | "next_attempt_at">): boolean =>
+  (TERMINAL_EVENT_STATUSES as readonly string[]).includes(event.status) &&
+  !(event.status === "FAILED" && event.next_attempt_at);
 
 /**
  * Events for one request.
