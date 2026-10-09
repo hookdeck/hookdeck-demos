@@ -99,15 +99,18 @@ MCP Events is a draft extension to the Model Context Protocol (MCP). It lets an 
 > `Upstream → MCP Server → webhook POST → Forward Proxy ← Client (poll or push)`
 
 ```mermaid
-flowchart LR
-    UP["Upstream service<br>(GitHub.com)"]
-    SRV["MCP server<br>(sender)"]
-    PX["Forward proxy<br>(webhook endpoint)"]
-    CL["Client: agent + MCP client SDK"]
-    UP -- "hop 1: the service's own webhooks<br>(outside the spec)" --> SRV
-    CL -- "events/subscribe<br>delivery.url = proxy URL<br>delivery.secret = whsec_" --> SRV
-    SRV -- "hop 2: verification challenge,<br>then signed event deliveries" --> PX
-    PX -- "implementation-defined<br>(poll or push)" --> CL
+sequenceDiagram
+    participant CL as Client<br>(agent + MCP client SDK)
+    participant PX as Forward proxy<br>(webhook endpoint)
+    participant SRV as MCP server<br>(sender)
+    participant UP as Upstream service<br>(GitHub.com)
+    CL->>SRV: events/subscribe, delivery.url = proxy URL, delivery.secret = whsec_
+    SRV->>PX: Hop 2: signed verification challenge
+    PX-->>SRV: Challenge echoed
+    SRV-->>CL: id, refreshBefore
+    UP->>SRV: Hop 1: the service's own webhooks (outside the spec)
+    SRV->>PX: Hop 2: signed event delivery
+    PX->>CL: Implementation-defined (poll or push)
 ```
 
 What the SEP asks of each party:
@@ -275,18 +278,17 @@ Out of scope: poll and push delivery modes on the sender, building secret rotati
 Event Gateway POSTs each verified event to the agent's HTTPS endpoint. This is the deployment the SEP describes: a proxy that stays up, stores before acknowledging, and hands events on.
 
 ```mermaid
-flowchart LR
-    SRV["MCP server<br>(stand-in sender)"]
-    subgraph EG["Hookdeck Event Gateway: the forward proxy"]
-        SRC["MCP Events source<br>challenge, signature check, store"]
-        CON["Connection<br>dedup on headers.webhook-id<br>retry rule, delivery rate"]
-        SRC --> CON
-    end
-    AG["Agent<br>HTTPS endpoint + MCP client"]
-    AG -- "1. create source with whsec_" --> SRC
-    AG -- "2. events/subscribe, url = source URL" --> SRV
-    SRV -- "3. challenge, then signed deliveries" --> SRC
-    CON -- "4. HTTP POST with x-hookdeck-signature,<br>retried until the agent is back" --> AG
+sequenceDiagram
+    participant AG as Agent<br>(HTTPS endpoint + MCP client)
+    participant EG as Hookdeck Event Gateway<br>(source + connection)
+    participant SRV as MCP server<br>(stand-in sender)
+    AG->>EG: 1. Create an MCP Events source holding a whsec_ secret, and a connection<br>(HTTP destination, dedup on headers.webhook-id, retry rule, delivery rate)
+    AG->>SRV: 2. events/subscribe with delivery.url = the source URL
+    SRV->>EG: 3. Signed verification challenge
+    EG-->>SRV: Challenge echoed
+    SRV->>EG: 4. Signed delivery
+    EG-->>SRV: 200 once stored
+    EG->>AG: 5. HTTP POST with x-hookdeck-signature, retried until the agent is back
 ```
 
 What Event Gateway adds over the agent receiving directly ([destinations](https://hookdeck.com/docs/destinations), [retries](https://hookdeck.com/docs/retries)):

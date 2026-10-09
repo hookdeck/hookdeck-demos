@@ -7,24 +7,28 @@
 This demo uses Hookdeck Event Gateway as that proxy:
 
 ```mermaid
-flowchart LR
-    SRV["MCP server<br>(stand-in sender)"]
-    subgraph EG["Hookdeck Event Gateway: the forward proxy"]
-        SRC["MCP Events source<br>challenge, signature check, store"]
-        CON["Connection<br>dedup on headers.webhook-id, retries"]
-        SRC --> CON
-    end
-    AG["Agent<br>MCP client + event endpoint"]
-    AG -- "1. create source with whsec_ secret" --> SRC
-    AG -- "2. events/subscribe, url = source URL" --> SRV
-    SRV -- "3. challenge, then signed events" --> SRC
-    CON -- "4. deliver: hookdeck listen locally,<br>or HTTP when deployed" --> AG
+sequenceDiagram
+    participant A as Agent<br>(MCP client + event endpoint)
+    participant P as Hookdeck Event Gateway<br>(the forward proxy)
+    participant S as MCP server<br>(stand-in sender)
+    Note over A,S: Once per subscription
+    A->>P: 1. Create an MCP Events source holding a fresh whsec_ secret,<br>and a connection back to the agent
+    A->>S: 2. events/subscribe with delivery.url = the source URL
+    S->>P: 3. Signed verification challenge
+    P-->>S: Challenge echoed (the agent never sees it)
+    S-->>A: Subscription id and refreshBefore
+    Note over A,S: Every event
+    S->>P: 4. Signed event
+    P-->>S: 200 once stored, then the signature is checked
+    P->>A: 5. Deliver through hookdeck listen locally, or over HTTP when deployed
+    A-->>P: 2xx, or Event Gateway retries
 ```
 
 1. **The agent owns the proxy.** For each subscription it creates an `MCP Events` source holding a fresh `whsec_` secret, plus a connection to itself with a deduplicate rule on `headers.webhook-id` and a retry rule.
 2. **It subscribes with the source URL** as its callback. The MCP server doesn't know there's a proxy.
-3. **Event Gateway answers the verification challenge** and verifies every delivery's Standard Webhooks signature. It stores each request before answering `200`, so the MCP server never sees the agent's downtime as delivery failures.
-4. **Event Gateway delivers to the agent:** through `hookdeck listen` on localhost, or over HTTP to a deployed agent. It retries while the agent is down.
+3. **Event Gateway answers the verification challenge** on the agent's behalf, because the source holds the subscription's secret.
+4. **Event Gateway stores every event** before answering `200`, so the MCP server never sees the agent's downtime as delivery failures. It then verifies the Standard Webhooks signature, and a badly signed event is never delivered.
+5. **Event Gateway delivers to the agent:** through `hookdeck listen` on localhost, or over HTTP to a deployed agent. It deduplicates on `webhook-id` and retries while the agent is down.
 
 The agent refreshes its subscription before it expires, and on exit unsubscribes and deletes its source and connection. Started with `--keep`, it leaves them in place instead: the MCP server keeps delivering, Event Gateway keeps storing, and the next start picks the same source back up and recovers what it missed.
 
