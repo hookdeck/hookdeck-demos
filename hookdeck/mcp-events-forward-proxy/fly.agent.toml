@@ -1,0 +1,39 @@
+# The agent, receiving MCP Events from Event Gateway over HTTP at its public URL.
+# Secrets (fly secrets set -c fly.agent.toml): HOOKDECK_API_KEY, HOOKDECK_SIGNING_SECRET,
+# AGENT_TOKEN, SENDER_TOKEN.
+# The app name is kept from the demo's earlier directory name, mcp-events-receive.
+app = 'mcp-events-receive-agent'
+primary_region = 'ams'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '8080'
+  AGENT_DELIVERY = 'http'
+  AGENT_PUBLIC_URL = 'https://mcp-events-receive-agent.fly.dev'
+  SENDER_MCP_URL = 'https://mcp-events-receive-sender.fly.dev/mcp'
+  AGENT_NAME = 'mcp-events-agent-fly'
+
+[processes]
+  app = 'node --import tsx src/agent/index.ts'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Always on: the agent refreshes its subscription before the grant runs out.
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    grace_period = '30s'
+    interval = '30s'
+    method = 'GET'
+    path = '/healthz'
+    timeout = '5s'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
