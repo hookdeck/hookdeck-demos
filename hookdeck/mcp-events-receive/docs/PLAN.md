@@ -73,7 +73,7 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 2. ~~**Recovery on agent start**~~ done, with the two `listen` cases in `npm run scenarios`.
 3. ~~**Scenarios script**~~ done: `npm run scenarios`.
 4. ~~**Redeploy the agent**~~ done: redeployed with the recovery and naming changes; scenarios 6 of 6 deployed.
-5. **README** completed from the verified results. The stub folder `hookdeck/mcp-events-outpost/` and the repo README rows are done.
+5. ~~**README**~~ done: status, the receiver duties Event Gateway covers, what's verified across both senders and what isn't, and known limits.
 6. ~~**One run against the Outpost demo's MCP server**~~ done: see [Verified](#verified).
 7. **Phase 3:** the evdock spike.
 8. **Field report drafts** in `docs/`, after Phase 2.

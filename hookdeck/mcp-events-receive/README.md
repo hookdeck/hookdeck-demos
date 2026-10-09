@@ -1,6 +1,6 @@
 # Receive MCP Events with Event Gateway as a forward proxy
 
-> Work in progress. The flows below are built and verified; the write-up isn't finished. See [docs/PLAN.md](docs/PLAN.md) for the full proposal, status and remaining work.
+**Status:** demo code, not production-ready. Verified on 2026-10-08 and 2026-10-09 against a dedicated Event Gateway test project: locally through `hookdeck listen`, deployed on Fly.io, and with two different MCP servers sending. See [What's verified](#whats-verified) and [Known limits](#known-limits). [docs/PLAN.md](docs/PLAN.md) has the full proposal and the detailed results.
 
 [MCP Events](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415) (SEP-3415, a draft MCP extension) lets an agent subscribe to events an MCP server offers. In webhook mode the server POSTs each event to a callback URL the agent chose. The SEP describes a common deployment where that URL belongs to a **forward proxy** that receives webhooks on the agent's behalf.
 
@@ -134,10 +134,51 @@ fly deploy -c fly.agent.toml --ha=false
 
 Point the scripts at the deployed services with `SENDER_MCP_URL=https://<sender-app>.fly.dev/mcp` and `AGENT_URL=https://<agent-app>.fly.dev`. For example, `SENDER_MCP_URL=... AGENT_URL=... npm run scenarios`.
 
+## How Event Gateway covers the receiver's duties
+
+SEP-3415 puts these duties on whatever receives the webhook. Here that's the `MCP Events` source and its connection, so the agent doesn't implement them.
+
+| Receiver duty in SEP-3415 | Event Gateway | Verified |
+|---|---|---|
+| Consent: answer the verification challenge | Answered at the source, only when correctly signed. Not forwarded to the agent, which SEP-3415 allows since `c47fd24` | Yes |
+| Verify the Standard Webhooks signature (MUST) | Verified on the source. A badly signed delivery is stored and marked `VERIFICATION_FAILED`, never delivered, but answered `200` (see [Known limits](#known-limits)) | Yes |
+| Deduplicate on `webhook-id` (SHOULD) | A deduplicate rule on `headers.webhook-id`, window up to 1 hour | Yes, including a sender's re-signed retry |
+| Don't count the client's downtime against the sender | Every request is stored before Event Gateway answers, then retried to the agent | Yes: the agent answered `503` and the sender saw one `200` |
+| Reject stale timestamps (SHOULD) | Checked on the challenge. A stored delivery is forwarded with its original `webhook-timestamp`, so the agent re-checks the signature without the 5-minute window | By design, not measured |
+| Forward `gap` and `terminated` envelopes (MUST) | Forwarded like events | Yes |
+| `503` or `425` for an unknown subscription ID | Doesn't arise: one source per subscription | n/a |
+
+## What's verified
+
+| Scenario | Local, `hookdeck listen` | Deployed, HTTP | Outpost demo as sender |
+|---|---|---|---|
+| Agent creates its source; Event Gateway answers the sender's challenge | Yes | Yes | Yes |
+| An event is delivered and handled | Yes, attempt 1 | Yes, attempt 1, about 1 s | Yes, attempt 1, about 1 s |
+| The sender's filter applied (Outpost filters by subscription arguments) | n/a | n/a | Yes |
+| Duplicate `webhook-id`, re-signed: handled once | Yes | Yes | Not run |
+| Badly signed delivery never reaches the agent | Yes | Yes | Not run |
+| Agent answers `503`, then recovers; the sender sees one `200` | Yes | Yes | Yes |
+| A forged request sent straight to the agent is refused (`401`) | n/a | Yes | n/a |
+| Subscription refreshed before `refreshBefore` | Not observed | Yes, for over 20 hours | Not observed |
+| `listen` stopped cleanly; recovery retries the request | Yes | n/a | Yes |
+| `listen` killed; the retry rule delivers once it's back | Yes | n/a | Not run |
+| `listen` killed until retries ran out; recovery retries the event | Yes, by hand | n/a | Not run |
+| Agent restarted with `--keep`; recovery picks up what it missed | Yes, by hand | n/a | Not run |
+| Ctrl+C unsubscribes and deletes the source and connection | Yes | n/a | Yes |
+
+`npm run scenarios` covers the stand-in sender rows that aren't marked "by hand": 7 of 7 locally, 6 of 6 deployed.
+
+**Not verified:**
+
+- **Other MCP servers.** Both senders follow OpenAI's MCP Events profile, which ChatGPT-facing servers use today: a top-level `capabilities.events`, the design sketch's error codes (such as `-32015` for a callback endpoint error), and `{}` for unsubscribing an unknown subscription. SEP-3415 as written declares the capability under `capabilities.extensions["io.modelcontextprotocol/events"]`, uses `-32023` to `-32027`, and returns NotFound. The agent checks only the top-level capability, so it would refuse a server that follows SEP-3415 to the letter.
+- **Secret rotation,** which isn't built.
+- **A refresh in CLI mode.** The local runs ended before `refreshBefore`; the deployed agent refreshes on the same code path.
+
 ## Known limits
 
 - **`hookdeck listen` restarts for each new source,** because a running `listen` doesn't pick up sources created after it started ([hookdeck-cli#467](https://github.com/hookdeck/hookdeck-cli/issues/467)). The agent restarts it.
 - **The CLI path isn't durable while `listen` is disconnected,** so the agent has to recover. After a clean stop, or about 2 minutes after a crash, no event is created and the request is stored for the agent to retry. In between, an event is created but only the retry rule delivers it. Pausing the connection doesn't help after a clean stop. Measured with `hookdeck-cli` 3.1.0; see [docs/PLAN.md](docs/PLAN.md#phase-2-cli-destination-to-a-local-agent).
 - **The agent remembers handled events in memory,** so a redelivery after a restart is handled again. A real agent would store `eventId`s it has handled.
+- **A badly signed delivery is answered `200`.** Event Gateway stores every request before verifying it, so the sender can't tell a rejected delivery from an accepted one, and a conformance checker that grades by status code marks those cases as failed. The rejection shows in the request log as `VERIFICATION_FAILED`.
 - **No secret overlap on a source during rotation.** The sender dual-signs for a grace window, but a source holds one secret.
 - **The stand-in sender** keeps subscriptions in memory, checks callback URLs only for `https`, and uses a static bearer token instead of OAuth.
