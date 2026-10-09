@@ -73,10 +73,10 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 2. ~~**Recovery on agent start**~~ done, with the two `listen` cases in `npm run scenarios`.
 3. ~~**Scenarios script**~~ done: `npm run scenarios`.
 4. ~~**Redeploy the agent**~~ done: redeployed with the recovery and naming changes; scenarios 6 of 6 deployed.
-5. ~~**README**~~ done: status, the receiver duties Event Gateway covers, what's verified across both senders and what isn't, and known limits.
+5. ~~**README**~~ done: status, the receiver duties Event Gateway covers, what's verified across both senders and what isn't, and known limits. Known limits also cover the API key the agent holds, one source per subscription, and the missing freshness check on events.
 6. ~~**One run against the Outpost demo's MCP server**~~ done: see [Verified](#verified).
 7. ~~**Phase 3:** the evdock spike~~ done: works with a `--secret-env` patch; holds over 5 minutes fail evdock's timestamp check (see Phase 3).
-8. **Field report drafts** in `docs/`, after Phase 2.
+8. **Field report:** drafted, and kept out of this repo: it will be posted as an issue in the working group's repository, which becomes the only copy. Before posting: decide the position on local delivery, re-run R1 and the handshake checks once the pending handshake fixes are deployed, and review.
 
 ## Background
 
@@ -402,7 +402,6 @@ All live checks run against a dedicated Event Gateway test project (`HOOKDECK_AP
 hookdeck/mcp-events-forward-proxy/
   README.md              topology, run steps, scenarios, known limits, verified vs assumed
   docs/PLAN.md           this proposal
-  docs/FIELD-REPORT*.md  field report drafts, reviewed before posting
   .env.example           HOOKDECK_API_KEY, HOOKDECK_SIGNING_SECRET, AGENT_PUBLIC_URL, ports
   src/sender/            stand-in MCP server: events/list, subscribe (with challenge), unsubscribe, signed delivery
   src/agent/             agent: MCP client, per-subscription source and connection, HTTP handler, listen supervisor, recovery
@@ -453,7 +452,7 @@ What this means:
 ### Then
 
 9. README, stub folder, repo README rows.
-10. Field report drafts.
+10. Field report, posted as a working group issue.
 
 Checks before each commit: `npm run typecheck`; scenarios pass; changed Mermaid diagrams rendered; no names of individuals, no internal links; no em dashes; small commits on a branch; no push or PR without approval.
 
