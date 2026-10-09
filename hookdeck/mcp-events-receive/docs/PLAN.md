@@ -12,7 +12,7 @@ Status: in progress, paused on 2026-10-08 while related Event Gateway changes fo
 | **Risk** | The CLI path isn't durable while `hookdeck listen` is disconnected. After a clean stop, or about 2 minutes after a crash, no event is created; the request is stored, and the agent has to retry it to create the event. Within those 2 minutes an event is created but only the retry rule gets it to the next session. The demo's agent recovers both on start, but that's a product gap (CLI destinations should queue like HTTP destinations), and the demo has to say so. |
 | **Next steps** | See [Remaining work](#remaining-work-in-order). |
 
-## Status (2026-10-08)
+## Status (2026-10-09)
 
 ### Built
 
@@ -44,6 +44,18 @@ Against a dedicated Event Gateway test project, 2026-10-08.
 | `listen` killed until the retry rule ran out (about 3.5 minutes) | All 11 attempts failed `CLI_UNAVAILABLE` and the event settled `FAILED`; recovery retried it on reconnect; handled once, attempt 12 | n/a |
 | Agent stopped with `--keep`, two events sent, agent restarted | Picked up the same source and subscription; both requests `CLI_DISCONNECTED`; recovery retried both; each handled once | n/a |
 
+**Against a second sender,** 2026-10-09: the agent, local in CLI mode, subscribed to `order.created` (`minTotal` 100, `currency` USD) on the [Outpost demo's MCP server](https://github.com/hookdeck/mcp-events-outpost-demo), which delivers through managed Outpost (`Outpost/1.6.0`). No code changes, only `SENDER_MCP_URL`, `SENDER_TOKEN`, `AGENT_EVENT` and `AGENT_ARGUMENTS`.
+
+| Scenario | Result |
+|---|---|
+| Subscribe | The Outpost demo's server sent its own challenge to the source URL; Event Gateway answered it; Outpost created a destination with the subscription's filter |
+| Orders of 150 USD, 20 USD and 500 EUR | The 150 USD order handled on attempt 1, about 1 s after it was placed; the other two filtered out by Outpost, never sent |
+| Agent answers `503`, then recovers | Retried by Event Gateway's retry rule; handled on attempt 2; Outpost saw one `200` |
+| `listen` stopped cleanly, order placed, `listen` back | Request ignored as `CLI_DISCONNECTED`; recovery retried it; handled once |
+| Ctrl+C | Unsubscribed; the Outpost demo deleted its destination; the agent deleted its source and connection |
+
+Outpost sends `webhook-id` equal to the MCP `eventId`, plus `webhook-topic` and `X-MCP-Subscription-Id`, so the dedup rule on `headers.webhook-id` works the same as with the stand-in sender.
+
 Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source MUST 6/10 because it grades by status code; every MUST case it fails is rejected by Event Gateway as `VERIFICATION_FAILED` but answered `200`. Dedup on `headers.webhook-id` absorbs replays and re-signed retries.
 
 **Observed once, not reproduced:** in one early run through the CLI destination, three events waited 75 to 101 s before their first attempt, with no failed attempt recorded, and each was delivered once. In 7 controlled runs afterwards (23 timed events, fresh and reused sources, CLI configs and sessions, the same timing), every event arrived 0.2 to 0.5 s after it was sent. The hold was on the platform side before the first attempt, so the demo treats it as an intermittent delivery delay, not a CLI behavior. Recovery doesn't treat a `QUEUED` event as missed, so a delay like it can't cause a duplicate.
@@ -62,7 +74,7 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 3. ~~**Scenarios script**~~ done: `npm run scenarios`.
 4. ~~**Redeploy the agent**~~ done: redeployed with the recovery and naming changes; scenarios 6 of 6 deployed.
 5. **README** completed from the verified results. The stub folder `hookdeck/mcp-events-outpost/` and the repo README rows are done.
-6. **One run against the Outpost demo's MCP server** as a real second sender.
+6. ~~**One run against the Outpost demo's MCP server**~~ done: see [Verified](#verified).
 7. **Phase 3:** the evdock spike.
 8. **Field report drafts** in `docs/`, after Phase 2.
 

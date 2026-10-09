@@ -108,6 +108,18 @@ On start, and whenever `listen` comes back, the agent recovers in `src/agent/rec
 
 It repeats every 60 s until a later pass finds nothing to do, for up to 5 minutes, because the API can show a delivered event as missing or queued for 30 s or more.
 
+### Against another MCP server
+
+The agent isn't tied to the stand-in sender. It expects an MCP server on protocol `2026-07-28` (it reads `server/discover`) that offers the event with webhook delivery, and it has been run unchanged against the [Outpost demo's](https://github.com/hookdeck/mcp-events-outpost-demo) server. With that server running locally:
+
+```bash
+SENDER_MCP_URL=http://localhost:3000/mcp SENDER_TOKEN=dev-token-alice \
+  AGENT_EVENT=order.created AGENT_ARGUMENTS='{"minTotal":100,"currency":"USD"}' \
+  npm run agent
+```
+
+Then place orders with `npm run order` in the Outpost demo. Outpost filters by the subscription's arguments and delivers to the agent's source. `npm run emit` and `npm run scenarios` drive the stand-in sender only.
+
 ## Deploy to Fly.io
 
 The deployed agent receives over HTTP at its public URL, and checks Event Gateway's `x-hookdeck-signature` with the project's signing secret.
