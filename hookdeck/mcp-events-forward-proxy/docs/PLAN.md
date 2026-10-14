@@ -1,12 +1,12 @@
 # Proposal: Event Gateway as an MCP Events forward proxy
 
-Status: in progress, paused on 2026-10-08 while related Event Gateway changes for MCP Events handshakes are finished. Phase 1 and the core of Phase 2 are built and verified; see [Status](#status-2026-10-08) for what's done and what's next.
+Status: the demo is built and verified, and the deployed scenarios passed again on 2026-10-14, after the Event Gateway handshake changes merged. The field report is dropped for now. See [Status](#status-2026-10-08) for what's done.
 
 ## Summary
 
 | | |
 |---|---|
-| **Proposal** | A demo of Hookdeck Event Gateway acting as the forward proxy that MCP Events describes for webhook delivery. Phase 1 delivers to the agent's HTTP endpoint, including a deployed agent. Phase 2 delivers to a local agent through the Hookdeck CLI. Afterward, share the results with the MCP Triggers & Events working group as a field report. |
+| **Proposal** | A demo of Hookdeck Event Gateway acting as the forward proxy that MCP Events describes for webhook delivery. Phase 1 delivers to the agent's HTTP endpoint, including a deployed agent. Phase 2 delivers to a local agent through the Hookdeck CLI. A field report for the MCP Triggers & Events working group was planned and is dropped for now. |
 | **Why** | SEP-3415 calls a forward proxy "a common deployment" for webhook delivery. The only receiver-side implementation reported to the working group so far is evdock, a self-hosted relay published on 2026-10-06. Event Gateway already does what the SEP asks of a receiver (consent, verification, dedup, storing before `2xx`) and adds what a tunnel doesn't (queueing, retries with backoff, rate limits, replay). |
 | **What's new for local agents** | The SEP assumes a client behind NAT polls. Event Gateway with the CLI gives that client push delivery while the MCP server stays in webhook mode. |
 | **Risk** | The CLI path isn't durable while `hookdeck listen` is disconnected. After a clean stop, or about 2 minutes after a crash, no event is created; the request is stored, and the agent has to retry it to create the event. Within those 2 minutes an event is created but only the retry rule gets it to the next session. The demo's agent recovers both on start, but that's a product gap (CLI destinations should queue like HTTP destinations), and the demo has to say so. |
@@ -76,7 +76,7 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 5. ~~**README**~~ done: status, the receiver duties Event Gateway covers, what's verified across both senders and what isn't, and known limits. Known limits also cover the API key the agent holds, one source per subscription, and the missing freshness check on events.
 6. ~~**One run against the Outpost demo's MCP server**~~ done: see [Verified](#verified).
 7. ~~**Phase 3:** the evdock spike~~ done: works with a `--secret-env` patch; holds over 5 minutes fail evdock's timestamp check (see Phase 3).
-8. **Field report:** drafted, and kept out of this repo: it will be posted as an issue in the working group's repository, which becomes the only copy. Before posting: decide the position on local delivery, re-run R1 and the handshake checks once the pending handshake fixes are deployed, and review.
+8. **Field report:** dropped for now (2026-10-14). The spec points stay below as notes.
 
 ## Background
 
@@ -203,7 +203,7 @@ The SEP specifies the wire between the MCP server and the webhook endpoint (subs
 
 So this demo's client-to-proxy side (create a source per subscription through the Hookdeck API, deliver through a connection, delete on unsubscribe) is one valid implementation, not a protocol. Two consequences:
 
-- **SDKs need a hook to provision a URL per subscription.** The SEP's `WebhookConfig` takes a static URL and a `secret_provider`. An `endpoint_provider` (given the subscription key and secret, return a URL) would let an SDK work with Event Gateway, evdock's per-path URLs, or any proxy that issues a URL per subscription. Worth raising in the field report.
+- **SDKs need a hook to provision a URL per subscription.** The SEP's `WebhookConfig` takes a static URL and a `secret_provider`. An `endpoint_provider` (given the subscription key and secret, return a URL) would let an SDK work with Event Gateway, evdock's per-path URLs, or any proxy that issues a URL per subscription. Worth raising with the working group.
 - **A standard client-to-proxy registration API is a possible future spec item,** not something this demo should invent. The demo keeps that step in one module so it's easy to swap out.
 
 ### How this differs from the bridge
@@ -357,6 +357,8 @@ Inline would show a third-party hosted sender, but it needs an Inline account an
 
 ## Sharing results with the working group
 
+Dropped for now (2026-10-14): no field report is planned. This section is kept as notes in case that changes.
+
 The working group asks for implementation evidence. Its [CONTRIBUTING](https://github.com/modelcontextprotocol/experimental-ext-triggers-events/blob/main/CONTRIBUTING.md) asks findings to "include enough detail for others to reproduce or evaluate", "note which clients, servers, and transports were tested", and "be explicit about what worked, what didn't, and what remains untested". Implementers post these as field reports in [experimental-ext-triggers-events](https://github.com/modelcontextprotocol/experimental-ext-triggers-events/issues) (five so far). Discussion happens mostly in the group's Discord channel and weekly working session.
 
 There's also a gap a forward proxy can help with: the client conformance work ([conformance#540](https://github.com/modelcontextprotocol/conformance/issues/540)) leaves out "the receiver obligations (signature verification, the timestamp window, dedup on `webhook-id`) for now".
@@ -370,7 +372,7 @@ Plan, after Phase 2:
 3. **Discord:** a short note linking the report, and an offer to walk through it in a working session.
 4. **Conformance:** offer an `MCP Events` source as a live target for receiver scenarios, coordinating with the existing conformance and evdock work rather than starting a parallel suite.
 
-The reports state Hookdeck's affiliation and are implementation feedback. They're drafted in `docs/` and reviewed before anything is posted.
+Any report would state Hookdeck's affiliation and be implementation feedback. Drafts aren't kept in this repo.
 
 ### Spec feedback to verify during the build
 
@@ -452,17 +454,17 @@ What this means:
 ### Then
 
 9. README, stub folder, repo README rows.
-10. Field report, posted as a working group issue.
+10. ~~Field report~~ dropped for now.
 
 Checks before each commit: `npm run typecheck`; scenarios pass; changed Mermaid diagrams rendered; no names of individuals, no internal links; no em dashes; small commits on a branch; no push or PR without approval.
 
 ## Open questions
 
-1. **Status code when a request fails verification:** if Event Gateway answers `401` for a request to an `MCP Events` source that fails verification, as it does for the challenge, the demo and the field report describe that. If it stays `200`, both explain why and point the checker's users to the request log.
-2. **The checker and store-and-forward receivers:** whether to propose a proxy-aware grading mode to evdock and the working group's receiver conformance work, and when relative to the field report.
+1. **Status code when a request fails verification:** if Event Gateway answers `401` for a request to an `MCP Events` source that fails verification, as it does for the challenge, the demo describes that. If it stays `200`, the README explains why and point the checker's users to the request log.
+2. **The checker and store-and-forward receivers:** whether to propose a proxy-aware grading mode to evdock and the working group's receiver conformance work.
 
 ## Measures of success
 
 - **Demo:** scenarios pass locally and deployed, and the README separates what was verified from what was assumed.
 - **Conformance:** evdock's checker results for an `MCP Events` source, every MUST passing or explained.
-- **Working group:** the field report gets a response on any of the group's channels (an issue reply, a mention in meeting notes, a conformance follow-up). None of the field reports filed so far has a reply in the repo itself, so this isn't something the demo controls.
+- **Working group** (dropped with the field report, for now): a report gets a response on any of the group's channels (an issue reply, a mention in meeting notes, a conformance follow-up). None of the field reports filed so far has a reply in the repo itself, so this isn't something the demo controls.
