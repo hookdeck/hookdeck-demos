@@ -1,6 +1,6 @@
 # Receive MCP Events with Event Gateway as a forward proxy
 
-**Status:** demo code, not production-ready. Verified on 2026-10-08 and 2026-10-09 against a dedicated Event Gateway test project: locally through `hookdeck listen`, deployed on Fly.io, and with two different MCP servers sending. See [What's verified](#whats-verified) and [Known limits](#known-limits). [docs/PLAN.md](docs/PLAN.md) has the full proposal and the detailed results.
+**Status:** demo code, not production-ready. Verified on 2026-10-08 and 2026-10-09 against a dedicated Event Gateway test project: locally through `hookdeck listen`, deployed on Fly.io, and with two different MCP servers sending. Re-run on 2026-10-14 after Event Gateway's MCP Events handshake changes: 7 of 7 scenarios locally, 6 of 6 deployed. See [What's verified](#whats-verified) and [Known limits](#known-limits). [docs/PLAN.md](docs/PLAN.md) has the full proposal and the detailed results.
 
 [MCP Events](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415) (SEP-3415, a draft MCP extension) lets an agent subscribe to events an MCP server offers. In webhook mode the server POSTs each event to a callback URL the agent chose. The SEP describes a common deployment where that URL belongs to a **forward proxy** that receives webhooks on the agent's behalf.
 
@@ -163,7 +163,7 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's the `MC
 | Badly signed delivery never reaches the agent | Yes | Yes | Not run |
 | Agent answers `503`, then recovers; the sender sees one `200` | Yes | Yes | Yes |
 | A forged request sent straight to the agent is refused (`401`) | n/a | Yes | n/a |
-| Subscription refreshed before `refreshBefore` | Not observed | Yes, for over 20 hours | Not observed |
+| Subscription refreshed before `refreshBefore` | Yes | Yes, for over 6 days | Not observed |
 | `listen` stopped cleanly; recovery retries the request | Yes | n/a | Yes |
 | `listen` killed; the retry rule delivers once it's back | Yes | n/a | Not run |
 | `listen` killed until retries ran out; recovery retries the event | Yes, by hand | n/a | Not run |
@@ -176,7 +176,6 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's the `MC
 
 - **Other MCP servers.** Both senders follow OpenAI's MCP Events profile, which ChatGPT-facing servers use today: a top-level `capabilities.events`, the design sketch's error codes (such as `-32015` for a callback endpoint error), and `{}` for unsubscribing an unknown subscription. SEP-3415 as written declares the capability under `capabilities.extensions["io.modelcontextprotocol/events"]`, uses `-32023` to `-32027`, and returns NotFound. The agent checks only the top-level capability, so it would refuse a server that follows SEP-3415 to the letter.
 - **Secret rotation,** which isn't built.
-- **A refresh in CLI mode.** The local runs ended before `refreshBefore`; the deployed agent refreshes on the same code path.
 
 ## Known limits
 

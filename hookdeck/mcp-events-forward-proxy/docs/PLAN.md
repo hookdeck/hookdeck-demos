@@ -1,6 +1,6 @@
 # Proposal: Event Gateway as an MCP Events forward proxy
 
-Status: the demo is built and verified, and the deployed scenarios passed again on 2026-10-14, after the Event Gateway handshake changes merged. The field report is dropped for now. See [Status](#status-2026-10-08) for what's done.
+Status: the demo is built and verified, and the scenarios passed again on 2026-10-14 after the Event Gateway handshake changes merged: 7 of 7 locally, with a fresh subscribe and a refresh in CLI mode, and 6 of 6 deployed. The field report is dropped for now. See [Status](#status-2026-10-08) for what's done.
 
 ## Summary
 

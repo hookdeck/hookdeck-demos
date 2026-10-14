@@ -63,6 +63,17 @@ async function waitForHandled(eventId: string, timeoutMs = deliveryTimeoutMs): P
   return undefined;
 }
 
+/** Whether the agent's recovery has recorded a retry of this request. A pass records its
+ * retries when it finishes, which can be after the retried event has been delivered. */
+async function waitForRecoveredRequest(requestId: string, timeoutMs = 30_000): Promise<boolean> {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    if ((await agentStatus()).recovery.requestsRetried.includes(requestId)) return true;
+    await sleep(1000);
+  }
+  return false;
+}
+
 /** Event Gateway's requests for this source that carry the given webhook-id. */
 async function requestsFor(sourceId: string, webhookId: string) {
   const page = await api.request<{ models: Array<{ id: string; rejection_cause: string | null; events_count: number; ignored_count: number }> }>(
@@ -193,7 +204,7 @@ if (status.delivery === 'cli') {
     const cause = request ? await waitForIgnoredCause(request.id, connectionId) : undefined;
     await setListen('start');
     const handled = await waitForHandled(emitted.eventId);
-    const recovered = request ? (await agentStatus()).recovery.requestsRetried.includes(request.id) : false;
+    const recovered = request ? await waitForRecoveredRequest(request.id) : false;
     record(
       'listen stopped cleanly: stored, then recovered by request retry',
       cause === 'CLI_DISCONNECTED' && Boolean(handled) && recovered,
