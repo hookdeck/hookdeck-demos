@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+run/
+logs/
+evidence/
+
+# Internal working notes, not for the public repo
+internal/
