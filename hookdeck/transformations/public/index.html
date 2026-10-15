@@ -28,7 +28,8 @@
 
     /* One card per example */
     .examples { display: grid; gap: var(--s6); }
-    .example { padding: var(--s5); display: grid; gap: var(--s4); min-width: 0; }
+    /* .card.example: the design system's .card:not(.flex) { display: block } would otherwise win */
+    .card.example { padding: var(--s5) var(--s5) var(--s6); display: grid; gap: var(--s6); min-width: 0; }
     .example-head { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s6); align-items: flex-start; justify-content: space-between; }
     .example-head .about { display: grid; gap: var(--s1-5); max-width: 760px; }
     .example-head h2 { margin: 0; }
@@ -58,17 +59,38 @@
       margin: 0; padding: var(--s2) var(--s3); background: var(--bg-0); border-radius: var(--radius-s); box-shadow: var(--elevation-small);
       overflow: auto; max-height: 260px; font-size: 11.5px; line-height: 17px; color: var(--neutral-fg-1); white-space: pre;
     }
-    pre.code { max-height: 360px; }
-    pre .imp { background: color-mix(in srgb, var(--color-success) 18%, transparent); display: inline-block; min-width: 100%; }
-    details summary { cursor: pointer; color: var(--primary-fg); }
-    details[open] summary { margin-bottom: var(--s2); }
-    .logs { display: grid; gap: var(--s1); }
-    .log { font-family: var(--font-mono, monospace); font-size: 11.5px; line-height: 17px; padding: var(--s1) var(--s2); border-left: 2px solid var(--neutral-outline-2); background: var(--bg-0); overflow-wrap: anywhere; }
+    .logs { display: grid; gap: var(--s1); min-width: 0; }
+    .log { min-width: 0; font-family: var(--font-mono, monospace); font-size: 11.5px; line-height: 17px; padding: var(--s1) var(--s2); border-left: 2px solid var(--neutral-outline-2); background: var(--bg-0); overflow-wrap: anywhere; }
     .log.error { border-left-color: var(--color-danger); }
     .kv { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; }
     .kv dt { color: var(--neutral-fg-3); }
     .kv dd { margin: 0 0 var(--s1-5); overflow-wrap: anywhere; }
     .none { color: var(--disabled-fg); }
+    .code-link { justify-self: start; padding: 0; border: 0; background: none; color: var(--primary-fg); cursor: pointer; font: inherit; }
+    .code-link:hover, a.ext:hover { text-decoration: underline; }
+    a.ext { text-decoration: none; }
+    a.ext::after { content: ' ↗'; }
+
+    /* Transformation code, in a modal */
+    dialog.code-dialog {
+      position: fixed; inset: 0; margin: auto; width: min(960px, calc(100vw - 32px)); height: fit-content; max-height: calc(100vh - 64px); padding: 0; border: 1px solid var(--neutral-outline-2);
+      border-radius: var(--radius); background: var(--bg-1); color: var(--neutral-fg-1); box-shadow: var(--elevation-large, 0 12px 48px rgba(0,0,0,.35));
+    }
+    dialog.code-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+    .code-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+    .code-dialog header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--neutral-outline-2); }
+    .code-dialog header .button { margin-left: auto; }
+    .code-dialog pre, .code-dialog pre code { font-family: var(--font-mono); }
+    .code-dialog pre { max-height: none; margin: 0; border-radius: 0 0 var(--radius) var(--radius); box-shadow: none; padding: var(--s4); font-size: 12.5px; line-height: 19px; }
+    /* The lines that bring in Node.js built-ins */
+    .code-dialog .imp { background: color-mix(in srgb, var(--color-success) 18%, transparent); display: inline-block; min-width: 100%; }
+    /* highlight.js tokens, coloured from the design system so they follow light/dark */
+    .hljs-keyword, .hljs-built_in, .hljs-literal { color: var(--primary-fg); }
+    .hljs-string, .hljs-regexp { color: var(--color-success); }
+    .hljs-number { color: var(--color-warning); }
+    .hljs-comment { color: var(--neutral-fg-3); font-style: italic; }
+    .hljs-title, .hljs-title.function_, .hljs-property { color: var(--color-danger); }
+    .hljs-params, .hljs-variable, .hljs-attr { color: var(--neutral-fg-1); }
 
     .result img { max-width: 100%; border-radius: var(--radius-s); box-shadow: var(--elevation-small); }
     .result audio { width: 100%; }
@@ -120,6 +142,17 @@
     <div class="examples" id="examples"></div>
   </main>
 
+  <dialog class="code-dialog" id="code-dialog" aria-labelledby="code-title">
+    <header>
+      <code id="code-title" class="body-s"></code>
+      <span class="modules" id="code-modules"></span>
+      <button class="button button--secondary" id="code-close">Close</button>
+    </header>
+    <div style="overflow: auto; min-height: 0"><pre><code id="code-body"></code></pre></div>
+  </dialog>
+
+  <script src="/vendor/highlight.min.js"></script>
+
   <script>
     let examples = [];
     let listenerState = 'connecting';
@@ -133,10 +166,23 @@
     const pill = (cls, text) => `<span class="badge ${BADGE[cls]}">${esc(text)}</span>`;
     const pretty = (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
 
-    // Highlight the lines that bring in Node.js built-ins
-    const highlight = (code) => esc(code).split('\n')
-      .map((l) => /^\s*import .* from '(node:)?[a-z_/]+';$|require\('node:/.test(l) ? `<span class="imp">${l}</span>` : l)
-      .join('\n');
+    // Syntax highlighting, then a band behind the lines that bring in Node.js built-ins
+    const IMPORT = /^\s*import .* from '(node:)?[a-z_/]+';$|require\('node:/;
+    const highlight = (code) => {
+      const html = window.hljs ? hljs.highlight(code, { language: 'javascript' }).value : esc(code);
+      const lines = html.split('\n');
+      return code.split('\n').map((l, i) => (IMPORT.test(l) ? `<span class="imp">${lines[i]}</span>` : lines[i])).join('\n');
+    };
+
+    function showCode(id) {
+      const e = examples.find((x) => x.id === id);
+      if (!e) return;
+      $('code-title').textContent = `transformations-${e.id}`;
+      $('code-modules').innerHTML = e.modules.length ? e.modules.map((m) => `<span class="badge badge--mono">${esc(m)}</span>`).join('') : '<span class="badge">no built-ins</span>';
+      $('code-body').innerHTML = highlight(e.code);
+      $('code-dialog').showModal();
+      $('code-body').parentElement.scrollTop = 0;
+    }
 
     function card(e) {
       return `
@@ -178,7 +224,7 @@
           ${input.encoded ? `<div class="sub">Gzip-compressed bytes. Shown decompressed:</div>` : ''}
           <pre>${esc(input.encoded ? input.text : pretty(input.text))}</pre>
           ${s?.ingestion && s.ingestion !== 'accepted' ? `<div class="sub">${esc(s.ingestion)}</div>` : ''}
-          ${s?.requestId ? `<a class="sub" href="https://dashboard.hookdeck.com/requests/${esc(s.requestId)}" target="_blank" rel="noopener">View request</a>` : ''}
+          ${s?.requestId ? `<a class="sub ext" href="https://dashboard.hookdeck.com/requests/${esc(s.requestId)}" target="_blank" rel="noopener">View request</a>` : ''}
         </div>`,
       };
     }
@@ -200,7 +246,7 @@
         html: head('Transformation', badge) + `<div class="stage-body">
           <div><code>transformations-${esc(e.id)}</code>${e.env.length ? ` <span class="sub">· env ${e.env.map(esc).join(', ')}</span>` : ''}</div>
           ${logs}
-          <details ${openCode.has(e.id) ? 'open' : ''} data-code="${e.id}"><summary>Code (${e.code.split('\n').length} lines)</summary><pre class="code">${highlight(e.code)}</pre></details>
+          <button class="code-link" data-code="${e.id}">View code (${e.code.split('\n').length} lines)</button>
         </div>`,
       };
     }
@@ -219,7 +265,7 @@
           <div><code>local-transformations</code></div>
           <div class="sub">CLI destination · <code>hookdeck listen</code> → <code>localhost/receive</code></div>
           ${headers}
-          ${s?.eventUrl ? `<a class="sub" href="${esc(s.eventUrl)}" target="_blank" rel="noopener">View event</a>` : ''}
+          ${s?.eventUrl ? `<a class="sub ext" href="${esc(s.eventUrl)}" target="_blank" rel="noopener">View event</a>` : ''}
         </div>`,
       };
     }
@@ -246,7 +292,6 @@
       };
     }
 
-    const openCode = new Set();
     const STAGES = { source: sourceStage, transformation: transformationStage, destination: destinationStage, result: resultStage };
 
     function renderExample(id) {
@@ -287,6 +332,8 @@
     }
 
     document.addEventListener('click', (ev) => {
+      const code = ev.target.closest('[data-code]');
+      if (code) return showCode(code.dataset.code);
       const send = ev.target.closest('[data-send]');
       if (send) return sendExample(send.dataset.send);
       const pick = ev.target.closest('[data-select]');
@@ -296,10 +343,9 @@
         return renderExample(pick.dataset.select);
       }
     });
-    document.addEventListener('toggle', (ev) => {
-      const d = ev.target;
-      if (d.dataset?.code) d.open ? openCode.add(d.dataset.code) : openCode.delete(d.dataset.code);
-    }, true);
+    $('code-close').addEventListener('click', () => $('code-dialog').close());
+    // Clicking the backdrop closes it
+    $('code-dialog').addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
     $('send-all').addEventListener('click', () => examples.forEach((e) => sendExample(e.id)));
     $('listener-toggle').addEventListener('click', (ev) => fetch(`/api/listener?state=${ev.target.dataset.next}`, { method: 'POST' }));
 

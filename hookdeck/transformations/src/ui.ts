@@ -140,6 +140,13 @@ async function main(): Promise<void> {
       return true;
     }
 
+    // highlight.js's browser build, for the transformation code
+    if (req.method === "GET" && url.pathname === "/vendor/highlight.min.js") {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      res.end(readFileSync(resolve(ROOT, "node_modules/@highlightjs/cdn-assets/highlight.min.js")));
+      return true;
+    }
+
     if (req.method === "GET" && url.pathname.startsWith("/ds/")) {
       const path = resolve(DS_DIR, decodeURIComponent(url.pathname.slice("/ds/".length)));
       const type = STATIC_TYPES[extname(path)];
