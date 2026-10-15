@@ -45,3 +45,7 @@ npm start              # http://localhost:4400
 - **Binary input:** a transformation sees a binary body (`gunzip-batch`) as a `Buffer` only when the server's `TRANSFORMATION_BINARY_BODIES_ENABLED` is on. It is on in production as of 2026-10-15; with it off, `request.body` is `null`.
 - **Signing a JSON body:** returning the signed JSON as a string doesn't work. With a JSON content type, Hookdeck serializes the body again, so it arrives as a JSON string literal. When the JSON is unchanged, Hookdeck delivers the original request bytes, so `sign-hmac` leaves the body as an object and signs `JSON.stringify(request.body)`. That matches the delivered bytes only when the sender's JSON was compact, which is why the demo sends compact JSON.
 - **Execution timeout:** transformations have a 1 second execution timeout. Rendering the PNG, WAV and PDF takes well under that.
+
+## Video walkthrough
+
+[`WALKTHROUGH.md`](WALKTHROUGH.md) is a 60-second script that uses this demo, the [Deepgram demo](../../deepgram/stt-tts/) and the [binary payloads demo](../binary-payloads/).
