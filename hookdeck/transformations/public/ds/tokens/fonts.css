@@ -1,0 +1,3 @@
+/* Hookdeck webfonts — production site loads these exact families from Google Fonts */
+@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap");
+:root{--font-sans:"Figtree",sans-serif;--font-mono:"JetBrains Mono",monospace}

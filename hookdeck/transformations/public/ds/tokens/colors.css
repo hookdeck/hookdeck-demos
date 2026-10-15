@@ -1,0 +1,31 @@
+/* Hookdeck color tokens — copied verbatim from website/src/styles/global.scss */
+:root{
+--tan-bg:#fafaf8;
+--bg-0:#fff;--bg-0-hover:#f5f5f5;--bg-1:#fafafa;--bg-2:#f5f5f5;--bg-3:#ebebeb;
+--bg-contrast:#141412;--bg-contrast-2:#353533;
+--primary-blue-bg:#04c;--primary-blue-bg-hover:#0036a3;--blue-badge-bg:#e5ecfa;
+--neutral-fg-1:#141412;--neutral-fg-2:#52504a;--neutral-fg-3:#7a786e;--disabled-fg:#a3a093;
+--on-hue-fg:#fff;--on-contrast-fg:#fff;--primary-fg:#04c;--primary-badge-fg:#04c;
+--neutral-outline-1:#ebebeb;--neutral-outline-2:#e0e0e0;--neutral-outline-3:#ccc;
+--primary-badge-outline:#ccdaf5;--focused-outline:#668fe0;
+--color-success:#006633;--color-success-outline:#cce6d9;--color-success-surface:#e5f2ec;
+--color-danger:#cc2314;--color-danger-outline:#f5d3d0;--color-danger-surface:#fae9e7;
+--color-warning:#997a00;--color-warning-outline:#ffe066;--color-warning-surface:#fff5cc;
+--tooltip-bg:#191917;--tooltip-fg:#fff;
+/* semantic aliases */
+--surface-page:var(--tan-bg);--surface-card:var(--bg-0);--text-body:var(--neutral-fg-1);--text-secondary:var(--neutral-fg-2);--text-muted:var(--neutral-fg-3);
+}
+html.dark,.card--inverse{
+--tan-bg:#141412;
+--bg-0:#191917;--bg-0-hover:#272725;--bg-1:#1d1d1b;--bg-2:#222220;--bg-3:#353533;
+--bg-contrast:#fff;
+--primary-blue-bg:#04c;--primary-blue-bg-hover:#3369d6;--blue-badge-bg:#001b52;
+--neutral-fg-1:#f5f5f5;--neutral-fg-2:#ccc;--neutral-fg-3:#7a7a7a;--disabled-fg:#525252;
+--on-hue-fg:#fff;--on-contrast-fg:#141412;--primary-fg:#668fe0;--primary-badge-fg:#99b4eb;
+--neutral-outline-1:#272725;--neutral-outline-2:#353533;--neutral-outline-3:#52504a;
+--primary-badge-outline:#0036a3;--focused-outline:#668fe0;
+--color-success:#99ccb3;--color-success-outline:#006633;--color-success-surface:#00331a;
+--color-warning:#ffe066;--color-warning-outline:#665200;--color-warning-surface:#332900;
+--color-danger:#eba7a1;--color-danger-outline:#7a150c;--color-danger-surface:#520e08;
+--tooltip-bg:#191917;--tooltip-fg:#fff;
+}

@@ -1,0 +1,21 @@
+{
+  "name": "hookdeck-transformations-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hookdeck transformations that use Node.js built-in modules to turn JSON into images, audio and PDFs, sign requests, and decompress binary payloads.",
+  "scripts": {
+    "setup": "tsx src/setup.ts",
+    "start": "tsx src/ui.ts",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@highlightjs/cdn-assets": "^11.12.0",
+    "hookdeck-cli": "3.1.0"
+  }
+}

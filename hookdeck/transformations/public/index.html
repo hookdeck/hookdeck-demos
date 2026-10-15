@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transformations with Node.js</title>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <script src="/theme.js"></script>
+  <style>
+    body { background: var(--tan-bg); }
+    main { padding: var(--s10) var(--s4) var(--s16); max-width: 1320px; }
+    a { color: var(--primary-fg); }
+    code { font-size: 12px; overflow-wrap: anywhere; }
+
+    /* Header: the "lined" blueprint frame */
+    .hero { margin-bottom: var(--s8); }
+    .hero .lined__box { border-right: none; border-bottom: none; display: grid; gap: var(--s3); }
+    .eyebrow { color: var(--neutral-fg-3); text-transform: uppercase; }
+    .hero h1 { margin: 0; }
+    .hero p { color: var(--neutral-fg-2); max-width: 820px; }
+    .hero p code { font-size: 0.9em; color: var(--neutral-fg-1); }
+    .meta { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s6); align-items: center; color: var(--neutral-fg-3); }
+    .meta code { color: var(--neutral-fg-1); }
+    .meta .button--minimal { display: inline-flex; padding: 0 var(--s2); }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s4); }
+
+    /* One card per example */
+    .examples { display: grid; gap: var(--s6); }
+    /* .card.example: the design system's .card:not(.flex) { display: block } would otherwise win */
+    .card.example { padding: var(--s5) var(--s5) var(--s6); display: grid; gap: var(--s6); min-width: 0; }
+    .example-head { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s6); align-items: flex-start; justify-content: space-between; }
+    .example-head .about { display: grid; gap: var(--s1-5); max-width: 760px; }
+    .example-head h2 { margin: 0; }
+    .example-head p { margin: 0; color: var(--neutral-fg-2); }
+    .modules { display: flex; flex-wrap: wrap; gap: var(--s1-5); }
+    .controls { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+    .inputs { display: inline-flex; flex-wrap: wrap; gap: var(--s1); padding: 2px; border-radius: var(--radius); background: var(--bg-2); }
+    .inputs button { border: 0; box-shadow: none; outline-offset: 2px; background: none; padding: var(--s1) var(--s2-5, 10px); border-radius: var(--radius-s); color: var(--neutral-fg-2); cursor: pointer; font: inherit; }
+    .inputs button.selected { background: var(--bg-3); color: var(--neutral-fg-1); font-weight: 600; }
+
+    /* The event's path: source -> transformation -> destination -> result */
+    .flow { display: grid; grid-template-columns: minmax(0, 0.9fr) 28px minmax(0, 1.1fr) 28px minmax(0, 0.75fr) 28px minmax(0, 1.5fr); align-items: stretch; }
+    .stage { display: grid; grid-template-rows: auto 1fr; gap: var(--s2); padding: var(--s3); border-radius: var(--radius); background: var(--bg-1); border: 1px solid var(--neutral-outline-2); min-width: 0; transition: border-color 200ms; }
+    .stage.done { border-color: var(--color-success); }
+    .stage.failed { border-color: var(--color-danger); }
+    .stage.active { border-color: var(--color-warning); }
+    .stage-head { display: flex; align-items: center; gap: var(--s2); min-height: 24px; }
+    .stage-head .label { color: var(--neutral-fg-3); text-transform: uppercase; }
+    .stage-head .badge { margin-left: auto; }
+    .stage-body { display: grid; gap: var(--s2); align-content: start; min-width: 0; }
+    .sub { color: var(--neutral-fg-3); overflow-wrap: anywhere; }
+    .arrow { display: flex; align-items: center; justify-content: center; color: var(--disabled-fg); transition: color 200ms; }
+    .arrow::before { content: '→'; font-size: 18px; }
+    .arrow.lit { color: var(--color-success); }
+
+    pre {
+      margin: 0; padding: var(--s2) var(--s3); background: var(--bg-0); border-radius: var(--radius-s); box-shadow: var(--elevation-small);
+      overflow: auto; max-height: 260px; font-size: 11.5px; line-height: 17px; color: var(--neutral-fg-1); white-space: pre;
+    }
+    .logs { display: grid; gap: var(--s1); min-width: 0; }
+    .log { min-width: 0; font-family: var(--font-mono, monospace); font-size: 11.5px; line-height: 17px; padding: var(--s1) var(--s2); border-left: 2px solid var(--neutral-outline-2); background: var(--bg-0); overflow-wrap: anywhere; }
+    .log.error { border-left-color: var(--color-danger); }
+    .kv { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; }
+    .kv dt { color: var(--neutral-fg-3); }
+    .kv dd { margin: 0 0 var(--s1-5); overflow-wrap: anywhere; }
+    .none { color: var(--disabled-fg); }
+    .code-link { justify-self: start; padding: 0; border: 0; background: none; color: var(--primary-fg); cursor: pointer; font: inherit; }
+    .code-link:hover, a.ext:hover { text-decoration: underline; }
+    a.ext { text-decoration: none; }
+    a.ext::after { content: ' ↗'; }
+
+    /* Transformation code, in a modal */
+    dialog.code-dialog {
+      position: fixed; inset: 0; margin: auto; width: min(960px, calc(100vw - 32px)); height: fit-content; max-height: calc(100vh - 64px); padding: 0; border: 1px solid var(--neutral-outline-2);
+      border-radius: var(--radius); background: var(--bg-1); color: var(--neutral-fg-1); box-shadow: var(--elevation-large, 0 12px 48px rgba(0,0,0,.35));
+    }
+    dialog.code-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+    .code-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+    .code-dialog header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--neutral-outline-2); }
+    .code-dialog header .button { margin-left: auto; }
+    .code-dialog pre, .code-dialog pre code { font-family: var(--font-mono); }
+    .code-dialog pre { max-height: none; margin: 0; border-radius: 0 0 var(--radius) var(--radius); box-shadow: none; padding: var(--s4); font-size: 12.5px; line-height: 19px; }
+    /* The lines that bring in Node.js built-ins */
+    .code-dialog .imp { background: color-mix(in srgb, var(--color-success) 18%, transparent); display: inline-block; min-width: 100%; }
+    /* highlight.js tokens, coloured from the design system so they follow light/dark */
+    .hljs-keyword, .hljs-built_in, .hljs-literal { color: var(--primary-fg); }
+    .hljs-string, .hljs-regexp { color: var(--color-success); }
+    .hljs-number { color: var(--color-warning); }
+    .hljs-comment { color: var(--neutral-fg-3); font-style: italic; }
+    .hljs-title, .hljs-title.function_, .hljs-property { color: var(--color-danger); }
+    .hljs-params, .hljs-variable, .hljs-attr { color: var(--neutral-fg-1); }
+
+    .result img { max-width: 100%; border-radius: var(--radius-s); box-shadow: var(--elevation-small); }
+    .result audio { width: 100%; }
+    .result iframe { width: 100%; height: 340px; border: none; border-radius: var(--radius-s); box-shadow: var(--elevation-small); background: #fff; }
+
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: var(--s1-5); background: var(--disabled-fg); }
+    .dot.connected { background: var(--color-success); }
+    .dot.connecting { background: var(--color-warning); }
+    .dot.stopped { background: var(--color-danger); }
+
+    @media (max-width: 1040px) {
+      .flow { grid-template-columns: minmax(0, 1fr); }
+      .arrow { height: 24px; }
+      .arrow::before { content: '↓'; }
+    }
+    @media (max-width: 744px) {
+      .hero .lined__box { padding: var(--s5); }
+    }
+  </style>
+</head>
+<body>
+  <main class="max" style="max-width: 1320px">
+    <section class="hero lined">
+      <div class="lined__box">
+        <span class="eyebrow mono-xs">{ Hookdeck Event Gateway }</span>
+        <h1 class="title-2xl">Transformations with <em>Node.js built-ins</em></h1>
+        <p class="body-m">
+          Each example is a connection with its own transformation. Send a JSON event and follow it from the source,
+          through a transformation that imports <code>node:zlib</code>, <code>node:crypto</code> or <code>node:buffer</code>,
+          to <code>hookdeck listen</code> delivering the result to this server: a PNG, a WAV, a PDF, an SVG, a signed request,
+          or JSON decompressed from a binary payload. No npm packages and no bundling.
+        </p>
+        <div class="meta body-xs">
+          <span>CLI <code id="cli">…</code></span>
+          <span><span class="dot" id="listener-dot"></span>Listener <span id="listener-state">…</span>
+            <button class="button button--minimal" id="listener-toggle"></button></span>
+        </div>
+      </div>
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+    <div class="toolbar">
+      <button class="button" id="send-all">Send all</button>
+    </div>
+
+    <div class="examples" id="examples"></div>
+  </main>
+
+  <dialog class="code-dialog" id="code-dialog" aria-labelledby="code-title">
+    <header>
+      <code id="code-title" class="body-s"></code>
+      <span class="modules" id="code-modules"></span>
+      <button class="button button--secondary" id="code-close">Close</button>
+    </header>
+    <div style="overflow: auto; min-height: 0"><pre><code id="code-body"></code></pre></div>
+  </dialog>
+
+  <script src="/vendor/highlight.min.js"></script>
+
+  <script>
+    let examples = [];
+    let listenerState = 'connecting';
+    const selected = {}; // example id -> input index
+    const runs = {}; // example id -> state of the latest send
+    const byRun = {}; // run -> example id
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const BADGE = { ok: 'badge--success', bad: 'badge--danger', wait: 'badge--warning', idle: '' };
+    const pill = (cls, text) => `<span class="badge ${BADGE[cls]}">${esc(text)}</span>`;
+    const pretty = (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
+
+    // Syntax highlighting, then a band behind the lines that bring in Node.js built-ins
+    const IMPORT = /^\s*import .* from '(node:)?[a-z_/]+';$|require\('node:/;
+    const highlight = (code) => {
+      const html = window.hljs ? hljs.highlight(code, { language: 'javascript' }).value : esc(code);
+      const lines = html.split('\n');
+      return code.split('\n').map((l, i) => (IMPORT.test(l) ? `<span class="imp">${lines[i]}</span>` : lines[i])).join('\n');
+    };
+
+    function showCode(id) {
+      const e = examples.find((x) => x.id === id);
+      if (!e) return;
+      $('code-title').textContent = `transformations-${e.id}`;
+      $('code-modules').innerHTML = e.modules.length ? e.modules.map((m) => `<span class="badge badge--mono">${esc(m)}</span>`).join('') : '<span class="badge">no built-ins</span>';
+      $('code-body').innerHTML = highlight(e.code);
+      $('code-dialog').showModal();
+      $('code-body').parentElement.scrollTop = 0;
+    }
+
+    function card(e) {
+      return `
+        <section class="card example" id="ex-${e.id}">
+          <div class="example-head">
+            <div class="about">
+              <h2 class="title-m">${esc(e.title)}</h2>
+              <p class="body-s">${esc(e.summary)}</p>
+              <div class="modules">${e.modules.length ? e.modules.map((m) => `<span class="badge badge--mono">${esc(m)}</span>`).join('') : '<span class="badge">no built-ins</span>'}</div>
+            </div>
+            <div class="controls body-xs">
+              <div class="inputs" role="group" aria-label="Input">${e.inputs.map((input, i) =>
+                `<button data-select="${e.id}" data-index="${i}">${esc(input.label)}</button>`).join('')}</div>
+              <button class="button" data-send="${e.id}">Send</button>
+            </div>
+          </div>
+          <div class="flow body-xs">
+            <div class="stage" data-stage="source"></div><div class="arrow" data-arrow="1"></div>
+            <div class="stage" data-stage="transformation"></div><div class="arrow" data-arrow="2"></div>
+            <div class="stage" data-stage="destination"></div><div class="arrow" data-arrow="3"></div>
+            <div class="stage result" data-stage="result"></div>
+          </div>
+        </section>`;
+    }
+
+    const head = (label, badge = '') => `<div class="stage-head"><span class="label mono-xs">${label}</span>${badge}</div>`;
+
+    function sourceStage(e, s) {
+      const input = e.inputs[s?.index ?? selected[e.id]];
+      const badge = !s ? ''
+        : !s.ingestion ? pill('wait', s.requestId ? 'checking…' : 'sending…')
+        : s.ingestion === 'accepted' ? pill('ok', 'accepted') : pill('bad', 'rejected');
+      const headers = Object.entries(input.headers).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ');
+      return {
+        cls: !s ? '' : !s.ingestion ? 'active' : s.ingestion === 'accepted' ? 'done' : 'failed',
+        html: head('Source', badge) + `<div class="stage-body">
+          <div><code>transformations-${esc(e.id)}</code></div>
+          <div class="sub"><code>${esc(input.contentType)}</code>${headers ? ` · <code>${headers}</code>` : ''} · ${input.bytes} bytes</div>
+          ${input.encoded ? `<div class="sub">Gzip-compressed bytes. Shown decompressed:</div>` : ''}
+          <pre>${esc(input.encoded ? input.text : pretty(input.text))}</pre>
+          ${s?.ingestion && s.ingestion !== 'accepted' ? `<div class="sub">${esc(s.ingestion)}</div>` : ''}
+          ${s?.requestId ? `<a class="sub ext" href="https://dashboard.hookdeck.com/requests/${esc(s.requestId)}" target="_blank" rel="noopener">View request</a>` : ''}
+        </div>`,
+      };
+    }
+
+    function transformationStage(e, s) {
+      const ex = s?.execution;
+      const failed = ex && (ex.level === 'error' || ex.level === 'fatal');
+      const ran = ex || s?.delivered;
+      const badge = !s || !s.ingestion || s.ingestion !== 'accepted' ? ''
+        : failed ? pill('bad', ex.level) : ran ? pill('ok', 'ran') : pill('wait', 'running…');
+      const logs = ex
+        ? ex.logs.length
+          ? `<div class="logs">${ex.logs.map((l) => `<div class="log ${l.type === 'error' ? 'error' : ''}">${esc(l.message)}</div>`).join('')}</div>`
+          : '<div class="sub">No console output</div>'
+        : s?.delivered && s.execution === undefined ? '<div class="sub">Fetching console output…</div>'
+        : s?.execution === null ? '<div class="sub">Execution not found yet</div>' : '';
+      return {
+        cls: !badge ? '' : failed ? 'failed' : ran ? 'done' : 'active',
+        html: head('Transformation', badge) + `<div class="stage-body">
+          <div><code>transformations-${esc(e.id)}</code>${e.env.length ? ` <span class="sub">· env ${e.env.map(esc).join(', ')}</span>` : ''}</div>
+          ${logs}
+          <button class="code-link" data-code="${e.id}">View code (${e.code.split('\n').length} lines)</button>
+        </div>`,
+      };
+    }
+
+    function destinationStage(e, s) {
+      const accepted = s?.ingestion === 'accepted';
+      const badge = !accepted ? ''
+        : s.delivered ? pill('ok', s.ms != null ? `${s.ms} ms` : 'delivered')
+        : s.noListener ? pill('bad', 'no listener') : pill('wait', 'waiting…');
+      const headers = s?.delivered
+        ? `<dl class="kv">${Object.entries(s.headers).map(([k, v]) => `<dt>${esc(k)}</dt><dd><code>${esc(v)}</code></dd>`).join('')}</dl>`
+        : '';
+      return {
+        cls: !badge ? '' : s.delivered ? 'done' : s.noListener ? 'failed' : 'active',
+        html: head('Destination', badge) + `<div class="stage-body">
+          <div><code>local-transformations</code></div>
+          <div class="sub">CLI destination · <code>hookdeck listen</code> → <code>localhost/receive</code></div>
+          ${headers}
+          ${s?.eventUrl ? `<a class="sub ext" href="${esc(s.eventUrl)}" target="_blank" rel="noopener">View event</a>` : ''}
+        </div>`,
+      };
+    }
+
+    function media(run, contentType, text) {
+      const src = `/api/raw/${run}`;
+      const type = contentType.split(';')[0];
+      if (type.startsWith('image/')) return `<img src="${src}" alt="Rendered image">`;
+      if (type.startsWith('audio/')) return `<audio controls src="${src}"></audio>`;
+      if (type === 'application/pdf') return `<iframe src="${src}" title="PDF"></iframe>`;
+      if (text !== undefined) return `<pre>${esc(pretty(text))}</pre>`;
+      return '';
+    }
+
+    function resultStage(e, s) {
+      const badge = s?.delivered ? pill(s.check.ok ? 'ok' : 'bad', s.check.ok ? 'verified' : 'failed') : '';
+      return {
+        cls: !badge ? '' : s.check.ok ? 'done' : 'failed',
+        html: head('Result', badge) + `<div class="stage-body">
+          ${s?.delivered
+            ? `<div class="sub"><code>${esc(s.contentType.split(';')[0])}</code> · ${s.bytes} bytes · ${esc(s.check.detail)}</div>${media(s.run, s.contentType, s.text)}`
+            : '<div class="none">Send an input to see what the destination receives</div>'}
+        </div>`,
+      };
+    }
+
+    const STAGES = { source: sourceStage, transformation: transformationStage, destination: destinationStage, result: resultStage };
+
+    function renderExample(id) {
+      const e = examples.find((x) => x.id === id);
+      const root = $(`ex-${id}`);
+      if (!e || !root) return;
+      const s = runs[id];
+      root.querySelectorAll('[data-select]').forEach((b) => b.classList.toggle('selected', Number(b.dataset.index) === (s?.index ?? selected[id])));
+      for (const [name, fn] of Object.entries(STAGES)) {
+        const el = root.querySelector(`[data-stage="${name}"]`);
+        // Keep the result in place for the same send, so audio that is playing isn't recreated
+        if (name === 'result' && el.dataset.rendered === `${s?.run}:${!!s?.delivered}`) continue;
+        const { cls, html } = fn(e, s);
+        el.className = `stage ${name === 'result' ? 'result ' : ''}${cls}`;
+        el.innerHTML = html;
+        el.dataset.rendered = `${s?.run}:${!!s?.delivered}`;
+      }
+      const lit = [s?.ingestion === 'accepted', !!(s?.execution || s?.delivered), !!s?.delivered];
+      root.querySelectorAll('[data-arrow]').forEach((a) => a.classList.toggle('lit', lit[Number(a.dataset.arrow) - 1]));
+    }
+
+    async function sendExample(id) {
+      const index = selected[id];
+      const res = await fetch(`/api/send/${id}/${index}`, { method: 'POST' });
+      const { run } = await res.json();
+      runs[id] = { run, index, noListener: listenerState !== 'connected' };
+      byRun[run] = id;
+      renderExample(id);
+    }
+
+    function setListener(state) {
+      listenerState = state;
+      $('listener-dot').className = `dot ${state}`;
+      $('listener-state').textContent = state;
+      const toggle = $('listener-toggle');
+      toggle.textContent = state === 'connected' ? 'Stop' : state === 'stopped' ? 'Start' : '';
+      toggle.dataset.next = state === 'connected' ? 'stopped' : 'connected';
+    }
+
+    document.addEventListener('click', (ev) => {
+      const code = ev.target.closest('[data-code]');
+      if (code) return showCode(code.dataset.code);
+      const send = ev.target.closest('[data-send]');
+      if (send) return sendExample(send.dataset.send);
+      const pick = ev.target.closest('[data-select]');
+      if (pick) {
+        selected[pick.dataset.select] = Number(pick.dataset.index);
+        delete runs[pick.dataset.select];
+        return renderExample(pick.dataset.select);
+      }
+    });
+    $('code-close').addEventListener('click', () => $('code-dialog').close());
+    // Clicking the backdrop closes it
+    $('code-dialog').addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
+    $('send-all').addEventListener('click', () => examples.forEach((e) => sendExample(e.id)));
+    $('listener-toggle').addEventListener('click', (ev) => fetch(`/api/listener?state=${ev.target.dataset.next}`, { method: 'POST' }));
+
+    const events = new EventSource('/api/events');
+    events.onmessage = (msg) => {
+      const ev = JSON.parse(msg.data);
+      if (ev.type === 'listener') return setListener(ev.state);
+      const id = byRun[ev.run];
+      const s = id && runs[id];
+      if (!s || s.run !== ev.run) return; // an earlier send
+      if (ev.type === 'sent') s.requestId = ev.requestId;
+      if (ev.type === 'ingestion') s.ingestion = ev.ingestion;
+      if (ev.type === 'execution') s.execution = ev.execution;
+      if (ev.type === 'delivered') Object.assign(s, { delivered: true, ...ev });
+      if (ev.type === 'error') s.ingestion = `error: ${ev.error}`;
+      renderExample(id);
+    };
+
+    fetch('/api/examples').then((r) => r.json()).then((data) => {
+      examples = data.examples;
+      $('cli').textContent = data.cli;
+      setListener(data.listener);
+      $('examples').innerHTML = examples.map(card).join('');
+      examples.forEach((e) => { selected[e.id] = 0; renderExample(e.id); });
+    });
+  </script>
+</body>
+</html>
