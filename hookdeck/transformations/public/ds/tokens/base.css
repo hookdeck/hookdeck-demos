@@ -1,0 +1,37 @@
+/* Hookdeck base + layout utilities — from global.scss / global.site.scss */
+*{box-sizing:border-box;padding:0;margin:0}
+html{overflow-x:hidden}
+body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-family:var(--font-sans);font-size:var(--s4);color:var(--neutral-fg-1);background:var(--tan-bg)}
+body *{font-family:inherit}
+input,textarea{font-family:var(--font-sans);font-size:14px;line-height:20px}
+hr{border:none;height:1px;background:var(--neutral-outline-1)}
+img,video{display:block}
+a{cursor:pointer;color:currentColor}
+a:hover{color:var(--primary-fg)}
+svg:not(.animation){fill:currentColor}
+ul,ol{width:100%;padding-left:1.25em}
+ul.list--unstyled,ol.list--unstyled{list-style:none;padding:0}
+.max{max-width:var(--max-width);margin-left:auto;margin-right:auto}
+.ta--center{text-align:center}
+.flex{--gap:var(--s4);display:flex;flex-wrap:wrap;gap:var(--gap)}
+.flex--tight{gap:var(--s2)}
+.flex--no_gap{gap:0}
+.flex--top{align-items:flex-start}
+.flex--column{flex-direction:column}
+.flex--center{justify-content:center;align-items:center}
+.flex--end{align-items:center;justify-content:flex-end}
+.flex--space-between{justify-content:space-between}
+.flex--space-around{justify-content:space-around}
+.flex__full{width:100%}
+.flex__1{flex:1}
+.flex__quarter{width:calc(25% - var(--gap) + (var(--gap)/4))}
+.flex__fifth{width:calc(20% - var(--gap) + (var(--gap)/5))}
+.flex__half{width:calc(50% - var(--gap) + (var(--gap)/2))}
+.flex__third{width:calc((100%/3) - var(--gap) + (var(--gap)/3))}
+.flex__twothirds{width:calc((100%/3*2) - var(--gap) + (var(--gap)/(3/2)))}
+textarea:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{position:relative;outline-color:var(--focused-outline);outline-width:2px;outline-offset:2px;outline-style:solid}
+/* headings with em de-emphasis pattern */
+h1:has(em),h2:has(em),h3:has(em){color:var(--neutral-fg-2)}
+h1:has(em) em,h2:has(em) em,h3:has(em) em{font-family:inherit;font-weight:inherit;line-height:inherit;color:var(--neutral-fg-1)}
+h1:has(em){color:var(--neutral-fg-1)}
+h1:has(em) em{color:var(--primary-fg)}

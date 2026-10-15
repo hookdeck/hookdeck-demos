@@ -1,0 +1,66 @@
+/* Hookdeck CSS component classes — buttons, cards, badges, lined boxes, tooltip.
+   Compiled from global.site.scss + page.scss ($phone: 744px, $tablet_portrait: 1024px) */
+button,.button{font-family:var(--font-sans);cursor:pointer;display:flex;align-items:center;gap:var(--s2);font-size:var(--s3-5);font-weight:500!important;line-height:var(--s5);text-decoration:none;padding:calc(var(--s1-5) - 1px) var(--s3);border-radius:var(--radius);border:none;color:var(--on-hue-fg);background-color:var(--primary-blue-bg);box-shadow:var(--button-primary-shadow);transition:200ms ease-in-out background-color}
+button:hover,.button:hover{background-color:var(--primary-blue-bg-hover);color:var(--on-hue-fg)}
+.button--pill{padding:var(--s1) var(--s3);border-radius:var(--s8)}
+.button--thick{padding:var(--s2) var(--s4)}
+.button--full{width:100%;justify-content:center}
+.button--minimal{background-color:transparent;color:var(--neutral-fg-1);box-shadow:none}
+.button--minimal:hover{background-color:var(--bg-3);color:var(--neutral-fg-1)}
+.button--secondary{color:var(--neutral-fg-1);border-color:var(--neutral-outline-1);background-color:var(--bg-0);box-shadow:var(--button-neutral-shadow)}
+.button--secondary:hover{background-color:var(--bg-0-hover);color:var(--neutral-fg-1)}
+.button--success{color:var(--color-success);border-color:var(--color-success-outline);background:var(--color-success-surface)}
+.button--success:hover{background:var(--color-success-outline);color:var(--color-success)}
+button:disabled,.button--disabled{cursor:not-allowed;color:var(--disabled-fg);background:var(--bg-2);box-shadow:var(--elevation-small)}
+/* Card */
+.card{padding:var(--s4);background-color:var(--bg-0);border:none;box-shadow:var(--elevation-small-puffy);border-radius:var(--radius);min-height:100%;box-sizing:border-box}
+.card:not(.flex){display:block}
+.flex--column .card{min-height:auto}
+a.card{color:inherit;text-decoration:none}
+a.card:hover{background-color:var(--bg-2);color:inherit}
+.card--transparent{background-color:transparent}
+.card--tight{background-color:var(--bg-2);padding:var(--s2);gap:var(--s2);border-radius:20px;box-shadow:none}
+.card--primary{background-color:var(--blue-badge-bg);background-image:url("../assets/backgrounds/noise.svg");background-size:200px,cover;border-radius:var(--radius);box-shadow:0px 1px 0px 0px var(--primary-badge-outline),0px 4px 8px 0px rgba(20,20,18,.08)}
+.card--inverse{color:var(--neutral-fg-1)}
+/* Badge */
+.badge{display:inline-flex;padding:0 var(--s1);justify-content:center;align-items:center;gap:var(--s1);border-radius:var(--s1);border:1px solid var(--neutral-outline-3);background:var(--bg-3);box-shadow:0px 1px 0px 0px var(--neutral-outline-3);color:var(--neutral-fg-1)}
+.badge--icon{padding:2px}
+.badge--bold{color:var(--on-contrast-fg);border-color:var(--neutral-fg-1);background:var(--bg-contrast-2);box-shadow:0px 1px 0px 0px var(--neutral-fg-1)}
+.badge--success{color:var(--color-success);border-color:var(--color-success-outline);background:var(--color-success-surface);box-shadow:0px 1px 0px 0px var(--color-success-outline)}
+.badge--primary{color:var(--primary-badge-fg);border-color:var(--primary-badge-outline);background:var(--blue-badge-bg);box-shadow:0px 1px 0px 0px var(--primary-badge-outline)}
+.badge--bold_primary{color:var(--bg-1);border-color:var(--primary-blue-bg-hover);background:var(--primary-blue-bg);box-shadow:0px 1px 0px 0px var(--primary-blue-bg-hover)}
+.badge--bold_secondary{border-color:var(--neutral-outline-2);background:var(--bg-3);box-shadow:0px 1px 0px 0px var(--neutral-outline-2)}
+.badge--warning{color:var(--color-warning);border-color:var(--color-warning-outline);background:var(--color-warning-surface);box-shadow:0px 1px 0px 0px var(--color-warning-outline)}
+.badge--danger{color:var(--color-danger);border-color:var(--color-danger-outline);background:var(--color-danger-surface);box-shadow:0px 1px 0px 0px var(--color-danger-outline)}
+.badge--mono{font-size:13px;font-family:var(--font-mono)}
+/* Tooltip */
+.tooltip{color:var(--tooltip-fg);background-color:var(--tooltip-bg);box-shadow:var(--tooltip-shadow);padding:var(--s2) var(--s3);border-radius:var(--radius);z-index:2;font-size:14px;line-height:20px;font-weight:400}
+/* Lined boxes — signature dashed-grid framing with corner dots */
+.lined{position:relative;background:linear-gradient(180deg,var(--bg-0) 0%,rgba(255,255,255,0) 100%),url("../assets/backgrounds/noise.svg") repeat 0% 0%/200px}
+.lined.flex{--gap:0px;align-items:stretch}
+.lined:before{content:"";pointer-events:none;position:absolute;top:-1px;right:-1px;bottom:0;left:0;border:1px solid var(--neutral-outline-3)}
+.lined__box{padding:var(--s8);border-right:1px dashed var(--neutral-outline-3);border-bottom:1px dashed var(--neutral-outline-3)}
+.lined__box p{max-width:500px}
+.lined__box--tight{padding:var(--s4)}
+.lined__box--end-column{border-right:none}
+.lined--paper,.lined--dotted{background-color:var(--bg-0)}
+.graph{background-image:radial-gradient(61.76% 43.48% at 69.39% 38.89%,rgba(250,250,248,.5) 0%,#fafaf8 100%),url("../assets/backgrounds/graphpaper.svg");background-size:cover,var(--s6)}
+.lined__dots,.lined__lines{height:calc(var(--s2)*2);width:calc(var(--s2)*2);border-top:1px solid;border-right:1px solid;border-color:var(--neutral-outline-3);background-color:transparent;overflow:visible;position:absolute;z-index:2;bottom:calc((var(--s2)*-2) + 1px);left:calc((var(--s2)*-2) + 1px)}
+.lined__dots--bottom_right,.lined__lines--bottom_right{left:auto;right:calc(var(--s2)*-2);transform:scaleX(-1)}
+.lined__dots--top_right,.lined__lines--top_right,.lined__dots--top_left,.lined__lines--top_left{bottom:auto}
+.lined__dots--top_right,.lined__lines--top_right{left:auto;top:calc(var(--s2)*-2);right:calc(var(--s2)*-2);transform:scale(-1,-1)}
+.lined__dots--top_left,.lined__lines--top_left{top:calc(var(--s2)*-2);transform:scaleY(-1)}
+.lined__dots:before{content:"";position:absolute;top:calc((var(--s2)*-0.5) - 1px);right:calc((var(--s2)*-0.5) - 1px);display:block;width:var(--s2);height:var(--s2);background-color:var(--bg-0);border:none;border-radius:50%;box-shadow:0 -1px 0 0 rgba(0,0,0,.08) inset,0 0 0 1px rgba(0,0,0,.16),0 1px 2px 0 rgba(0,0,0,.08)}
+.lined__dots--bottom_right:before{transform:scaleX(-1)}
+.lined__dots--top_right:before{transform:scale(-1,-1)}
+.lined__dots--top_left:before{transform:scaleY(-1)}
+/* Icon chip (blue square) */
+.icon svg,.track svg{padding:2px;width:var(--s8);height:var(--s8);border-radius:var(--s1-5);color:var(--primary-fg);border:1px solid var(--primary-badge-outline);background:var(--blue-badge-bg);box-shadow:0px 1px 0px 0px var(--primary-badge-outline)}
+.icon.icon--small svg{width:var(--s6);height:var(--s6)}
+/* Icon list */
+ul.ul--icons{list-style:none;padding-left:0;display:flex;flex-direction:column;gap:var(--s2)}
+ul.ul--icons li{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.icon_list{margin-top:var(--s4)}
+.icon_list li{position:relative;margin-bottom:var(--s8);display:flex;gap:var(--s3)}
+.icon_list--tight{margin-top:0}
+.icon_list--tight li{margin-bottom:var(--s2);align-items:center}
