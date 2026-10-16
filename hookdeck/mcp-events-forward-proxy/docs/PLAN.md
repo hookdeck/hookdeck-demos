@@ -248,7 +248,7 @@ The demo creates one `MCP Events` source per subscription, with that subscriptio
 | Freshness (SHOULD) | On the challenge; not on re-verified stored requests |
 | Dedup on `webhook-id` (SHOULD) | A deduplicate rule on `headers.webhook-id`, window 1 second to 1 hour |
 | Store before `2xx` | Every request is stored before Event Gateway responds, so the agent's downtime never counts toward the sender's suspension threshold |
-| `503`/`425` for an unknown subscription | Doesn't arise with one source per subscription |
+| `503`/`425` for an unknown subscription | Not needed at the source with one source per subscription. The agent answers `503` for a delivery that arrives before its `events/subscribe` call returns, and the retry rule delivers it again |
 | Pass `cursor` and `eventId` on | The body is forwarded unchanged (to verify, R5) |
 | Forward control envelopes (MUST) | `gap` and `terminated` are forwarded like events; `verification` is answered and not forwarded (see Spec feedback) |
 | Re-authenticate downstream | Destination auth on an HTTP destination |
