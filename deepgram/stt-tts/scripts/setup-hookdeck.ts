@@ -6,15 +6,15 @@
  *   deepgram-tts: source deepgram-tts -> destination local-deepgram-tts (/tts/webhook)
  *   deepgram-stt: source deepgram-stt -> destination local-deepgram-stt (/stt/webhook)
  *
- * Uses the hookdeck-cli npm dependency and whichever project it is logged in to.
- * Set HOOKDECK_CLI to use a different CLI binary (e.g. a local build).
+ * Uses the project whose HOOKDECK_API_KEY is in .env, through the hookdeck-cli
+ * npm dependency with a config file of its own (see hookdeck-cli.ts). Set
+ * HOOKDECK_CLI to use a different CLI binary (e.g. a local build).
  */
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { HOOKDECK_CLI, login, withConfig } from './hookdeck-cli';
 
-// The hookdeck-cli npm dependency, unless HOOKDECK_CLI points somewhere else
-const HOOKDECK_CLI = process.env.HOOKDECK_CLI || path.join(__dirname, '..', 'node_modules', '.bin', process.platform === 'win32' ? 'hookdeck.cmd' : 'hookdeck');
 const PROJECT_DIR = path.join(__dirname, '..');
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
 const ENV_EXAMPLE_FILE = path.join(PROJECT_DIR, '.env.example');
@@ -48,7 +48,7 @@ const DEMOS: Demo[] = [
 ];
 
 function hookdeck(args: string[]): string {
-  return execFileSync(HOOKDECK_CLI, args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return execFileSync(HOOKDECK_CLI, withConfig(args), { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 function hookdeckJson(args: string[]): any {
@@ -80,8 +80,9 @@ function checkCli(): void {
     console.warn('   Upgrade to 3.1.0 or later.');
   }
 
+  login();
   const whoami = hookdeck(['whoami']).split('\n').find(line => line.startsWith('Logged in as'));
-  console.log(whoami || 'Not logged in? Run: hookdeck login');
+  console.log(whoami || 'Not logged in: check HOOKDECK_API_KEY in .env');
   console.log('');
 }
 
