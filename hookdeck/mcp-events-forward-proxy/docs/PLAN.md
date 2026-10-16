@@ -9,7 +9,7 @@ Status: the demo is built and verified, and the scenarios passed again on 2026-1
 | **Proposal** | A demo of Hookdeck Event Gateway acting as the forward proxy that MCP Events describes for webhook delivery. Phase 1 delivers to the agent's HTTP endpoint, including a deployed agent. Phase 2 delivers to a local agent through the Hookdeck CLI. A field report for the MCP Triggers & Events working group was planned and is dropped for now. |
 | **Why** | SEP-3415 calls a forward proxy "a common deployment" for webhook delivery. The only receiver-side implementation reported to the working group so far is evdock, a self-hosted relay published on 2026-10-06. Event Gateway already does what the SEP asks of a receiver (consent, verification, dedup, storing before `2xx`) and adds what a tunnel doesn't (queueing, retries with backoff, rate limits, replay). |
 | **What's new for local agents** | The SEP assumes a client behind NAT polls. Event Gateway with the CLI gives that client push delivery while the MCP server stays in webhook mode. |
-| **Risk** | The CLI path isn't durable while `hookdeck listen` is disconnected. After a clean stop, or about 2 minutes after a crash, no event is created; the request is stored, and the agent has to retry it to create the event. Within those 2 minutes an event is created but only the retry rule gets it to the next session. The demo's agent recovers both on start, but that's a product gap (CLI destinations should queue like HTTP destinations), and the demo has to say so. |
+| **Risk** | The CLI path isn't durable while `hookdeck listen` is disconnected. After a clean stop, or about 2 minutes after a crash, no event is created; the request is stored, and the agent has to retry it to create the event. Within those 2 minutes an event is created but only the retry rule gets it to the next session. The demo's agent recovers both on start, but Event Gateway doesn't yet deliver those requests when `listen` connects again, and the demo has to say so. |
 | **Next steps** | See [Remaining work](#remaining-work-in-order). |
 
 ## Status (2026-10-09)
@@ -63,7 +63,7 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 ### Changes from the plan
 
 - **Setup uses the REST API, not the CLI,** so per-subscription secrets never appear on a command line and the deployed agent doesn't need the CLI. The CLI is used only for `listen`.
-- **No third-party tunnel.** Local development uses the Hookdeck CLI (Phase 2's path); the HTTP destination path is tested deployed on Fly.io.
+- **No third-party tunnel.** The agent runs locally through the Hookdeck CLI (Phase 2's path), which needs no public URL; the HTTP destination path is tested deployed on Fly.io.
 - **The forward-proxy question is answered:** the SEP's author confirmed a proxy needn't forward the `verification` envelope (see Spec feedback).
 - **Event Gateway's handling of MCP Events handshakes is being refined.** Re-run R1 and the handshake checks before publishing results.
 
@@ -248,7 +248,7 @@ The demo creates one `MCP Events` source per subscription, with that subscriptio
 | Freshness (SHOULD) | On the challenge; not on re-verified stored requests |
 | Dedup on `webhook-id` (SHOULD) | A deduplicate rule on `headers.webhook-id`, window 1 second to 1 hour |
 | Store before `2xx` | Every request is stored before Event Gateway responds, so the agent's downtime never counts toward the sender's suspension threshold |
-| `503`/`425` for an unknown subscription | Doesn't arise with one source per subscription |
+| `503`/`425` for an unknown subscription | Not needed at the source with one source per subscription. The agent answers `503` for a delivery that arrives before its `events/subscribe` call returns, and the retry rule delivers it again |
 | Pass `cursor` and `eventId` on | The body is forwarded unchanged (to verify, R5) |
 | Forward control envelopes (MUST) | `gap` and `terminated` are forwarded like events; `verification` is answered and not forwarded (see Spec feedback) |
 | Re-authenticate downstream | Destination auth on an HTTP destination |
@@ -320,7 +320,7 @@ What the CLI does today, measured with `hookdeck-cli` 3.1.0 against an `MCP Even
 1. **`listen` connected, agent down:** the retry rule applies, as for any destination. An agent answering `503` was retried every 15 s and delivered on attempt 4. A refused connection is recorded as a `500` attempt, not a CLI error code.
 2. **`listen` dropped abnormally (killed, or the network lost):** for about 2 minutes Event Gateway still creates an event, but events aren't held: the attempt fails with `CLI_UNAVAILABLE` about 10 s after the request arrives. The connection's retry rule delivers it to a reconnected `listen` while retries remain. Once they run out, the event settles as `FAILED` and needs an event retry. The [CLI docs](https://hookdeck.com/docs/cli) describe this window as holding events "as pending", which isn't what 3.1.0 does.
 3. **`listen` stopped cleanly, or gone more than about 2 minutes:** no event is created. Event Gateway still ingests and stores the request, recorded as ignored with cause `CLI_DISCONNECTED`, and nothing is delivered when `listen` reconnects. Retrying the request creates the event and delivers it ([requests](https://hookdeck.com/docs/requests)). Replay does too, on a new request, but leaves the original marked `CLI_DISCONNECTED`, so a recovery that runs again finds it again. A second retry of the same request is refused with `400`, so the agent uses retry.
-4. **Pausing the connection** holds events only while a session exists: connected, or inside the 2-minute window after a crash. Held events deliver 6 to 7 s after unpause, to a new session if `listen` restarted. A request that arrives after a clean stop is `CLI_DISCONNECTED` even while the connection is paused, so pausing before a planned stop doesn't avoid recovery.
+4. **Pausing the connection** holds events only while a session exists: connected, or inside the 2-minute window after a crash. Held events deliver 6 to 7 s after unpause, to a new session if `listen` restarted. Pausing holds events, and a request that arrives after a clean stop creates no event: it's `CLI_DISCONNECTED` even while the connection is paused, so there's nothing to hold and it still needs a request retry. Pausing before a planned stop holds what arrives before `listen` stops.
 
 Two details recovery depends on:
 

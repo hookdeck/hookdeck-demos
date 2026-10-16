@@ -20,7 +20,7 @@ sequenceDiagram
     Note over A,S: Every event
     S->>P: 4. Signed event
     P-->>S: 200 once stored, then the signature is checked
-    P->>A: 5. Deliver through hookdeck listen locally, or over HTTP when deployed
+    P->>A: 5. Deliver through hookdeck listen, or over HTTP to a public URL
     A-->>P: 2xx, or Event Gateway retries
 ```
 
@@ -28,9 +28,9 @@ sequenceDiagram
 2. **It subscribes with the source URL** as its callback. The MCP server doesn't know there's a proxy.
 3. **Event Gateway answers the verification challenge** on the agent's behalf, because the source holds the subscription's secret.
 4. **Event Gateway stores every event** before answering `200`, so the MCP server never sees the agent's downtime as delivery failures. It then verifies the Standard Webhooks signature, and a badly signed event is never delivered.
-5. **Event Gateway delivers to the agent:** through `hookdeck listen` on localhost, or over HTTP to a deployed agent. It deduplicates on `webhook-id` and retries while the agent is down.
+5. **Event Gateway delivers to the agent:** through `hookdeck listen`, which needs no public URL (the default here, run locally), or over HTTP to an agent with a public URL (deployed here on Fly.io). It deduplicates on `webhook-id` and retries while the agent is down.
 
-The agent refreshes its subscription before it expires, and on exit unsubscribes and deletes its source and connection. Started with `--keep`, it leaves them in place instead: the MCP server keeps delivering, Event Gateway keeps storing, and the next start picks the same source back up and recovers what it missed.
+The agent refreshes its subscription before it expires, and on exit unsubscribes and deletes its source and connection. Started with `--keep`, it leaves them in place instead: until the subscription expires, the MCP server keeps delivering, Event Gateway keeps storing, and the next start picks the same source back up and recovers what it missed (see [Known limits](#known-limits)).
 
 ## What's in here
 
@@ -88,7 +88,7 @@ npm run emit
 npm run agent:listen -- start      # within a few minutes, the retry rule delivers it
 ```
 
-To run every scenario and get pass or fail with evidence (the subscription, a delivery, a duplicate, a bad signature, the agent down then back, `listen` stopped and killed in CLI mode, and, when deployed, a forged request refused):
+To run every scenario and get pass or fail with evidence (the subscription, a delivery, a duplicate, a bad signature, the agent down then back, `listen` stopped and killed in CLI mode, and, when deployed, a request without Event Gateway's signature refused):
 
 ```bash
 npm run scenarios
@@ -103,6 +103,8 @@ npm run agent -- --keep            # Ctrl+C now keeps the subscription, source a
 npm run emit                       # while the agent is stopped: stored by Event Gateway
 npm run agent -- --keep            # picks up the same source and recovers the event
 ```
+
+This holds only while the subscription is live. A stopped agent doesn't refresh, and the stand-in sender grants 10 minutes by default (`SENDER_DEFAULT_TTL_MS`), so restart before the `refreshBefore` the agent last logged. Stay down longer and the server expires the subscription: events sent after that never reach Event Gateway, and the next start subscribes again from now.
 
 On start, and whenever `listen` comes back, the agent recovers in `src/agent/recover.ts`:
 
@@ -140,7 +142,7 @@ Point the scripts at the deployed services with `SENDER_MCP_URL=https://<sender-
 
 ## How Event Gateway covers the receiver's duties
 
-SEP-3415 puts these duties on whatever receives the webhook. Here that's the `MCP Events` source and its connection, so the agent doesn't implement them.
+SEP-3415 puts these duties on whatever receives the webhook. Here that's mostly the `MCP Events` source and its connection; the table says where the agent does part of the job.
 
 | Receiver duty in SEP-3415 | Event Gateway | Verified |
 |---|---|---|
@@ -150,7 +152,7 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's the `MC
 | Don't count the client's downtime against the sender | Every request is stored before Event Gateway answers, then retried to the agent | Yes: the agent answered `503` and the sender saw one `200` |
 | Reject stale timestamps (SHOULD) | Checked on the challenge only, not when a request carrying an event arrives. A stored delivery is forwarded with its original `webhook-timestamp`, so the agent re-checks the signature without the 5-minute window. Nothing in this setup rejects a stale event (see [Known limits](#known-limits)) | No, a gap |
 | Forward `gap` and `terminated` envelopes (MUST) | Forwarded like events | Yes |
-| `503` or `425` for an unknown subscription ID | Doesn't arise: one source per subscription | n/a |
+| `503` or `425` for an unknown subscription ID | Not needed at the source: one source per subscription. The agent answers `503` for a subscription ID it doesn't know yet, such as a delivery that arrives before its `events/subscribe` call returns on a `--keep` restart, and the retry rule delivers it again | Not tested |
 
 ## What's verified
 
@@ -162,7 +164,7 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's the `MC
 | Duplicate `webhook-id`, re-signed: handled once | Yes | Yes | Not run |
 | Badly signed delivery never reaches the agent | Yes | Yes | Not run |
 | Agent answers `503`, then recovers; the sender sees one `200` | Yes | Yes | Yes |
-| A forged request sent straight to the agent is refused (`401`) | n/a | Yes | n/a |
+| A request without Event Gateway's signature, sent straight to the agent, is refused (`401`) | n/a | Yes | n/a |
 | Subscription refreshed before `refreshBefore` | Yes | Yes, for over 6 days | Not observed |
 | `listen` stopped cleanly; recovery retries the request | Yes | n/a | Yes |
 | `listen` killed; the retry rule delivers once it's back | Yes | n/a | Not run |
@@ -182,9 +184,11 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's the `MC
 - **The agent needs code to set up its proxy.** SEP-3415 says the client registers its secret with the proxy but not how, so an MCP client uses Event Gateway this way only with code like `src/agent/proxy.ts`.
 - **The agent holds the project's API key,** which can create and delete any source and connection in the project. That suits an agent you deploy and run yourself, not a client you ship to other people.
 - **One source per subscription.** SEP-3415 also describes one receiver for many subscriptions that looks up each secret by `X-MCP-Subscription-Id`. A source holds one secret, so that isn't possible on Event Gateway today, and every subscribe and exit makes Event Gateway API calls.
-- **No freshness check on events.** Event Gateway checks `webhook-timestamp` on the challenge only, and the agent skips the 5-minute window because Event Gateway's retries carry the original timestamp. A copy of a validly signed delivery sent again after the 1-hour deduplicate window would be delivered, and only the agent's record of handled `eventId`s stops it, which is in memory (below). Found by reading the setup, not tested.
+- **No freshness check on events.** Event Gateway checks `webhook-timestamp` on the challenge only, and the agent skips the 5-minute window because Event Gateway's retries carry the original timestamp. A copy of a validly signed delivery sent again to the source after the 1-hour deduplicate window would be delivered, and only the agent's record of handled `eventId`s stops it, which is in memory (below). Found by reading the setup, not tested.
+- **A copy of a delivery sent straight to a deployed agent is accepted.** Event Gateway's `x-hookdeck-signature` is an HMAC of the body with no timestamp, and the agent checks the MCP server's signature without the window, so a copy of a delivery posted to the agent's `/events` endpoint passes both checks. Only the in-memory record of handled `eventId`s stops it, and a restart clears that. The scenario that's refused sends no signature at all, so it doesn't cover this case. Found by reading the setup, not tested.
+- **Restart recovery holds only while the subscription lasts.** With `--keep`, the agent stops refreshing, so the subscription expires at the last `refreshBefore`, at most 10 minutes later with the stand-in sender's default grant. After that the server stops sending and Event Gateway has nothing to store. The agent also sends `cursor: null` on every subscribe and refresh, so a server that can replay would start again from now; SEP-3415 has the client keep the latest cursor and supply it on every refresh, so a server that lost the subscription recreates it from there. Both senders used here return `cursor: null` (no replay), so the agent doesn't keep one.
 - **The agent remembers handled events in memory,** so a redelivery after a restart is handled again. A real agent would store `eventId`s it has handled.
-- **The CLI path is for local development.** `hookdeck listen` is a development tool, and it isn't durable while disconnected, so the agent has to recover. After a clean stop, or about 2 minutes after a crash, no event is created and the request is stored for the agent to retry. In between, an event is created but only the retry rule delivers it. Pausing the connection doesn't help after a clean stop. Measured with `hookdeck-cli` 3.1.0; see [docs/PLAN.md](docs/PLAN.md#phase-2-cli-destination-to-a-local-agent).
+- **Through `hookdeck listen`, missed requests need a retry.** While `listen` is connected, delivery is at least once. A request that arrives after a clean stop, or more than about 2 minutes after a crash, is stored but creates no event, and Event Gateway doesn't yet deliver it when `listen` connects again. Until it does, the request needs a request retry, which `src/agent/recover.ts` makes on start and whenever `listen` comes back. Within those 2 minutes an event is created, but only the retry rule delivers it. Pausing the connection holds events. After a clean stop no event is created, so a paused connection has nothing to hold, and the request still needs a retry. Measured with `hookdeck-cli` 3.1.0; see [docs/PLAN.md](docs/PLAN.md#phase-2-cli-destination-to-a-local-agent).
 - **`hookdeck listen` restarts for each new source,** because a running `listen` doesn't pick up sources created after it started ([hookdeck-cli#467](https://github.com/hookdeck/hookdeck-cli/issues/467)). The agent restarts it.
 - **A badly signed delivery is answered `200`.** Event Gateway stores every request before verifying it, so the sender can't tell a rejected delivery from an accepted one, and a conformance checker that grades by status code marks those cases as failed. The rejection shows in the request log as `VERIFICATION_FAILED`.
 - **No secret overlap on a source during rotation.** The sender dual-signs for a grace window, but a source holds one secret.
