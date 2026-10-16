@@ -63,7 +63,7 @@ Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source 
 ### Changes from the plan
 
 - **Setup uses the REST API, not the CLI,** so per-subscription secrets never appear on a command line and the deployed agent doesn't need the CLI. The CLI is used only for `listen`.
-- **No third-party tunnel.** Local development uses the Hookdeck CLI (Phase 2's path); the HTTP destination path is tested deployed on Fly.io.
+- **No third-party tunnel.** The agent runs locally through the Hookdeck CLI (Phase 2's path), which needs no public URL; the HTTP destination path is tested deployed on Fly.io.
 - **The forward-proxy question is answered:** the SEP's author confirmed a proxy needn't forward the `verification` envelope (see Spec feedback).
 - **Event Gateway's handling of MCP Events handshakes is being refined.** Re-run R1 and the handshake checks before publishing results.
 
