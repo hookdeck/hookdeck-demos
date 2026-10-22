@@ -32,6 +32,7 @@ interface Handled {
 }
 interface AgentStatus {
   delivery: 'cli' | 'http';
+  destinationAuth: 'STANDARD_WEBHOOKS' | 'BEARER_TOKEN';
   listening: boolean | null;
   recovery: { passes: number; requestsRetried: string[]; eventsRetried: string[] };
   subscription?: { id: string; callbackUrl: string; sourceId: string; connectionId: string; refreshBefore: string | null };
@@ -127,7 +128,7 @@ if (!subscription) {
 }
 const sourceId = subscription.sourceId;
 const connectionId = subscription.connectionId;
-console.log(`Agent subscription ${subscription.id}, callback ${subscription.callbackUrl}\n`);
+console.log(`Agent subscription ${subscription.id}, callback ${subscription.callbackUrl}, destination auth ${status.destinationAuth}\n`);
 if (status.failing) await setFailing(false);
 
 // 1. The subscription is live on the sender, so Event Gateway answered its challenge.
@@ -163,16 +164,17 @@ if (status.failing) await setFailing(false);
   );
 }
 
-// 4. A badly signed delivery is rejected by Event Gateway and never reaches the agent.
+// 4. A badly signed delivery is refused by Event Gateway (401 to the sender) and never reaches the agent.
 {
   const emitted = await emit({ title: 'Scenario: bad signature', badSignature: true });
   const requests = await waitForRequests(sourceId, emitted.eventId, 1);
   await sleep(5000);
   const reached = (await agentStatus()).handled.some((h) => h.eventId === emitted.eventId);
   const cause = requests[0]?.rejection_cause ?? null;
+  const statuses = senderStatuses(emitted);
   record(
-    'bad signature: rejected, never delivered',
-    cause === 'VERIFICATION_FAILED' && !reached,
+    'bad signature: refused with 401, never delivered',
+    cause === 'VERIFICATION_FAILED' && !reached && statuses.length > 0 && statuses.every((s) => s === 401),
     `${emitted.eventId}: sender saw ${JSON.stringify(senderStatuses(emitted))}, request ${requests[0]?.id ?? '(none)'} ${cause ?? 'not rejected'}, agent ${reached ? 'received it' : 'never received it'}`,
   );
 }
@@ -243,14 +245,15 @@ if (status.delivery === 'cli') {
   }
 }
 
-// 8. Deployed only: a request that didn't come through Event Gateway is refused.
-if (agentBase.startsWith('https://')) {
+// 8. A request sent straight to the agent without Event Gateway's credentials is refused.
+{
   const response = await fetch(`${agentBase}/events`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-mcp-subscription-id': subscription.id },
     body: JSON.stringify({ eventId: 'evt_forged', name: 'incident.created', timestamp: new Date().toISOString(), data: {}, cursor: null }),
   });
-  record('forged request to the agent: refused', response.status === 401, `POST ${agentBase}/events without x-hookdeck-signature got ${response.status}`);
+  const missing = status.destinationAuth === 'BEARER_TOKEN' ? 'a bearer token' : 'a signature';
+  record('request without credentials to the agent: refused', response.status === 401, `POST ${agentBase}/events without ${missing} got ${response.status}`);
 }
 
 const failed = results.filter((r) => !r.pass);

@@ -11,7 +11,15 @@ import type { HookdeckApi } from './hookdeck.js';
  *
  * One MCP Events source per subscription, holding that subscription's secret,
  * plus one connection that delivers to the agent with a deduplicate rule on
- * `webhook-id` and a retry rule.
+ * `webhook-id` and a retry rule. The destination authenticates each delivery
+ * attempt to the agent in one of two ways:
+ *
+ * - Standard Webhooks (the default): Event Gateway re-signs every attempt with
+ *   the subscription's secret, so the agent verifies a delivery exactly as it
+ *   would one sent straight from the MCP server.
+ * - A bearer token: SEP-3415's example of infrastructure HMAC doesn't get
+ *   past, such as an API gateway that demands `Authorization: Bearer`. The
+ *   proxy terminates HMAC and re-authenticates with what the network requires.
  */
 
 export interface ProxyEndpoint {
@@ -33,10 +41,14 @@ export interface SubscriptionKey {
 
 export type DeliverTo = { type: 'http'; url: string } | { type: 'cli'; path: string };
 
+/** How Event Gateway authenticates to the agent. */
+export type DestinationAuth = { type: 'STANDARD_WEBHOOKS' } | { type: 'BEARER_TOKEN'; token: string };
+
 export interface ProxyOptions {
   /** Prefix for resource names, so the agent can find its own resources after a restart. */
   namePrefix: string;
   deliverTo: DeliverTo;
+  destinationAuth: DestinationAuth;
   retry: { strategy: 'linear' | 'exponential'; intervalMs: number; count: number };
   dedupWindowMs: number;
 }
@@ -53,10 +65,15 @@ export async function provisionEndpoint(api: HookdeckApi, key: SubscriptionKey, 
   const name = `${options.namePrefix}-${randomBytes(NAME_SUFFIX_HEX / 2).toString('hex')}`;
   const source = await api.createMcpEventsSource(name, secret, JSON.stringify(key));
   try {
+    const auth =
+      options.destinationAuth.type === 'STANDARD_WEBHOOKS'
+        ? // Each attempt gets a fresh `webhook-timestamp` and signature. `webhook-id` stays the MCP server's.
+          { auth_type: 'STANDARD_WEBHOOKS', auth: { webhook_secret_key: secret } }
+        : { auth_type: 'BEARER_TOKEN', auth: { token: options.destinationAuth.token } };
     const destination =
       options.deliverTo.type === 'http'
-        ? { name, type: 'HTTP', config: { url: options.deliverTo.url } }
-        : { name, type: 'CLI', config: { path: options.deliverTo.path } };
+        ? { name, type: 'HTTP', config: { url: options.deliverTo.url, ...auth } }
+        : { name, type: 'CLI', config: { path: options.deliverTo.path, ...auth } };
     const connection = await api.createConnection({
       name,
       sourceId: source.id,
@@ -96,6 +113,7 @@ export async function findEndpoints(api: HookdeckApi, namePrefix: string) {
       connectionId: connection.id,
       destinationId: connection.destination.id,
       destinationType: connection.destination.type,
+      destinationAuthType: connection.destination.config?.auth_type ?? null,
       key,
     };
   });
@@ -103,11 +121,16 @@ export async function findEndpoints(api: HookdeckApi, namePrefix: string) {
 
 export type FoundEndpoint = Awaited<ReturnType<typeof findEndpoints>>[number];
 
-/** Whether an endpoint left by an earlier run was made for this subscription and delivery type. */
-export const endpointMatches = (found: FoundEndpoint, key: SubscriptionKey, deliverTo: DeliverTo) =>
+/**
+ * Whether an endpoint left by an earlier run was made for this subscription, delivery type and
+ * destination auth. Any other, including one from a version of the demo that didn't re-sign
+ * deliveries, is replaced rather than picked up.
+ */
+export const endpointMatches = (found: FoundEndpoint, key: SubscriptionKey, deliverTo: DeliverTo, auth: DestinationAuth) =>
   found.key !== null &&
   canonicalJson(found.key) === canonicalJson(key) &&
-  found.destinationType.toUpperCase() === deliverTo.type.toUpperCase();
+  found.destinationType.toUpperCase() === deliverTo.type.toUpperCase() &&
+  found.destinationAuthType === auth.type;
 
 /**
  * Picks up an endpoint an earlier run left behind, reading its secret back from

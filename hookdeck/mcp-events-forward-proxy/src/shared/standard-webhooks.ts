@@ -22,18 +22,13 @@ export function signStandardWebhook(secrets: string[], msgId: string, body: stri
 }
 
 /**
- * Verifies a Standard Webhooks signature without the library's 5-minute
- * freshness window. A forward proxy delivers the request it stored, with the
- * original `webhook-timestamp`, so a delivery retried later would fail the
- * window. The proxy checks the signature when it receives the request; this
- * re-check only proves the body came from the server the secret was given to.
+ * Verifies a Standard Webhooks signature, including the library's 5-minute
+ * window on `webhook-timestamp`. Event Gateway re-signs every delivery attempt,
+ * so a retry carries a fresh timestamp and still passes.
  */
-export function verifyIgnoringTimestamp(secret: string, body: string, headers: SignedHeaders): boolean {
-  const webhook = new Webhook(secret);
-  (webhook as unknown as { verifyTimestamp: (header: string) => Date }).verifyTimestamp = (header) =>
-    new Date(Number(header) * 1000);
+export function verifyStandardWebhook(secret: string, body: string, headers: SignedHeaders): boolean {
   try {
-    webhook.verify(body, { ...headers });
+    new Webhook(secret).verify(body, { ...headers });
     return true;
   } catch {
     return false;
