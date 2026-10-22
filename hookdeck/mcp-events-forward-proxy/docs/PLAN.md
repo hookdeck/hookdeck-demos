@@ -1,6 +1,6 @@
 # Proposal: Event Gateway as an MCP Events forward proxy
 
-Status: the demo is built and verified, and the scenarios passed again on 2026-10-14 after the Event Gateway handshake changes merged: 7 of 7 locally, with a fresh subscribe and a refresh in CLI mode, and 6 of 6 deployed. The field report is dropped for now. See [Status](#status-2026-10-08) for what's done.
+Status: the demo is built and verified, and the scenarios passed again on 2026-10-14 after the Event Gateway handshake changes merged: 7 of 7 locally, with a fresh subscribe and a refresh in CLI mode, and 6 of 6 deployed. On 2026-10-22 the destinations moved to `STANDARD_WEBHOOKS` auth, so Event Gateway re-signs every delivery attempt and the agent applies the 5-minute window: 7 of 7 locally. The deployed agent still runs the earlier version. The field report is dropped for now. See [Status](#status-2026-10-08) for what's done.
 
 ## Summary
 
@@ -20,8 +20,9 @@ Status: the demo is built and verified, and the scenarios passed again on 2026-1
 - **Agent** (`src/agent/`): an MCP client that owns its forward proxy. Per subscription it creates an `MCP Events` source with a fresh `whsec_` secret and a connection (dedup rule on `headers.webhook-id`, linear retry rule), subscribes with the source URL, refreshes before `refreshBefore`, and on exit unsubscribes and deletes the source and connection. All Event Gateway calls go through `src/agent/proxy.ts`.
   - **CLI mode** (default locally): the connection has a CLI destination and the agent supervises `hookdeck listen`, logged in with its own config under `run/`.
   - **Restart and recovery:** with `--keep`, the agent leaves its subscription, source and connection in place on exit. On start it picks up the endpoint made for the same subscription (reading the secret back with `GET /sources/{id}?include=config.auth`), re-subscribes with the same URL and secret, and runs recovery (`src/agent/recover.ts`): it retries `CLI_DISCONNECTED` requests scoped to its connection, retries events that settled as `FAILED` (not on a `4xx`), and leaves anything queued or scheduled to Event Gateway. It repeats every 60 s until a later pass finds nothing, for up to 5 minutes. The same recovery runs when `listen` is brought back with `npm run agent:listen -- start`.
-  - **HTTP mode** (`AGENT_PUBLIC_URL` set, used on Fly.io): the connection has an HTTP destination, and the agent checks `x-hookdeck-signature` with the project's signing secret.
-  - **The event endpoint** re-checks the MCP server's Standard Webhooks signature without the 5-minute window, handles each `eventId` once, ignores `verification` bodies, and answers `503` for an unknown subscription ID.
+  - **HTTP mode** (`AGENT_PUBLIC_URL` set, used on Fly.io): the connection has an HTTP destination.
+  - **Both destinations use `STANDARD_WEBHOOKS` auth** with the subscription's secret (since 2026-10-22), so Event Gateway re-signs every delivery attempt with a fresh `webhook-timestamp`, keeping the MCP server's `webhook-id`. Before that the agent checked `x-hookdeck-signature` in HTTP mode and re-checked the MCP server's signature without the 5-minute window.
+  - **The event endpoint** verifies the Standard Webhooks signature with the subscription's secret, including the 5-minute window, handles each `eventId` once, ignores `verification` bodies, and answers `503` for an unknown subscription ID.
 - **Scripts:** `npm run emit`, `npm run agent:status`, `npm run agent:fail`, `npm run agent:listen` (stop, kill or start `listen`), `npm run teardown`, and `npm run scenarios`, which runs the verified table below against a running sender and agent and prints pass or fail with evidence (7 of 7 locally in CLI mode; 6 of 6 against the deployed services, where the two `listen` cases don't apply, re-run after the redeploy).
 - **Deployment:** `Dockerfile`, `fly.sender.toml`, `fly.agent.toml`. Both services were deployed on Fly.io (apps `mcp-events-receive-sender` and `mcp-events-receive-agent`, region `ams`).
 
@@ -288,14 +289,14 @@ sequenceDiagram
     EG-->>SRV: Challenge echoed
     SRV->>EG: 4. Signed delivery
     EG-->>SRV: 200 once stored
-    EG->>AG: 5. HTTP POST with x-hookdeck-signature, retried until the agent is back
+    EG->>AG: 5. HTTP POST re-signed as Standard Webhooks, retried until the agent is back
 ```
 
 What Event Gateway adds over the agent receiving directly ([destinations](https://hookdeck.com/docs/destinations), [retries](https://hookdeck.com/docs/retries)):
 
 - **Queue and retries:** a retry rule per connection (linear or exponential, a configurable interval, up to 50 automatic attempts, chosen status codes, `Retry-After` honored), plus manual and bulk retry.
 - **Delivery control:** a delivery timeout (60 seconds by default, up to 900), a max delivery rate per destination (events beyond it wait as pending), and pausing a connection (held events deliver on unpause).
-- **Authentication to the agent:** the agent verifies Event Gateway's `x-hookdeck-signature` with the project's signing secret. Bearer token or API key destination auth are alternatives.
+- **Authentication to the agent:** a `STANDARD_WEBHOOKS` destination re-signs each attempt with the subscription's secret, so the agent verifies it as it would a direct delivery, 5-minute window included. Event Gateway's `x-hookdeck-signature`, a bearer token or an API key are alternatives.
 - **Observability:** every request, event and attempt is stored and searchable.
 
 **Development and deployment:**

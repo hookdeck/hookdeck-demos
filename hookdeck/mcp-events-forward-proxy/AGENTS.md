@@ -13,7 +13,7 @@ A demo of Hookdeck Event Gateway acting as the MCP Events "forward proxy" from S
 - **Two delivery paths: `hookdeck listen` (CLI destination), which needs no public URL and is the default when `AGENT_PUBLIC_URL` isn't set, and an HTTP destination, tested deployed** on Fly.io. The demo runs the CLI path locally only, but `hookdeck listen` isn't limited to local use. No third-party tunnels.
 - **The stand-in sender follows OpenAI's MCP Events profile** (top-level `capabilities.events`, `-32015`, idempotent unsubscribe). SEP-3415 differs; note differences rather than switching.
 - **Recovery uses request retry, never replay,** and retries an event only once it's settled (`next_attempt_at` null). Both rules prevent duplicate deliveries; see Phase 2 in `docs/PLAN.md`.
-- **The agent re-checks the MCP server's signature without the 5-minute window,** because Event Gateway delivers the stored request with its original `webhook-timestamp`. In HTTP mode it also checks `x-hookdeck-signature`.
+- **Event Gateway re-signs every delivery attempt as Standard Webhooks** (a `STANDARD_WEBHOOKS` destination) with the subscription's own secret, and the agent verifies it with the 5-minute window. Using the same secret means the agent's check is the one it would make on a delivery straight from the MCP server. It replaced an earlier workaround: checking `x-hookdeck-signature`, then re-checking the MCP server's signature without the window.
 
 ## Working conventions
 
