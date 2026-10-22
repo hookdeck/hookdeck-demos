@@ -24,14 +24,28 @@ sequenceDiagram
     A-->>P: 2xx, or Event Gateway retries
 ```
 
-1. **The agent owns the proxy.** For each subscription it creates an `MCP Events` source holding a fresh `whsec_` secret, plus a connection to itself with a deduplicate rule on `headers.webhook-id` and a retry rule. It's one source per subscription because a source holds one secret.
-2. **It subscribes with the source URL** as its callback. The MCP server doesn't know there's a proxy.
-3. **Event Gateway answers the verification challenge** on the agent's behalf, because the source holds the subscription's secret.
-4. **Event Gateway verifies and stores every event** before answering `200`, so the MCP server never sees the agent's downtime as delivery failures. A badly signed request gets `401`, is stored as `VERIFICATION_FAILED`, and is never delivered.
-5. **Event Gateway delivers to the agent:** through `hookdeck listen`, which needs no public URL (the default here, run locally), or over HTTP to an agent with a public URL (deployed here on Fly.io). It deduplicates on `webhook-id` and retries while the agent is down.
-6. **Event Gateway authenticates every delivery attempt to the agent.** By default it re-signs each attempt as Standard Webhooks with the subscription's secret (a `STANDARD_WEBHOOKS` destination), with a fresh `webhook-timestamp` and the MCP server's `webhook-id`. The agent verifies it with the 5-minute window, the same check it would make on a delivery sent straight from the MCP server, so a retry an hour later still verifies. With `AGENT_DESTINATION_AUTH=bearer` it sends a bearer token instead (see [With a bearer token](#with-a-bearer-token)).
+## How it works
 
-The agent refreshes its subscription before it expires, and on exit unsubscribes and deletes its source and connection. Started with `--keep`, it leaves them in place instead: until the subscription expires, the MCP server keeps delivering, Event Gateway keeps storing, and the next start picks the same source back up and recovers what it missed (see [Known limits](#known-limits)).
+### Subscribing
+
+1. **The agent generates a fresh `whsec_` secret** for the subscription.
+2. **It creates an `MCP Events` source** in Event Gateway holding that secret. The source URL is the callback URL. It's one source per subscription, because a source holds one secret.
+3. **It creates a connection from the source back to itself,** with a deduplicate rule on `headers.webhook-id` (1 hour), a retry rule (every 15 s, 10 times), and a destination: a CLI destination through `hookdeck listen`, which needs no public URL (the default; run locally here), or HTTP to a public URL (deployed here on Fly.io). The destination authenticates to the agent with `STANDARD_WEBHOOKS` and the same secret, or with `BEARER_TOKEN` (see [With a bearer token](#with-a-bearer-token)).
+4. **It calls `events/subscribe`** with `delivery.url` set to the source URL and `delivery.secret` to the secret, and an `Mcp-Name` header carrying the event name. The MCP server doesn't know there's a proxy.
+5. **The MCP server sends a signed verification challenge** to the source URL.
+6. **Event Gateway answers it** when the signature verifies and `webhook-timestamp` is within 5 minutes, and echoes the challenge. The agent never sees it.
+7. **The MCP server returns the subscription `id` and `refreshBefore`.** The agent calls `events/subscribe` again with the same name, arguments, URL and secret before that time; the stand-in sender grants 10 minutes by default.
+8. **On exit, the agent unsubscribes** and deletes the source and connection. Started with `--keep`, it leaves them in place, and the next start picks them up (see [Restart without losing events](#restart-without-losing-events)).
+
+### When an event is published
+
+1. **The MCP server POSTs the event to each matching subscription's callback URL,** the source: a body of `{eventId, name, timestamp, data, cursor}`, with `webhook-id` (the `eventId`), `webhook-timestamp`, `webhook-signature` and `X-MCP-Subscription-Id` headers.
+2. **Event Gateway verifies the signature** with the subscription's secret. A badly signed request gets `401`, is stored as `VERIFICATION_FAILED`, and is never delivered. A correctly signed one is stored, then answered `200`, so the agent being down never counts as a failed delivery for the MCP server. There's no timestamp window on events at the source (see [Known limits](#known-limits)).
+3. **The deduplicate rule drops a request** whose `webhook-id` it saw in the last hour.
+4. **Event Gateway delivers to the agent and authenticates each attempt.** By default it re-signs the attempt as Standard Webhooks with a fresh `webhook-timestamp`, keeping the MCP server's `webhook-id`. With a bearer token it adds `Authorization: Bearer`.
+5. **The agent checks the delivery:** the signature with the 5-minute window, the same check it would make on a delivery straight from the MCP server, or the token (`401` if it fails); then that it knows the subscription ID (`503` if not, so it's retried); then it handles each `eventId` once.
+6. **If the agent answers non-2xx or can't be reached,** the retry rule delivers again, re-signed each time, so a retry an hour later still passes the window.
+7. **Through `hookdeck listen`,** a request that arrives after a clean stop, or more than about 2 minutes after a crash, is stored but creates no event, and Event Gateway doesn't yet deliver it when `listen` reconnects. The agent's `src/agent/recover.ts` retries those requests (see [Restart without losing events](#restart-without-losing-events)).
 
 ## What's in here
 
@@ -205,6 +219,7 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's mostly 
 - **One source per subscription.** SEP-3415 also describes one receiver for many subscriptions that looks up each secret by `X-MCP-Subscription-Id`. A source holds one secret, so that isn't possible on Event Gateway today, and every subscribe and exit makes Event Gateway API calls.
 - **No freshness check on events at the source.** Event Gateway checks `webhook-timestamp` on the challenge only. A copy of a validly signed delivery sent again to the source after the 1-hour deduplicate window is delivered, freshly signed, and only the agent's record of handled `eventId`s stops it, which is in memory (below). Found by reading the setup, not tested.
 - **The agent can't check the MCP server's own signature.** Event Gateway verifies it at the source, then replaces it with its own. The agent trusts that check.
+- **The MCP server could deliver straight to a deployed agent.** Event Gateway re-signs with the subscription's secret, which the MCP server also holds, so a delivery it sent to the agent's public URL instead of the source would verify. It would skip Event Gateway's storage, dedup and retries, but nothing more: the MCP server is the source of these events anyway, and the agent still handles each `eventId` once. A separate secret per destination would prove a delivery came through Event Gateway, at the cost of a second secret per subscription and a check that differs from a direct delivery.
 - **A copy of a delivery sent straight to a deployed agent is accepted for 5 minutes, or with a bearer token, at any time.** Within the window of Event Gateway's attempt, a copy posted to the agent's `/events` endpoint verifies, and only the in-memory record of handled `eventId`s stops it. After 5 minutes it's refused. A bearer token has no timestamp, so a copy that carries it is accepted whenever it's sent. Found by reading the setup, not tested.
 - **Restart recovery holds only while the subscription lasts.** With `--keep`, the agent stops refreshing, so the subscription expires at the last `refreshBefore`, at most 10 minutes later with the stand-in sender's default grant. After that the server stops sending and Event Gateway has nothing to store. The agent also sends `cursor: null` on every subscribe and refresh, so a server that can replay would start again from now; SEP-3415 has the client keep the latest cursor and supply it on every refresh, so a server that lost the subscription recreates it from there. Both senders used here return `cursor: null` (no replay), so the agent doesn't keep one.
 - **The agent remembers handled events in memory,** so a redelivery after a restart is handled again. A real agent would store `eventId`s it has handled.
