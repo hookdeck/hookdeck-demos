@@ -243,14 +243,14 @@ if (status.delivery === 'cli') {
   }
 }
 
-// 8. Deployed only: a request that didn't come through Event Gateway is refused.
+// 8. Deployed only: a request without a valid Standard Webhooks signature is refused.
 if (agentBase.startsWith('https://')) {
   const response = await fetch(`${agentBase}/events`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-mcp-subscription-id': subscription.id },
     body: JSON.stringify({ eventId: 'evt_forged', name: 'incident.created', timestamp: new Date().toISOString(), data: {}, cursor: null }),
   });
-  record('forged request to the agent: refused', response.status === 401, `POST ${agentBase}/events without x-hookdeck-signature got ${response.status}`);
+  record('forged request to the agent: refused', response.status === 401, `POST ${agentBase}/events without a signature got ${response.status}`);
 }
 
 const failed = results.filter((r) => !r.pass);

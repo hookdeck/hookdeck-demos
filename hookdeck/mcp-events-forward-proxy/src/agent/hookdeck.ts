@@ -17,7 +17,7 @@ export interface Connection {
   id: string;
   name: string;
   source: Source;
-  destination: { id: string; name: string; type: string };
+  destination: { id: string; name: string; type: string; config?: { auth_type?: string } | null };
 }
 
 export class HookdeckApiError extends Error {

@@ -32,9 +32,6 @@ const port = numberEnv('PORT', numberEnv('AGENT_PORT', 3200));
 const delivery = (process.env.AGENT_DELIVERY || (process.env.AGENT_PUBLIC_URL ? 'http' : 'cli')) as 'cli' | 'http';
 const publicUrl = delivery === 'http' ? requireEnv('AGENT_PUBLIC_URL').replace(/\/$/, '') : undefined;
 const agentToken = process.env.AGENT_TOKEN || 'demo-agent-token';
-// Over the internet, the endpoint checks each request came from Event Gateway. Through `hookdeck listen`
-// requests arrive on localhost from the CLI, which is already authenticated to the project.
-const hookdeckSigningSecret = delivery === 'http' ? requireEnv('HOOKDECK_SIGNING_SECRET') : undefined;
 
 const apiKey = requireEnv('HOOKDECK_API_KEY');
 const api = new HookdeckApi(apiKey, process.env.HOOKDECK_API_BASE || undefined);
@@ -71,7 +68,6 @@ function recover() {
 }
 
 const receiver = new Receiver({
-  hookdeckSigningSecret,
   secretFor: (subscriptionId) => (live && live.subscription.id === subscriptionId ? live.endpoint.secret : undefined),
   onTerminated: (subscriptionId) => log(`the server ended ${subscriptionId}; it won't be refreshed`),
   log,
