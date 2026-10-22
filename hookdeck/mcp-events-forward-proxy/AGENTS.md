@@ -15,6 +15,8 @@ A demo of Hookdeck Event Gateway acting as the MCP Events "forward proxy" from S
 - **Recovery uses request retry, never replay,** and retries an event only once it's settled (`next_attempt_at` null). Both rules prevent duplicate deliveries; see Phase 2 in `docs/PLAN.md`.
 - **Event Gateway re-signs every delivery attempt as Standard Webhooks** (a `STANDARD_WEBHOOKS` destination) with the subscription's own secret, and the agent verifies it with the 5-minute window. Using the same secret means the agent's check is the one it would make on a delivery straight from the MCP server. It replaced an earlier workaround: checking `x-hookdeck-signature`, then re-checking the MCP server's signature without the window. `AGENT_DESTINATION_AUTH=bearer` switches the destination to `BEARER_TOKEN` auth instead, to show SEP-3415's case for a forward proxy: re-authenticating to infrastructure, such as an API gateway, that HMAC doesn't get past. Keep both paths working and run `npm run scenarios` against each.
 
+- **The view (`viz/`, `src/viz/server.ts`) uses the Hookdeck design system** in `viz/ds/`, the same token files as the other demos' `public/ds/`. Use its tokens and classes rather than new colors. Its scripted scenes (`SCENES` in `viz/viz.js`) and `viz/capture.sh` share scene names and durations; change both together, then re-run `viz/capture.sh` so `viz/gifs/` matches.
+
 ## Working conventions
 
 - TypeScript, ESM, Node 22+. `npm run typecheck` must pass before committing. There are no unit tests; verification is by running the flows against a test project and recording results in `docs/PLAN.md`.

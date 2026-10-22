@@ -26,6 +26,10 @@ interface Subscription {
   previousSecret?: { secret: string; until: number };
   expiresAt: number;
   lastDelivery?: { webhookId: string; attempts: AttemptRecord[] };
+  /** For the demo's visualization: the first subscribe, the last challenge echoed, and the last subscribe. */
+  subscribedAt: string;
+  verifiedAt?: string;
+  refreshedAt: string;
 }
 
 type Params = Record<string, unknown>;
@@ -52,8 +56,21 @@ function describe(params: Params): string {
  * TTL grants with a sweeper, dual-signing during secret rotation, and delivery
  * with bounded retries.
  */
+/** An incident the sender opened, and every delivery attempt for it so far. For the demo's visualization. */
+export interface IncidentRecord {
+  eventId: string;
+  incident: Incident;
+  duplicate: boolean;
+  badSignature: boolean;
+  sentAt: string;
+  deliveries: Array<{ subscriptionId: string; attempts: AttemptRecord[] }>;
+}
+
+const KEEP_INCIDENTS = 25;
+
 export class Subscriptions {
   private readonly subscriptions = new Map<string, Subscription>();
+  private readonly incidents: IncidentRecord[] = [];
   /** Verification is cached per (principal, url). */
   private readonly verifiedUntil = new Map<string, number>();
 
@@ -98,6 +115,7 @@ export class Subscriptions {
     const now = Date.now();
 
     const verificationKey = canonicalJson([principal, url]);
+    let verifiedAt: string | undefined;
     if ((this.verifiedUntil.get(verificationKey) ?? 0) <= now) {
       const result = await verifyEndpoint(url, secret, id, { timeoutMs: this.config.timeoutMs });
       if (!result.ok) {
@@ -105,6 +123,7 @@ export class Subscriptions {
         throw callbackEndpointError(result.reason);
       }
       this.verifiedUntil.set(verificationKey, now + this.config.maxTtlMs);
+      verifiedAt = new Date().toISOString();
       this.log(`verified ${url}: challenge echoed`);
     }
 
@@ -126,6 +145,9 @@ export class Subscriptions {
       previousSecret,
       expiresAt: now + ttl,
       lastDelivery: existing?.lastDelivery,
+      subscribedAt: existing?.subscribedAt ?? new Date(now).toISOString(),
+      verifiedAt: verifiedAt ?? existing?.verifiedAt,
+      refreshedAt: new Date().toISOString(),
     };
     this.subscriptions.set(id, subscription);
     this.log(`${existing ? 'refreshed' : 'subscribed'} ${id} until ${new Date(subscription.expiresAt).toISOString()}`);
@@ -185,13 +207,24 @@ export class Subscriptions {
     const now = Date.now();
     const targets = [...this.subscriptions.values()].filter((s) => s.expiresAt > now && matchesArguments(s.arguments, incident));
     this.log(`incident ${incident.incidentId} (${incident.severity}) as ${eventId}: ${targets.length} matching subscription(s)`);
+    const record: IncidentRecord = {
+      eventId,
+      incident,
+      duplicate: input.duplicate === true,
+      badSignature: input.badSignature === true,
+      sentAt: new Date(now).toISOString(),
+      deliveries: targets.map((s) => ({ subscriptionId: s.id, attempts: [] })),
+    };
+    this.incidents.push(record);
+    if (this.incidents.length > KEEP_INCIDENTS) this.incidents.shift();
 
     const deliveries = await Promise.all(
-      targets.map(async (subscription) => {
+      targets.map(async (subscription, i) => {
         const secrets = [subscription.secret];
         if (subscription.previousSecret && subscription.previousSecret.until > now) secrets.push(subscription.previousSecret.secret);
         const target = { subscriptionId: subscription.id, url: subscription.url, secrets };
-        const options = { timeoutMs: this.config.timeoutMs, retryDelaysMs: this.config.retryDelaysMs, badSignature: input.badSignature, log: this.log };
+        const onAttempt = (attempt: AttemptRecord) => record.deliveries[i].attempts.push(attempt);
+        const options = { timeoutMs: this.config.timeoutMs, retryDelaysMs: this.config.retryDelaysMs, badSignature: input.badSignature, log: this.log, onAttempt };
         const attempts = await deliver(target, eventId, body, options);
         if (input.duplicate) attempts.push(...(await deliver(target, eventId, body, options)));
         subscription.lastDelivery = { webhookId: eventId, attempts };
@@ -199,6 +232,11 @@ export class Subscriptions {
       }),
     );
     return { incident, eventId, deliveries };
+  }
+
+  /** Recent incidents and their delivery attempts, oldest first. */
+  recentIncidents(): IncidentRecord[] {
+    return this.incidents;
   }
 
   /** For the demo's status endpoint: subscriptions without their secrets. */

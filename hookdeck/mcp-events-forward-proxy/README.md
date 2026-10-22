@@ -28,6 +28,8 @@ sequenceDiagram
 
 ### Subscribing
 
+![The subscribe flow: the agent creates its source and connection, subscribes with the source URL, and Event Gateway answers the challenge](viz/gifs/subscribe.gif)
+
 1. **The agent generates a fresh `whsec_` secret** for the subscription.
 2. **It creates an `MCP Events` source** in Event Gateway holding that secret. The source URL is the callback URL. It's one source per subscription, because a source holds one secret.
 3. **It creates a connection from the source back to itself,** with a deduplicate rule on `headers.webhook-id` (1 hour), a retry rule (every 15 s, 10 times), and a destination: a CLI destination through `hookdeck listen`, which needs no public URL (the default; run locally here), or HTTP to a public URL (deployed here on Fly.io). The destination authenticates to the agent with `STANDARD_WEBHOOKS` and the same secret, or with `BEARER_TOKEN` (see [With a bearer token](#with-a-bearer-token)).
@@ -38,6 +40,8 @@ sequenceDiagram
 8. **On exit, the agent unsubscribes** and deletes the source and connection. Started with `--keep`, it leaves them in place, and the next start picks them up (see [Restart without losing events](#restart-without-losing-events)).
 
 ### When an event is published
+
+![An event delivered: the MCP server POSTs it to the source, Event Gateway verifies and stores it, and delivers it re-signed through hookdeck listen](viz/gifs/delivery.gif)
 
 1. **The MCP server POSTs the event to each matching subscription's callback URL,** the source: a body of `{eventId, name, timestamp, data, cursor}`, with `webhook-id` (the `eventId`), `webhook-timestamp`, `webhook-signature` and `X-MCP-Subscription-Id` headers.
 2. **Event Gateway verifies the signature** with the subscription's secret. A badly signed request gets `401`, is stored as `VERIFICATION_FAILED`, and is never delivered. A correctly signed one is stored, then answered `200`, so the agent being down never counts as a failed delivery for the MCP server. There's no timestamp window on events at the source (see [Known limits](#known-limits)).
@@ -54,6 +58,7 @@ sequenceDiagram
 | `src/sender/` | A stand-in MCP server that sends MCP Events (`incident.created`). It plays the part of any third-party MCP server. For a production-grade sender, see [hookdeck/mcp-events-outpost-demo](https://github.com/hookdeck/mcp-events-outpost-demo). |
 | `src/agent/` | The agent: an MCP client plus the event endpoint Event Gateway delivers to. `proxy.ts` sets up the forward proxy in Event Gateway, and `recover.ts` recovers deliveries `hookdeck listen` missed. |
 | `scripts/` | Open incidents, inspect or break the agent, clean up. |
+| `viz/` and `src/viz/` | A live view of events moving through Event Gateway, styled with the Hookdeck design system (`viz/ds/`), plus scripted scenes and `viz/capture.sh`, which records them as the GIFs in `viz/gifs/`. |
 | `docs/PLAN.md` | The proposal: background on the SEP, who does what, design decisions, status and remaining work. |
 
 ## Run it locally
@@ -108,6 +113,24 @@ To run every scenario and get pass or fail with evidence (the subscription, a de
 ```bash
 npm run scenarios
 ```
+
+### Watch it
+
+With the sender and the agent running, start the view and open http://localhost:3300:
+
+```bash
+npm run viz
+```
+
+It shows each event moving from the MCP server through Event Gateway to the agent, with buttons for the same cases as `npm run emit` and the `agent:*` scripts, and a table of what the MCP server, Event Gateway and the agent each recorded. It polls `/api/state` every second, which merges the sender's delivery attempts, Event Gateway's requests and events for the agent's source (read with the API key, which stays on the server), and the agent's status.
+
+The same view plays scripted scenes for recording, at `http://localhost:3300/?scene=<name>`: `subscribe`, `delivery`, `duplicate`, `bad-signature`, `agent-down` and `listen-gap`. `viz/capture.sh` records each as a GIF with headless Chrome and `ffmpeg`:
+
+| Duplicate dropped | Bad signature refused |
+|---|---|
+| ![The same webhook-id twice: Event Gateway's deduplicate rule drops the second](viz/gifs/duplicate.gif) | ![A badly signed event: Event Gateway answers 401 and never delivers it](viz/gifs/bad-signature.gif) |
+| **Agent down, then back** | **`hookdeck listen` stopped** |
+| ![The agent answers 503: Event Gateway retries, re-signed, until the agent takes it](viz/gifs/agent-down.gif) | ![listen stopped: the request is stored with no event, and the agent's recovery retries it when listen is back](viz/gifs/listen-gap.gif) |
 
 Press Ctrl+C in the agent's terminal to unsubscribe and delete its source and connection. If an agent was killed without cleaning up, `npm run teardown` removes what it left.
 

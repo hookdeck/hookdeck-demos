@@ -71,6 +71,7 @@ const server = http.createServer(async (req, res) => {
       }));
     }
     if (pathname === '/demo/subscriptions' && req.method === 'GET') return json(res, 200, subscriptions.list());
+    if (pathname === '/demo/incidents' && req.method === 'GET') return json(res, 200, subscriptions.recentIncidents());
     json(res, 404, { error: 'not found' });
   } catch (error) {
     log(`error on ${pathname}: ${(error as Error).message}`);
