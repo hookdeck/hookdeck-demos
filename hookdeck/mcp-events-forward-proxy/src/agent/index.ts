@@ -5,7 +5,17 @@ import { loadEnv, numberEnv, requireEnv } from '../shared/env.js';
 import type { SubscribeResult } from '../shared/mcp-events.js';
 import { EventsClient } from './client.js';
 import { HookdeckApi } from './hookdeck.js';
-import { endpointMatches, findEndpoints, provisionEndpoint, releaseEndpoint, resumeEndpoint, type DeliverTo, type ProxyEndpoint, type SubscriptionKey } from './proxy.js';
+import {
+  endpointMatches,
+  findEndpoints,
+  provisionEndpoint,
+  releaseEndpoint,
+  resumeEndpoint,
+  type DeliverTo,
+  type DestinationAuth,
+  type ProxyEndpoint,
+  type SubscriptionKey,
+} from './proxy.js';
 import { ListenSupervisor } from './listen.js';
 import { Receiver } from './receiver.js';
 import { startRecovery } from './recover.js';
@@ -27,11 +37,17 @@ const { values: flags } = parseArgs({ options: { keep: { type: 'boolean', defaul
 
 const log = (message: string) => console.log(`[agent] ${message}`);
 const port = numberEnv('PORT', numberEnv('AGENT_PORT', 3200));
-// `cli`: Event Gateway delivers through `hookdeck listen` to localhost (local development, no public URL).
+// `cli`: Event Gateway delivers through `hookdeck listen`, which needs no public URL (the default; run locally here).
 // `http`: Event Gateway delivers to AGENT_PUBLIC_URL (a deployed agent).
 const delivery = (process.env.AGENT_DELIVERY || (process.env.AGENT_PUBLIC_URL ? 'http' : 'cli')) as 'cli' | 'http';
 const publicUrl = delivery === 'http' ? requireEnv('AGENT_PUBLIC_URL').replace(/\/$/, '') : undefined;
 const agentToken = process.env.AGENT_TOKEN || 'demo-agent-token';
+// How Event Gateway authenticates to the agent: `standard-webhooks` (the default) or `bearer`, which
+// stands in for an API gateway in front of the agent that demands AGENT_BEARER_TOKEN.
+const destinationAuth: DestinationAuth =
+  (process.env.AGENT_DESTINATION_AUTH || 'standard-webhooks') === 'bearer'
+    ? { type: 'BEARER_TOKEN', token: requireEnv('AGENT_BEARER_TOKEN') }
+    : { type: 'STANDARD_WEBHOOKS' };
 
 const apiKey = requireEnv('HOOKDECK_API_KEY');
 const api = new HookdeckApi(apiKey, process.env.HOOKDECK_API_BASE || undefined);
@@ -68,6 +84,7 @@ function recover() {
 }
 
 const receiver = new Receiver({
+  auth: destinationAuth,
   secretFor: (subscriptionId) => (live && live.subscription.id === subscriptionId ? live.endpoint.secret : undefined),
   onTerminated: (subscriptionId) => log(`the server ended ${subscriptionId}; it won't be refreshed`),
   log,
@@ -90,6 +107,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/demo/status' && req.method === 'GET') {
       return json(res, 200, {
         delivery,
+        destinationAuth: destinationAuth.type,
         listening: listener?.running ?? null,
         subscription: live && { ...live.subscription, callbackUrl: live.endpoint.url, sourceId: live.endpoint.sourceId, connectionId: live.endpoint.connectionId },
         failing: receiver.failing,
@@ -158,7 +176,7 @@ function scheduleRefresh() {
 async function previousRuns(deliverTo: DeliverTo): Promise<ProxyEndpoint | undefined> {
   let resumed: ProxyEndpoint | undefined;
   for (const stale of await findEndpoints(api, namePrefix)) {
-    if (!resumed && endpointMatches(stale, key, deliverTo)) {
+    if (!resumed && endpointMatches(stale, key, deliverTo, destinationAuth)) {
       resumed = await resumeEndpoint(api, stale);
       if (resumed) continue;
     }
@@ -174,7 +192,10 @@ async function previousRuns(deliverTo: DeliverTo): Promise<ProxyEndpoint | undef
 const ttlMs = process.env.AGENT_TTL_MS ? Number(process.env.AGENT_TTL_MS) : undefined;
 
 await new Promise<void>((resolve) => server.listen(port, resolve));
-log(`event endpoint listening on :${port}${publicUrl ? `, public URL ${publicUrl}/events` : ', delivered through hookdeck listen'}`);
+log(
+  `event endpoint listening on :${port}${publicUrl ? `, public URL ${publicUrl}/events` : ', delivered through hookdeck listen'}; ` +
+    `Event Gateway authenticates with ${destinationAuth.type === 'STANDARD_WEBHOOKS' ? 'Standard Webhooks signatures' : 'a bearer token'}`,
+);
 
 await client.connect();
 await client.checkEvent(key.name);
@@ -185,6 +206,7 @@ const endpoint =
   (await provisionEndpoint(api, key, {
     namePrefix,
     deliverTo,
+    destinationAuth,
     retry: { strategy: 'linear', intervalMs: numberEnv('AGENT_RETRY_INTERVAL_MS', 15_000), count: numberEnv('AGENT_RETRY_COUNT', 10) },
     dedupWindowMs: numberEnv('AGENT_DEDUP_WINDOW_MS', 60 * 60_000),
   }));

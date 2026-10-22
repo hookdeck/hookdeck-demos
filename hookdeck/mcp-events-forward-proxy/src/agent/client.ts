@@ -5,6 +5,32 @@ import type { SubscriptionKey } from './proxy.js';
 
 const anyResult = z.record(z.string(), z.unknown());
 
+/** The `events/*` methods whose `params.name` SEP-3415 mirrors in the `Mcp-Name` header. */
+const NAMED_EVENTS_METHODS = new Set(['events/poll', 'events/stream', 'events/subscribe', 'events/unsubscribe']);
+
+/**
+ * SEP-3415: over Streamable HTTP, `events/poll`, `events/stream`, `events/subscribe` and
+ * `events/unsubscribe` carry `Mcp-Name` set to the event name. The SDK sets `Mcp-Name` only for
+ * tools, prompts, resources and tasks, so this adds it. Event names here are plain ASCII; one that
+ * isn't would need SEP-2243's Base64 form, which the demo doesn't implement.
+ */
+const fetchWithMcpName: typeof fetch = (input, init) => {
+  if (typeof init?.body === 'string') {
+    let message: { method?: unknown; params?: { name?: unknown } } | undefined;
+    try {
+      message = JSON.parse(init.body);
+    } catch {
+      // not a single JSON-RPC message
+    }
+    if (typeof message?.method === 'string' && NAMED_EVENTS_METHODS.has(message.method) && typeof message.params?.name === 'string') {
+      const headers = new Headers(init.headers);
+      headers.set('Mcp-Name', message.params.name);
+      return fetch(input, { ...init, headers });
+    }
+  }
+  return fetch(input, init);
+};
+
 /**
  * The agent's MCP client for MCP Events. The SDK has no Events support yet, so
  * `server/discover` and the `events/*` methods are sent as raw requests.
@@ -20,6 +46,7 @@ export class EventsClient {
   async connect(): Promise<void> {
     const transport = new StreamableHTTPClientTransport(new URL(this.serverUrl), {
       requestInit: { headers: { Authorization: `Bearer ${this.token}` } },
+      fetch: fetchWithMcpName,
     });
     await this.client.connect(transport);
   }

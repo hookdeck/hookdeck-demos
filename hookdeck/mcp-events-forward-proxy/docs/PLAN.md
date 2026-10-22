@@ -1,6 +1,6 @@
 # Proposal: Event Gateway as an MCP Events forward proxy
 
-Status: the demo is built and verified, and the scenarios passed again on 2026-10-14 after the Event Gateway handshake changes merged: 7 of 7 locally, with a fresh subscribe and a refresh in CLI mode, and 6 of 6 deployed. On 2026-10-22 the destinations moved to `STANDARD_WEBHOOKS` auth, so Event Gateway re-signs every delivery attempt and the agent applies the 5-minute window: 7 of 7 locally. The deployed agent still runs the earlier version. The field report is dropped for now. See [Status](#status-2026-10-08) for what's done.
+Status: the demo is built and verified, and the scenarios passed again on 2026-10-14 after the Event Gateway handshake changes merged: 7 of 7 locally, with a fresh subscribe and a refresh in CLI mode, and 6 of 6 deployed. On 2026-10-22 the destinations moved to `STANDARD_WEBHOOKS` auth, so Event Gateway re-signs every delivery attempt and the agent applies the 5-minute window, with a `BEARER_TOKEN` option to show re-authenticating downstream. Event Gateway now answers `401` to a badly signed delivery. 8 of 8 locally with each auth method. The deployed agent still runs the earlier version. The field report is dropped for now. See [Status](#status-2026-10-08) for what's done.
 
 ## Summary
 
@@ -57,7 +57,7 @@ Against a dedicated Event Gateway test project, 2026-10-08.
 
 Outpost sends `webhook-id` equal to the MCP `eventId`, plus `webhook-topic` and `X-MCP-Subscription-Id`, so the dedup rule on `headers.webhook-id` works the same as with the stand-in sender.
 
-Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source MUST 6/10 because it grades by status code; every MUST case it fails is rejected by Event Gateway as `VERIFICATION_FAILED` but answered `200`. Dedup on `headers.webhook-id` absorbs replays and re-signed retries.
+Also verified (R1, R6): evdock's receiver checker grades an `MCP Events` source MUST 6/10 because it grades by status code; every MUST case it fails is rejected by Event Gateway as `VERIFICATION_FAILED` but answered `200`. Since 2026-10-21 Event Gateway answers those `401` (not re-graded). Dedup on `headers.webhook-id` absorbs replays and re-signed retries.
 
 **Observed once, not reproduced:** in one early run through the CLI destination, three events waited 75 to 101 s before their first attempt, with no failed attempt recorded, and each was delivered once. In 7 controlled runs afterwards (23 timed events, fresh and reused sources, CLI configs and sessions, the same timing), every event arrived 0.2 to 0.5 s after it was sent. The hold was on the platform side before the first attempt, so the demo treats it as an intermittent delivery delay, not a CLI behavior. Recovery doesn't treat a `QUEUED` event as missed, so a delay like it can't cause a duplicate.
 
@@ -296,7 +296,7 @@ What Event Gateway adds over the agent receiving directly ([destinations](https:
 
 - **Queue and retries:** a retry rule per connection (linear or exponential, a configurable interval, up to 50 automatic attempts, chosen status codes, `Retry-After` honored), plus manual and bulk retry.
 - **Delivery control:** a delivery timeout (60 seconds by default, up to 900), a max delivery rate per destination (events beyond it wait as pending), and pausing a connection (held events deliver on unpause).
-- **Authentication to the agent:** a `STANDARD_WEBHOOKS` destination re-signs each attempt with the subscription's secret, so the agent verifies it as it would a direct delivery, 5-minute window included. Event Gateway's `x-hookdeck-signature`, a bearer token or an API key are alternatives.
+- **Authentication to the agent:** a `STANDARD_WEBHOOKS` destination re-signs each attempt with the subscription's secret, so the agent verifies it as it would a direct delivery, 5-minute window included. `AGENT_DESTINATION_AUTH=bearer` uses a `BEARER_TOKEN` destination instead, as an API gateway in front of the agent would require. Event Gateway's `x-hookdeck-signature` or an API key are other alternatives.
 - **Observability:** every request, event and attempt is stored and searchable.
 
 **Development and deployment:**

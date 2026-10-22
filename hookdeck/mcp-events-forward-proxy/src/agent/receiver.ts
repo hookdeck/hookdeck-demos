@@ -1,16 +1,22 @@
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { verifyStandardWebhook } from '../shared/standard-webhooks.js';
 import { SUBSCRIPTION_HEADER, type ControlEnvelope, type McpEvent } from '../shared/mcp-events.js';
 
 /*
  * The agent's event endpoint: where Event Gateway delivers. Event Gateway has
  * already verified the MCP server's signature, answered the challenge and
- * stored the request, and it re-signs each delivery attempt as Standard
- * Webhooks with the subscription's secret. This endpoint:
+ * stored the request. This endpoint:
  *
- * 1. verifies that signature, including the 5-minute window on
- *    `webhook-timestamp`, the same check it would make on a delivery sent
- *    straight from the MCP server;
+ * 1. checks the delivery came through Event Gateway, with the destination's
+ *    auth method:
+ *    - Standard Webhooks: Event Gateway re-signs each attempt with the
+ *      subscription's secret, so the endpoint verifies that signature,
+ *      including the 5-minute window on `webhook-timestamp`, the same check it
+ *      would make on a delivery sent straight from the MCP server;
+ *    - a bearer token: the check an API gateway in front of the agent would
+ *      make. There's no signature to verify; Event Gateway verified the MCP
+ *      server's at the source;
  * 2. handles each `eventId` once, so a redelivery is harmless.
  */
 
@@ -23,7 +29,11 @@ export interface HandledEvent {
   attempt: string | null;
 }
 
+/** What the endpoint expects of each delivery, matching the destination's auth method. */
+export type ReceiverAuth = { type: 'STANDARD_WEBHOOKS' } | { type: 'BEARER_TOKEN'; token: string };
+
 export interface ReceiverOptions {
+  auth: ReceiverAuth;
   secretFor: (subscriptionId: string) => string | undefined;
   onEvent?: (event: HandledEvent) => void;
   onTerminated?: (subscriptionId: string, envelope: ControlEnvelope) => void;
@@ -41,6 +51,12 @@ export class Receiver {
 
   constructor(private readonly options: ReceiverOptions) {}
 
+  private bearerMatches(req: http.IncomingMessage, token: string): boolean {
+    const presented = Buffer.from(/^Bearer (.+)$/i.exec(req.headers.authorization ?? '')?.[1] ?? '');
+    const expected = Buffer.from(token);
+    return presented.length === expected.length && timingSafeEqual(presented, expected);
+  }
+
   async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const send = (status: number, body?: unknown): void => {
       res.writeHead(status, { 'content-type': 'application/json' }).end(body === undefined ? '' : JSON.stringify(body));
@@ -56,6 +72,14 @@ export class Receiver {
     const webhookId = String(req.headers['webhook-id'] ?? '');
     const attempt = typeof req.headers['x-hookdeck-attempt-count'] === 'string' ? req.headers['x-hookdeck-attempt-count'] : null;
 
+    const { auth } = this.options;
+    // As an API gateway would, refuse a request without the token before routing it.
+    if (auth.type === 'BEARER_TOKEN' && !this.bearerMatches(req, auth.token)) {
+      this.counts.rejected++;
+      this.options.log(`rejected ${webhookId || '(no webhook-id)'}: missing or wrong bearer token`);
+      return send(401);
+    }
+
     const subscriptionId = String(req.headers[SUBSCRIPTION_HEADER] ?? '');
     const secret = this.options.secretFor(subscriptionId);
     if (!secret) {
@@ -63,15 +87,17 @@ export class Receiver {
       this.options.log(`unknown subscription ${subscriptionId || '(none)'} for ${webhookId}: 503, Event Gateway will retry`);
       return send(503);
     }
-    const signed = {
-      'webhook-id': webhookId,
-      'webhook-timestamp': String(req.headers['webhook-timestamp'] ?? ''),
-      'webhook-signature': String(req.headers['webhook-signature'] ?? ''),
-    };
-    if (!verifyStandardWebhook(secret, raw.toString('utf8'), signed)) {
-      this.counts.rejected++;
-      this.options.log(`rejected ${webhookId}: the signature doesn't match the subscription's secret, or the timestamp is more than 5 minutes off`);
-      return send(401);
+    if (auth.type === 'STANDARD_WEBHOOKS') {
+      const signed = {
+        'webhook-id': webhookId,
+        'webhook-timestamp': String(req.headers['webhook-timestamp'] ?? ''),
+        'webhook-signature': String(req.headers['webhook-signature'] ?? ''),
+      };
+      if (!verifyStandardWebhook(secret, raw.toString('utf8'), signed)) {
+        this.counts.rejected++;
+        this.options.log(`rejected ${webhookId}: the signature doesn't match the subscription's secret, or the timestamp is more than 5 minutes off`);
+        return send(401);
+      }
     }
 
     if (this.failing) {
