@@ -30,12 +30,12 @@ WIDTH=1200
 HEIGHT=600
 PORT="${PORT:-8767}"
 THEME="${THEME:-light}"
-EXTRA="theme=${THEME}${AUTH:+&auth=$AUTH}${DELIVERY:+&delivery=$DELIVERY}"
+EXTRA="capture=1&theme=${THEME}${AUTH:+&auth=$AUTH}${DELIVERY:+&delivery=$DELIVERY}"
 # Keep in step with SCENES in viz.js: each scene's duration in seconds.
 duration_of() {
   case "$1" in
-    subscribe) echo 11 ;; delivery) echo 8 ;; duplicate) echo 10 ;; bad-signature) echo 7.5 ;;
-    agent-down) echo 11.5 ;; listen-gap) echo 12.5 ;;
+    subscribe) echo 33 ;; delivery) echo 14 ;; duplicate) echo 16.5 ;; bad-signature) echo 10 ;;
+    agent-down) echo 17.5 ;; listen-gap) echo 18.5 ;;
     *) echo "unknown scene $1" >&2; exit 1 ;;
   esac
 }

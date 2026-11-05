@@ -42,12 +42,19 @@ const port = numberEnv('PORT', numberEnv('AGENT_PORT', 3200));
 const delivery = (process.env.AGENT_DELIVERY || (process.env.AGENT_PUBLIC_URL ? 'http' : 'cli')) as 'cli' | 'http';
 const publicUrl = delivery === 'http' ? requireEnv('AGENT_PUBLIC_URL').replace(/\/$/, '') : undefined;
 const agentToken = process.env.AGENT_TOKEN || 'demo-agent-token';
-// How Event Gateway authenticates to the agent: `standard-webhooks` (the default) or `bearer`, which
-// stands in for an API gateway in front of the agent that demands AGENT_BEARER_TOKEN.
+// How Event Gateway authenticates to the agent. SEP-3415: the proxy terminates HMAC and
+// re-authenticates to the destination with whatever mechanism the destination requires.
+// - `hookdeck-signature` (the default): x-hookdeck-signature, checked with HOOKDECK_SIGNING_SECRET.
+// - `standard-webhooks`: re-signed with the subscription's secret, for an agent that already verifies it.
+// - `bearer`: Authorization: Bearer AGENT_BEARER_TOKEN, as an API gateway in front of the agent requires.
+const authMode = process.env.AGENT_DESTINATION_AUTH || 'hookdeck-signature';
 const destinationAuth: DestinationAuth =
-  (process.env.AGENT_DESTINATION_AUTH || 'standard-webhooks') === 'bearer'
+  authMode === 'bearer'
     ? { type: 'BEARER_TOKEN', token: requireEnv('AGENT_BEARER_TOKEN') }
-    : { type: 'STANDARD_WEBHOOKS' };
+    : authMode === 'standard-webhooks'
+      ? { type: 'STANDARD_WEBHOOKS' }
+      : { type: 'HOOKDECK_SIGNATURE' };
+const hookdeckSigningSecret = destinationAuth.type === 'HOOKDECK_SIGNATURE' ? requireEnv('HOOKDECK_SIGNING_SECRET') : undefined;
 
 const apiKey = requireEnv('HOOKDECK_API_KEY');
 const api = new HookdeckApi(apiKey, process.env.HOOKDECK_API_BASE || undefined);
@@ -57,8 +64,9 @@ const client = new EventsClient(senderUrl, process.env.SENDER_TOKEN || 'demo-sen
 const namePrefix = process.env.AGENT_NAME || 'mcp-events-agent';
 const key: SubscriptionKey = {
   serverUrl: senderUrl,
-  name: process.env.AGENT_EVENT || 'incident.created',
-  arguments: JSON.parse(process.env.AGENT_ARGUMENTS || '{}') as Record<string, unknown>,
+  name: process.env.AGENT_EVENT || 'error.detected',
+  // By default: new errors at `error` level or worse, in production.
+  arguments: JSON.parse(process.env.AGENT_ARGUMENTS || (process.env.AGENT_EVENT ? '{}' : '{"minLevel":"error","environment":"production"}')) as Record<string, unknown>,
 };
 
 interface Live {
@@ -67,6 +75,8 @@ interface Live {
   refreshTimer?: NodeJS.Timeout;
 }
 let live: Live | undefined;
+/** Set once the agent has started; see `resubscribe` below. */
+let resubscribeHandler: (() => Promise<void>) | undefined;
 
 const recovered = { passes: 0, requestsRetried: [] as string[], eventsRetried: [] as string[] };
 let recovery: ReturnType<typeof startRecovery> | undefined;
@@ -84,7 +94,7 @@ function recover() {
 }
 
 const receiver = new Receiver({
-  auth: destinationAuth,
+  auth: destinationAuth.type === 'HOOKDECK_SIGNATURE' ? { type: 'HOOKDECK_SIGNATURE', signingSecret: hookdeckSigningSecret! } : destinationAuth,
   secretFor: (subscriptionId) => (live && live.subscription.id === subscriptionId ? live.endpoint.secret : undefined),
   onTerminated: (subscriptionId) => log(`the server ended ${subscriptionId}; it won't be refreshed`),
   log,
@@ -134,6 +144,11 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: 'action must be stop, kill or start' });
       }
       return json(res, 200, { listening: listener.running });
+    }
+    if (pathname === '/demo/resubscribe' && req.method === 'POST') {
+      if (!resubscribeHandler) return json(res, 409, { error: 'still starting' });
+      await resubscribeHandler();
+      return json(res, 200, { subscription: live?.subscription.id });
     }
     if (pathname === '/demo/fail' && req.method === 'POST') {
       const chunks: Buffer[] = [];
@@ -194,22 +209,21 @@ const ttlMs = process.env.AGENT_TTL_MS ? Number(process.env.AGENT_TTL_MS) : unde
 await new Promise<void>((resolve) => server.listen(port, resolve));
 log(
   `event endpoint listening on :${port}${publicUrl ? `, public URL ${publicUrl}/events` : ', delivered through hookdeck listen'}; ` +
-    `Event Gateway authenticates with ${destinationAuth.type === 'STANDARD_WEBHOOKS' ? 'Standard Webhooks signatures' : 'a bearer token'}`,
+    `Event Gateway authenticates with ${{ HOOKDECK_SIGNATURE: 'x-hookdeck-signature', STANDARD_WEBHOOKS: 'Standard Webhooks signatures', BEARER_TOKEN: 'a bearer token' }[destinationAuth.type]}`,
 );
 
 await client.connect();
 await client.checkEvent(key.name);
 const deliverTo: DeliverTo = publicUrl ? { type: 'http', url: `${publicUrl}/events` } : { type: 'cli', path: '/events' };
+const proxyOptions = {
+  namePrefix,
+  deliverTo,
+  destinationAuth,
+  retry: { strategy: 'linear' as const, intervalMs: numberEnv('AGENT_RETRY_INTERVAL_MS', 15_000), count: numberEnv('AGENT_RETRY_COUNT', 10) },
+  dedupWindowMs: numberEnv('AGENT_DEDUP_WINDOW_MS', 60 * 60_000),
+};
 const resumed = await previousRuns(deliverTo);
-const endpoint =
-  resumed ??
-  (await provisionEndpoint(api, key, {
-    namePrefix,
-    deliverTo,
-    destinationAuth,
-    retry: { strategy: 'linear', intervalMs: numberEnv('AGENT_RETRY_INTERVAL_MS', 15_000), count: numberEnv('AGENT_RETRY_COUNT', 10) },
-    dedupWindowMs: numberEnv('AGENT_DEDUP_WINDOW_MS', 60 * 60_000),
-  }));
+const endpoint = resumed ?? (await provisionEndpoint(api, key, proxyOptions));
 log(
   `${resumed ? 'picked up the MCP Events source left by the last run:' : 'created MCP Events source'} ${endpoint.sourceId} (${endpoint.url}) and connection ${endpoint.connectionId}`,
 );
@@ -231,6 +245,29 @@ try {
 // Only now: before `listen` is connected a request retry does nothing, and the
 // subscription has to exist for the endpoint to accept what's recovered.
 if (resumed) recover();
+
+/**
+ * For the demo: unsubscribe, delete the source and connection, and set up a new
+ * subscription from scratch, so the whole subscribe flow can be watched again.
+ */
+async function resubscribe() {
+  if (!live) throw new Error('no live subscription');
+  const old = live;
+  live = undefined;
+  clearTimeout(old.refreshTimer);
+  recovery?.stop();
+  log(`resubscribing: unsubscribing ${old.subscription.id} and deleting source ${old.endpoint.sourceId}`);
+  await client.unsubscribe(key, old.endpoint.url).catch((error) => log(`unsubscribe failed: ${(error as Error).message}`));
+  await releaseEndpoint(api, old.endpoint);
+  const fresh = await provisionEndpoint(api, key, proxyOptions);
+  log(`created MCP Events source ${fresh.sourceId} (${fresh.url}) and connection ${fresh.connectionId}`);
+  await listener?.listenTo([fresh.sourceName]);
+  const subscription = await client.subscribe(key, fresh.url, fresh.secret, ttlMs);
+  live = { endpoint: fresh, subscription };
+  log(`subscribed to ${key.name} ${JSON.stringify(key.arguments)} as ${subscription.id}, refresh before ${subscription.refreshBefore}`);
+  scheduleRefresh();
+}
+resubscribeHandler = resubscribe;
 
 // Ctrl+C can deliver SIGINT more than once (the terminal's process group, plus npm and tsx relaying it),
 // so shutdown runs once and later signals wait for it.

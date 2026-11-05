@@ -42,7 +42,7 @@ export interface SubscriptionKey {
 export type DeliverTo = { type: 'http'; url: string } | { type: 'cli'; path: string };
 
 /** How Event Gateway authenticates to the agent. */
-export type DestinationAuth = { type: 'STANDARD_WEBHOOKS' } | { type: 'BEARER_TOKEN'; token: string };
+export type DestinationAuth = { type: 'HOOKDECK_SIGNATURE' } | { type: 'STANDARD_WEBHOOKS' } | { type: 'BEARER_TOKEN'; token: string };
 
 export interface ProxyOptions {
   /** Prefix for resource names, so the agent can find its own resources after a restart. */
@@ -66,10 +66,13 @@ export async function provisionEndpoint(api: HookdeckApi, key: SubscriptionKey, 
   const source = await api.createMcpEventsSource(name, secret, JSON.stringify(key));
   try {
     const auth =
-      options.destinationAuth.type === 'STANDARD_WEBHOOKS'
-        ? // Each attempt gets a fresh `webhook-timestamp` and signature. `webhook-id` stays the MCP server's.
-          { auth_type: 'STANDARD_WEBHOOKS', auth: { webhook_secret_key: secret } }
-        : { auth_type: 'BEARER_TOKEN', auth: { token: options.destinationAuth.token } };
+      options.destinationAuth.type === 'HOOKDECK_SIGNATURE'
+        ? // The default: each attempt carries x-hookdeck-signature, an HMAC of the body with the project's signing secret.
+          { auth_type: 'HOOKDECK_SIGNATURE', auth: {} }
+        : options.destinationAuth.type === 'STANDARD_WEBHOOKS'
+          ? // Each attempt gets a fresh `webhook-timestamp` and signature. `webhook-id` stays the MCP server's.
+            { auth_type: 'STANDARD_WEBHOOKS', auth: { webhook_secret_key: secret } }
+          : { auth_type: 'BEARER_TOKEN', auth: { token: options.destinationAuth.token } };
     const destination =
       options.deliverTo.type === 'http'
         ? { name, type: 'HTTP', config: { url: options.deliverTo.url, ...auth } }
@@ -130,7 +133,8 @@ export const endpointMatches = (found: FoundEndpoint, key: SubscriptionKey, deli
   found.key !== null &&
   canonicalJson(found.key) === canonicalJson(key) &&
   found.destinationType.toUpperCase() === deliverTo.type.toUpperCase() &&
-  found.destinationAuthType === auth.type;
+  // A destination created without an auth type uses the default, Hookdeck signature.
+  (found.destinationAuthType ?? 'HOOKDECK_SIGNATURE') === auth.type;
 
 /**
  * Picks up an endpoint an earlier run left behind, reading its secret back from

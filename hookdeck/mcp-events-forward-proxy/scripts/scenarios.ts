@@ -8,7 +8,7 @@ import { HookdeckApi } from '../src/agent/hookdeck.js';
  *
  *   npm run scenarios
  *
- * Each scenario opens an incident on the sender, then checks what the agent
+ * Each scenario reports an error on the sender, then checks what the agent
  * handled and what Event Gateway recorded for the request. With the agent in
  * CLI mode, two more take `hookdeck listen` down (stopped cleanly, then killed)
  * and check how the event gets through once it's back.
@@ -32,7 +32,7 @@ interface Handled {
 }
 interface AgentStatus {
   delivery: 'cli' | 'http';
-  destinationAuth: 'STANDARD_WEBHOOKS' | 'BEARER_TOKEN';
+  destinationAuth: 'HOOKDECK_SIGNATURE' | 'STANDARD_WEBHOOKS' | 'BEARER_TOKEN';
   listening: boolean | null;
   recovery: { passes: number; requestsRetried: string[]; eventsRetried: string[] };
   subscription?: { id: string; callbackUrl: string; sourceId: string; connectionId: string; refreshBefore: string | null };
@@ -51,7 +51,7 @@ const setFailing = (failing: boolean) => fetch(`${agentBase}/demo/fail`, { metho
 const setListen = (action: 'stop' | 'kill' | 'start') =>
   fetch(`${agentBase}/demo/listen`, { method: 'POST', headers: agentAuth, body: JSON.stringify({ action }) });
 const emit = async (input: Record<string, unknown>): Promise<Emitted> =>
-  (await fetch(`${senderBase}/demo/incidents`, { method: 'POST', headers: senderAuth, body: JSON.stringify(input) })).json() as Promise<Emitted>;
+  (await fetch(`${senderBase}/demo/errors`, { method: 'POST', headers: senderAuth, body: JSON.stringify(input) })).json() as Promise<Emitted>;
 const senderStatuses = (emitted: Emitted) => emitted.deliveries.flatMap((d) => d.attempts.map((a) => a.status));
 
 async function waitForHandled(eventId: string, timeoutMs = deliveryTimeoutMs): Promise<Handled | undefined> {
@@ -144,7 +144,7 @@ if (status.failing) await setFailing(false);
 
 // 2. A normal event reaches the agent.
 {
-  const emitted = await emit({ severity: 'P1', title: 'Scenario: normal delivery' });
+  const emitted = await emit({ title: 'Scenario: normal delivery' });
   const handled = await waitForHandled(emitted.eventId);
   record('deliver', Boolean(handled), `${emitted.eventId}: sender saw ${JSON.stringify(senderStatuses(emitted))}, agent ${handled ? `handled on attempt ${handled.attempt}` : 'never handled it'}`);
 }
@@ -250,9 +250,9 @@ if (status.delivery === 'cli') {
   const response = await fetch(`${agentBase}/events`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-mcp-subscription-id': subscription.id },
-    body: JSON.stringify({ eventId: 'evt_forged', name: 'incident.created', timestamp: new Date().toISOString(), data: {}, cursor: null }),
+    body: JSON.stringify({ eventId: 'evt_forged', name: 'error.detected', timestamp: new Date().toISOString(), data: {}, cursor: null }),
   });
-  const missing = status.destinationAuth === 'BEARER_TOKEN' ? 'a bearer token' : 'a signature';
+  const missing = { HOOKDECK_SIGNATURE: 'x-hookdeck-signature', STANDARD_WEBHOOKS: 'a signature', BEARER_TOKEN: 'a bearer token' }[status.destinationAuth];
   record('request without credentials to the agent: refused', response.status === 401, `POST ${agentBase}/events without ${missing} got ${response.status}`);
 }
 

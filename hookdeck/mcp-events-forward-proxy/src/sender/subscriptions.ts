@@ -4,7 +4,7 @@ import { isValidWebhookSecret } from '../shared/secret.js';
 import type { SubscribeResult } from '../shared/mcp-events.js';
 import { deliver, verifyEndpoint, type AttemptRecord } from './deliver.js';
 import { callbackEndpointError, forbidden, invalidParams, notFound, unsupported } from './errors.js';
-import { INCIDENT_CREATED, incidentArguments, matchesArguments, type Incident, type IncidentArguments, type Severity } from './events.js';
+import { ERROR_DETECTED, errorArguments, matchesArguments, SAMPLE_ERRORS, type DetectedError, type ErrorArguments, type Level } from './events.js';
 
 export interface SenderConfig {
   defaultTtlMs: number;
@@ -20,7 +20,7 @@ interface Subscription {
   id: string;
   principal: string;
   name: string;
-  arguments: IncidentArguments;
+  arguments: ErrorArguments;
   url: string;
   secret: string;
   previousSecret?: { secret: string; until: number };
@@ -56,21 +56,22 @@ function describe(params: Params): string {
  * TTL grants with a sweeper, dual-signing during secret rotation, and delivery
  * with bounded retries.
  */
-/** An incident the sender opened, and every delivery attempt for it so far. For the demo's visualization. */
-export interface IncidentRecord {
+/** An error the sender reported, and every delivery attempt for it so far. For the demo's visualization. */
+export interface ErrorRecord {
   eventId: string;
-  incident: Incident;
+  error: DetectedError;
   duplicate: boolean;
   badSignature: boolean;
   sentAt: string;
   deliveries: Array<{ subscriptionId: string; attempts: AttemptRecord[] }>;
 }
 
-const KEEP_INCIDENTS = 25;
+const KEEP_ERRORS = 25;
 
 export class Subscriptions {
   private readonly subscriptions = new Map<string, Subscription>();
-  private readonly incidents: IncidentRecord[] = [];
+  private readonly errors: ErrorRecord[] = [];
+  private nextSample = 0;
   /** Verification is cached per (principal, url). */
   private readonly verifiedUntil = new Map<string, number>();
 
@@ -80,7 +81,7 @@ export class Subscriptions {
   ) {}
 
   private parseKey(params: Params) {
-    if (params.name !== INCIDENT_CREATED) {
+    if (params.name !== ERROR_DETECTED) {
       if (typeof params.name !== 'string') throw invalidParams('name is required');
       throw notFound(`Unknown event: ${params.name}`);
     }
@@ -98,7 +99,7 @@ export class Subscriptions {
       throw invalidParams('delivery.url must use https', { field: 'delivery.url' });
     }
     const rawArgs = params.arguments ?? {};
-    const parsed = incidentArguments.safeParse(rawArgs);
+    const parsed = errorArguments.safeParse(rawArgs);
     if (!parsed.success) throw invalidParams('arguments do not match the inputSchema');
     return { url: url.href, args: rawArgs as Params, parsedArgs: parsed.data, delivery };
   }
@@ -111,7 +112,7 @@ export class Subscriptions {
       throw invalidParams('delivery.secret must be whsec_ followed by base64 of 24 to 64 bytes', { field: 'delivery.secret' });
     }
     const secret = delivery.secret;
-    const id = deriveSubscriptionId(principal, url, INCIDENT_CREATED, args);
+    const id = deriveSubscriptionId(principal, url, ERROR_DETECTED, args);
     const now = Date.now();
 
     const verificationKey = canonicalJson([principal, url]);
@@ -138,7 +139,7 @@ export class Subscriptions {
     const subscription: Subscription = {
       id,
       principal,
-      name: INCIDENT_CREATED,
+      name: ERROR_DETECTED,
       arguments: parsedArgs,
       url,
       secret,
@@ -156,7 +157,7 @@ export class Subscriptions {
     return {
       id,
       refreshBefore: new Date(subscription.expiresAt).toISOString(),
-      cursor: null, // incident.created has no replay
+      cursor: null, // error.detected has no replay
       truncated: params.cursor !== undefined && params.cursor !== null,
       ...(existing && {
         deliveryStatus: {
@@ -173,7 +174,7 @@ export class Subscriptions {
     this.log(`events/unsubscribe from ${principal ?? '(none)'}: ${describe(params)}`);
     if (!principal) throw forbidden();
     const { url, args } = this.parseKey(params);
-    const id = deriveSubscriptionId(principal, url, INCIDENT_CREATED, args);
+    const id = deriveSubscriptionId(principal, url, ERROR_DETECTED, args);
     if (this.subscriptions.delete(id)) this.log(`unsubscribed ${id}`);
     return {};
   }
@@ -190,33 +191,39 @@ export class Subscriptions {
   }
 
   /**
-   * Opens an incident and delivers `incident.created` to every live, matching
-   * subscription. `duplicate` delivers the same event twice (same `webhook-id`,
-   * re-signed), as a sender would after a timeout. `badSignature` signs with a
-   * secret the receiver doesn't know.
+   * Reports a new error and delivers `error.detected` to every live, matching
+   * subscription. Without a title it uses the next sample error. `duplicate`
+   * delivers the same event twice (same `webhook-id`, re-signed), as a sender
+   * would after a timeout. `badSignature` signs with a secret the receiver
+   * doesn't know.
    */
-  async emit(input: { severity?: Severity; title?: string; duplicate?: boolean; badSignature?: boolean }) {
-    const incident: Incident = {
-      incidentId: `INC-${randomUUID().slice(0, 8)}`,
-      severity: input.severity ?? 'P2',
-      title: input.title ?? 'Checkout latency above 2 s',
-      openedAt: new Date().toISOString(),
+  async emit(input: { title?: string; culprit?: string; level?: Level; duplicate?: boolean; badSignature?: boolean }) {
+    const sample = SAMPLE_ERRORS[this.nextSample++ % SAMPLE_ERRORS.length];
+    const error: DetectedError = {
+      errorId: `err_${randomUUID().slice(0, 8)}`,
+      title: input.title ?? sample.title,
+      culprit: input.culprit ?? sample.culprit,
+      level: input.level ?? sample.level,
+      environment: 'production',
+      release: 'web@2.14.0',
+      firstSeen: new Date().toISOString(),
+      occurrences: 1,
     };
     const eventId = `evt_${randomUUID().replaceAll('-', '')}`;
-    const body = JSON.stringify({ eventId, name: INCIDENT_CREATED, timestamp: incident.openedAt, data: incident, cursor: null });
+    const body = JSON.stringify({ eventId, name: ERROR_DETECTED, timestamp: error.firstSeen, data: error, cursor: null });
     const now = Date.now();
-    const targets = [...this.subscriptions.values()].filter((s) => s.expiresAt > now && matchesArguments(s.arguments, incident));
-    this.log(`incident ${incident.incidentId} (${incident.severity}) as ${eventId}: ${targets.length} matching subscription(s)`);
-    const record: IncidentRecord = {
+    const targets = [...this.subscriptions.values()].filter((s) => s.expiresAt > now && matchesArguments(s.arguments, error));
+    this.log(`error ${error.errorId} (${error.level}) "${error.title}" as ${eventId}: ${targets.length} matching subscription(s)`);
+    const record: ErrorRecord = {
       eventId,
-      incident,
+      error,
       duplicate: input.duplicate === true,
       badSignature: input.badSignature === true,
       sentAt: new Date(now).toISOString(),
       deliveries: targets.map((s) => ({ subscriptionId: s.id, attempts: [] })),
     };
-    this.incidents.push(record);
-    if (this.incidents.length > KEEP_INCIDENTS) this.incidents.shift();
+    this.errors.push(record);
+    if (this.errors.length > KEEP_ERRORS) this.errors.shift();
 
     const deliveries = await Promise.all(
       targets.map(async (subscription, i) => {
@@ -231,12 +238,12 @@ export class Subscriptions {
         return { subscriptionId: subscription.id, attempts };
       }),
     );
-    return { incident, eventId, deliveries };
+    return { error, eventId, deliveries };
   }
 
-  /** Recent incidents and their delivery attempts, oldest first. */
-  recentIncidents(): IncidentRecord[] {
-    return this.incidents;
+  /** Recent errors and their delivery attempts, oldest first. */
+  recentErrors(): ErrorRecord[] {
+    return this.errors;
   }
 
   /** For the demo's status endpoint: subscriptions without their secrets. */

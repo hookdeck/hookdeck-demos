@@ -1,60 +1,82 @@
 import * as z from 'zod';
 
 /**
- * The stand-in sender's event catalog: one event type, `incident.created`, from
- * a pretend monitoring service. Any MCP server that supports MCP Events could
- * take its place; the agent and Event Gateway don't depend on the event type.
+ * The stand-in sender's event catalog: one event type, `error.detected`, from
+ * the MCP server of a pretend error-tracking service. It fires the first time the service sees
+ * a new error in an application, with enough detail (the error, where it was
+ * thrown, the release) for an agent to start investigating and propose a fix.
+ * Any MCP server that supports MCP Events could take its place; the agent and
+ * Event Gateway don't depend on the event type.
  */
 
-export const INCIDENT_CREATED = 'incident.created';
+export const ERROR_DETECTED = 'error.detected';
 
-export const SEVERITIES = ['P1', 'P2', 'P3'] as const;
-export type Severity = (typeof SEVERITIES)[number];
+export const LEVELS = ['warning', 'error', 'fatal'] as const;
+export type Level = (typeof LEVELS)[number];
 
-export const incidentArguments = z
+export const errorArguments = z
   .object({
-    minSeverity: z.enum(SEVERITIES).optional(),
+    minLevel: z.enum(LEVELS).optional(),
+    environment: z.string().optional(),
   })
   .strict();
 
-export type IncidentArguments = z.infer<typeof incidentArguments>;
+export type ErrorArguments = z.infer<typeof errorArguments>;
 
-export interface Incident {
-  incidentId: string;
-  severity: Severity;
+export interface DetectedError {
+  errorId: string;
   title: string;
-  openedAt: string;
+  /** Where it was thrown: file and function. */
+  culprit: string;
+  level: Level;
+  environment: string;
+  release: string;
+  firstSeen: string;
+  occurrences: number;
 }
 
 export const eventCatalog = [
   {
-    name: INCIDENT_CREATED,
-    description: 'Fires when an incident is opened. Optionally only incidents at or above a severity (P1 is the most severe).',
+    name: ERROR_DETECTED,
+    description: 'Fires the first time a new error is seen. Optionally only errors at or above a level, or in one environment.',
     delivery: ['webhook'],
     inputSchema: {
       type: 'object',
       properties: {
-        minSeverity: { type: 'string', enum: [...SEVERITIES], description: 'Only deliver incidents at least this severe.' },
+        minLevel: { type: 'string', enum: [...LEVELS], description: 'Only deliver errors at least this severe (fatal is the most severe).' },
+        environment: { type: 'string', description: 'Only deliver errors from this environment, such as production.' },
       },
       additionalProperties: false,
     },
     payloadSchema: {
       type: 'object',
       properties: {
-        incidentId: { type: 'string' },
-        severity: { type: 'string', enum: [...SEVERITIES] },
+        errorId: { type: 'string' },
         title: { type: 'string' },
-        openedAt: { type: 'string', format: 'date-time' },
+        culprit: { type: 'string' },
+        level: { type: 'string', enum: [...LEVELS] },
+        environment: { type: 'string' },
+        release: { type: 'string' },
+        firstSeen: { type: 'string', format: 'date-time' },
+        occurrences: { type: 'integer' },
       },
-      required: ['incidentId', 'severity', 'title', 'openedAt'],
+      required: ['errorId', 'title', 'culprit', 'level', 'environment', 'release', 'firstSeen', 'occurrences'],
       additionalProperties: false,
     },
   },
 ];
 
-const rank = (severity: Severity) => SEVERITIES.indexOf(severity);
+/** Errors the demo cycles through when it isn't given one. Illustrative. */
+export const SAMPLE_ERRORS: Array<Pick<DetectedError, 'title' | 'culprit' | 'level'>> = [
+  { title: "TypeError: Cannot read properties of undefined (reading 'total')", culprit: 'src/checkout/cart.ts in applyDiscount', level: 'error' },
+  { title: 'RangeError: Invalid time value', culprit: 'src/billing/invoice.ts in formatDueDate', level: 'error' },
+  { title: 'Error: connect ECONNREFUSED 10.0.4.12:5432', culprit: 'src/db/pool.ts in acquire', level: 'fatal' },
+  { title: "TypeError: Cannot read properties of null (reading 'email')", culprit: 'src/settings/notifications.ts in loadPreferences', level: 'error' },
+];
 
-/** True when a subscription's arguments ask for this incident. */
-export function matchesArguments(args: IncidentArguments, incident: Incident): boolean {
-  return args.minSeverity === undefined || rank(incident.severity) <= rank(args.minSeverity);
+const rank = (level: Level) => LEVELS.indexOf(level);
+
+/** True when a subscription's arguments ask for this error. */
+export function matchesArguments(args: ErrorArguments, error: DetectedError): boolean {
+  return (args.minLevel === undefined || rank(error.level) >= rank(args.minLevel)) && (args.environment === undefined || args.environment === error.environment);
 }

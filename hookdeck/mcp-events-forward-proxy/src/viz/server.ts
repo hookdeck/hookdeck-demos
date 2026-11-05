@@ -10,7 +10,7 @@ import { HookdeckApi } from '../agent/hookdeck.js';
  * each event moving between them. It reads three places and merges them into
  * one state that the page polls:
  *
- * - the sender's incidents and the status of every delivery attempt it made;
+ * - the errors the sender reported, and the status of every delivery attempt it made;
  * - Event Gateway's requests and events for the agent's source and connection;
  * - the agent's status: its subscription, `hookdeck listen`, and what it handled.
  *
@@ -33,13 +33,13 @@ const publicDir = fileURLToPath(new URL('../../viz/', import.meta.url));
 
 interface AgentStatus {
   delivery: 'cli' | 'http';
-  destinationAuth: 'STANDARD_WEBHOOKS' | 'BEARER_TOKEN';
+  destinationAuth: 'HOOKDECK_SIGNATURE' | 'STANDARD_WEBHOOKS' | 'BEARER_TOKEN';
   listening: boolean | null;
   failing: boolean;
   subscription?: { id: string; refreshBefore: string | null; callbackUrl: string; sourceId: string; connectionId: string };
   counts: Record<string, number>;
   recovery: { passes: number; requestsRetried: string[]; eventsRetried: string[] };
-  handled: Array<{ eventId: string; attempt: string | null; receivedAt: string }>;
+  handled: Array<{ eventId: string; attempt: string | null; receivedAt: string; next?: string }>;
 }
 interface SenderSubscription {
   id: string;
@@ -49,9 +49,9 @@ interface SenderSubscription {
   verifiedAt?: string;
   refreshedAt?: string;
 }
-interface SenderIncident {
+interface SenderError {
   eventId: string;
-  incident: { title: string; severity: string };
+  error: { title: string; culprit: string; level: string };
   duplicate: boolean;
   badSignature: boolean;
   sentAt: string;
@@ -113,10 +113,10 @@ async function gatewayView(sourceId: string, connectionId: string) {
 
 /** One entry per event the sender opened, with what each of the three parts did with it. */
 async function buildState() {
-  const [agent, subscriptions, incidents] = await Promise.all([
+  const [agent, subscriptions, errors] = await Promise.all([
     getJson<AgentStatus>(`${agentBase}/demo/status`, agentAuth),
     getJson<SenderSubscription[]>(`${senderBase}/demo/subscriptions`, senderAuth),
-    getJson<SenderIncident[]>(`${senderBase}/demo/incidents`, senderAuth),
+    getJson<SenderError[]>(`${senderBase}/demo/errors`, senderAuth),
   ]);
   let gateway: Awaited<ReturnType<typeof gatewayView>> | null = null;
   let gatewayError: string | null = null;
@@ -129,7 +129,7 @@ async function buildState() {
   }
 
   const subscriptionId = agent?.subscription?.id;
-  const packets = (incidents ?? [])
+  const packets = (errors ?? [])
     .filter((i) => !subscriptionId || i.deliveries.some((d) => d.subscriptionId === subscriptionId))
     .slice(-12)
     .map((i) => {
@@ -142,8 +142,9 @@ async function buildState() {
       const attempts = i.deliveries.find((d) => d.subscriptionId === subscriptionId)?.attempts ?? i.deliveries[0]?.attempts ?? [];
       return {
         eventId: i.eventId,
-        title: i.incident.title,
-        severity: i.incident.severity,
+        title: i.error.title,
+        culprit: i.error.culprit,
+        level: i.error.level,
         kind: i.badSignature ? 'bad-signature' : i.duplicate ? 'duplicate' : 'normal',
         sentAt: i.sentAt,
         sender: attempts.map((a) => ({ at: a.at, status: a.status, error: a.error })),
@@ -166,7 +167,7 @@ async function buildState() {
               }
             : null,
         },
-        agent: handled ? { handledAt: handled.receivedAt, attempt: handled.attempt } : null,
+        agent: handled ? { handledAt: handled.receivedAt, attempt: handled.attempt, next: handled.next ?? null } : null,
       };
     });
 
@@ -205,9 +206,10 @@ const post = (url: string, headers: Record<string, string>, body: unknown) =>
 
 /** The page's buttons. Emits answer at once: the sender's own retries can take several seconds. */
 const actions: Record<string, () => Promise<unknown>> = {
-  emit: async () => void post(`${senderBase}/demo/incidents`, senderAuth, { severity: 'P1', title: 'Checkout latency above 2 s' }).catch(() => {}),
-  duplicate: async () => void post(`${senderBase}/demo/incidents`, senderAuth, { title: 'Sent twice, same webhook-id', duplicate: true }).catch(() => {}),
-  'bad-signature': async () => void post(`${senderBase}/demo/incidents`, senderAuth, { title: 'Signed with the wrong secret', badSignature: true }).catch(() => {}),
+  emit: async () => void post(`${senderBase}/demo/errors`, senderAuth, {}).catch(() => {}),
+  duplicate: async () => void post(`${senderBase}/demo/errors`, senderAuth, { duplicate: true }).catch(() => {}),
+  'bad-signature': async () => void post(`${senderBase}/demo/errors`, senderAuth, { badSignature: true }).catch(() => {}),
+  resubscribe: () => post(`${agentBase}/demo/resubscribe`, agentAuth, {}),
   'fail-on': () => post(`${agentBase}/demo/fail`, agentAuth, { failing: true }),
   'fail-off': () => post(`${agentBase}/demo/fail`, agentAuth, { failing: false }),
   'listen-stop': () => post(`${agentBase}/demo/listen`, agentAuth, { action: 'stop' }),

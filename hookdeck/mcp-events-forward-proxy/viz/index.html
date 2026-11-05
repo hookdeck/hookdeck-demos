@@ -51,6 +51,9 @@
     svg .tag.warn text { fill: var(--color-warning); }
     svg .tag.info rect { fill: var(--blue-badge-bg); stroke: var(--primary-badge-outline); }
     svg .tag.info text { fill: var(--primary-badge-fg); }
+    svg .tag.next rect { fill: var(--bg-0); stroke: var(--neutral-outline-3); stroke-dasharray: 3 3; }
+    svg .tag.next text { fill: var(--neutral-fg-2); }
+    td small { color: var(--neutral-fg-3); font-size: 12px; }
     svg .dot { stroke: var(--bg-0); stroke-width: 2.5; }
     svg .dot.info { fill: var(--primary-blue-bg); }
     svg .dot.ok { fill: var(--color-success); }
@@ -59,11 +62,23 @@
     svg .dot.muted { fill: var(--neutral-fg-3); }
     svg .halo { fill: var(--primary-blue-bg); opacity: .14; }
 
-    /* Scripted scenes (?scene=...): only the diagram and its caption, for capturing GIFs. */
-    body.scene main { padding: 0; gap: 0; max-width: none; }
-    body.scene header, body.scene #status, body.scene #controls, body.scene #log-card { display: none; }
-    body.scene .stage { border-radius: 0; box-shadow: none; }
-    body.scene #caption { font-size: 18px; line-height: 26px; padding: var(--s3) var(--s8) var(--s5); min-height: 0; }
+    #scenes { align-items: center; }
+    #scenes .button { padding: var(--s1) var(--s3); text-decoration: none; }
+    #scenes .spacer { flex: 1; }
+    .theme-switch { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius); background: var(--bg-2); box-shadow: var(--elevation-small); }
+    .theme-switch button { padding: var(--s1) var(--s2); background: transparent; color: var(--neutral-fg-3); box-shadow: none; }
+    .theme-switch button:hover { background: var(--bg-3); color: var(--neutral-fg-1); }
+    .theme-switch button[aria-pressed="true"] { background: var(--bg-0); color: var(--neutral-fg-1); box-shadow: var(--button-neutral-shadow); }
+    .theme-switch .material-symbols-outlined { font-size: 18px; line-height: 20px; }
+
+    /* Scripted scenes (?scene=...): the diagram, its caption and the scene bar. */
+    body.scene #status, body.scene #controls, body.scene #log-card { display: none; }
+    body.scene #caption { font-size: 18px; line-height: 26px; }
+    /* &capture=1: only the diagram and its caption, for recording GIFs. */
+    body.capture main { padding: 0; gap: 0; max-width: none; }
+    body.capture header, body.capture #scenes { display: none; }
+    body.capture .stage { border-radius: 0; box-shadow: none; }
+    body.capture #caption { padding: var(--s3) var(--s8) var(--s5); min-height: 0; }
   </style>
 </head>
 <body>
@@ -71,8 +86,9 @@
     <header>
       <div class="eyebrow body-xs">MCP Events · forward proxy demo</div>
       <h2 class="title-2xl">MCP Events through <em>Event Gateway</em></h2>
-      <p>The MCP server sends each event to an Event Gateway source. Event Gateway verifies it, stores it, drops duplicates, and delivers it to the agent, retrying until the agent takes it.</p>
+      <p>An error-tracking service’s MCP server sends an <code>error.detected</code> event when a new error appears in production. Event Gateway receives it for the agent: it verifies it, stores it, drops duplicates, and delivers it, retrying until the agent takes it. The agent can then investigate and propose a fix.</p>
     </header>
+    <nav id="scenes" class="flex flex--tight" aria-label="Scenes"></nav>
     <div id="status" class="flex flex--tight"></div>
     <section class="card stage">
       <svg id="diagram" viewBox="0 0 1200 520" role="img" aria-labelledby="caption"></svg>
