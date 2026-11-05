@@ -261,8 +261,16 @@ async function resubscribe() {
   await releaseEndpoint(api, old.endpoint);
   const fresh = await provisionEndpoint(api, key, proxyOptions);
   log(`created MCP Events source ${fresh.sourceId} (${fresh.url}) and connection ${fresh.connectionId}`);
-  await listener?.listenTo([fresh.sourceName]);
-  const subscription = await client.subscribe(key, fresh.url, fresh.secret, ttlMs);
+  let subscription;
+  try {
+    await listener?.listenTo([fresh.sourceName]);
+    subscription = await client.subscribe(key, fresh.url, fresh.secret, ttlMs);
+  } catch (error) {
+    // Nothing tracks the new source yet, so delete it here rather than leave it for `npm run teardown`.
+    log(`resubscribe failed: ${(error as Error).message}; deleting source ${fresh.sourceId}. Restart the agent to subscribe again.`);
+    await releaseEndpoint(api, fresh).catch((cleanupError) => log(`cleanup failed: ${(cleanupError as Error).message}`));
+    throw error;
+  }
   live = { endpoint: fresh, subscription };
   log(`subscribed to ${key.name} ${JSON.stringify(key.arguments)} as ${subscription.id}, refresh before ${subscription.refreshBefore}`);
   scheduleRefresh();
