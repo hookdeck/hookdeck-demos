@@ -18,19 +18,19 @@ npm install
 cp .env.example .env
 ```
 
-Add your Deepgram API key (from the [Deepgram Console](https://console.deepgram.com/)) to `.env`:
+Add two keys to `.env`:
+
+- `DEEPGRAM_API_KEY`: from the [Deepgram Console](https://console.deepgram.com/)
+- `HOOKDECK_API_KEY`: a Hookdeck project API key (Project settings -> API keys)
 
 ```env
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
+HOOKDECK_API_KEY=your_hookdeck_api_key_here
 ```
 
 ### 3. Set up Hookdeck Connections
 
-The Hookdeck CLI is an npm dependency (`hookdeck-cli` 3.1.0, the first release that forwards binary bodies such as the TTS audio), installed by `npm install`. Log in:
-
-```bash
-npx hookdeck login
-```
+The Hookdeck CLI is an npm dependency (`hookdeck-cli` 3.1.0, the first release that forwards binary bodies such as the TTS audio), installed by `npm install`. The setup and listen scripts log it in to the project for `HOOKDECK_API_KEY`, with a config file of their own in `run/`, so whatever you're logged in to with `hookdeck login` isn't used or changed.
 
 Create the connections and write their Source URLs into `.env`:
 
@@ -47,7 +47,7 @@ The script is idempotent. It creates one connection per demo, each with its own 
 
 To use a different CLI binary (for example a local build), set `HOOKDECK_CLI=/path/to/hookdeck`.
 
-Listen for events:
+Forward the two sources to the server (port `PORT`, default 4000):
 
 ```bash
 npm run listen

@@ -38,3 +38,6 @@ audio/
 
 # JSON data storage
 data/
+
+# Hookdeck CLI config written by the setup and listen scripts
+run/
