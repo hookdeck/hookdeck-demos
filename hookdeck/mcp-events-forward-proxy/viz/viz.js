@@ -129,7 +129,7 @@
       refresh: 'Before refreshBefore, the agent calls events/subscribe on the MCP server again, directly, with the same name, arguments, URL and secret. There’s no new challenge: the server has already verified this URL.',
       challenge: 'Before it answers, the MCP server sends a signed verification challenge to the callback URL, the source.',
       echo: 'Event Gateway verifies it with the secret and echoes the challenge. The agent never sees it.',
-      granted: 'The events/subscribe call returns to the agent with the subscription id and refreshBefore: when the subscription expires unless the agent subscribes again. Events can now flow.',
+      granted: 'The events/subscribe call returns to the agent with the subscription ID and refreshBefore: when the subscription expires unless the agent subscribes again. Events can now flow.',
       regranted: 'The server grants a new refreshBefore. The agent keeps refreshing for as long as it wants events.',
     })[stage];
 

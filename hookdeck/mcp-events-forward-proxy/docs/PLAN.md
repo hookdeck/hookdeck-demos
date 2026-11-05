@@ -23,7 +23,7 @@ Status: the demo is built and verified, and the scenarios passed again on 2026-1
   - **HTTP mode** (`AGENT_PUBLIC_URL` set, used on Fly.io): the connection has an HTTP destination.
   - **Destination auth** defaults to Event Gateway's own signature (`HOOKDECK_SIGNATURE`), as in the public guide; `AGENT_DESTINATION_AUTH` switches to `STANDARD_WEBHOOKS` (re-signed with the subscription's secret, since 2026-10-22) or `BEARER_TOKEN`. On 2026-10-22 the demo briefly defaulted to Standard Webhooks; on 2026-11-05 it went back to the Hookdeck signature as the default, because SEP-3415 describes a forward proxy that terminates HMAC and re-authenticates downstream with a different mechanism.
   - **The event endpoint** checks `x-hookdeck-signature` (in CLI mode too, since `hookdeck listen` forwards it), re-checks the MCP server's signature without the 5-minute window, handles each `eventId` once per subscription, ignores `verification` bodies, and answers `503` for an unknown subscription ID. With the other auth methods it checks the Standard Webhooks signature with the window, or the bearer token.
-- **Scripts:** `npm run emit`, `npm run agent:status`, `npm run agent:fail`, `npm run agent:listen` (stop, kill or start `listen`), `npm run teardown`, and `npm run scenarios`, which runs the verified table below against a running sender and agent and prints pass or fail with evidence (7 of 7 locally in CLI mode; 6 of 6 against the deployed services, where the two `listen` cases don't apply, re-run after the redeploy).
+- **Scripts:** `npm run emit`, `npm run agent:status`, `npm run agent:fail`, `npm run agent:listen` (stop, kill or start `listen`), `npm run teardown`, and `npm run scenarios`, which runs the verified table below against a running sender and agent and prints pass or fail with evidence (8 of 8 locally in CLI mode; 6 of 6 against the deployed services, where the two `listen` cases don't apply, re-run after the redeploy).
 - **Deployment:** `Dockerfile`, `fly.sender.toml`, `fly.agent.toml`. Both services were deployed on Fly.io (apps `mcp-events-receive-sender` and `mcp-events-receive-agent`, region `ams`).
 
 ### Verified
@@ -289,7 +289,7 @@ sequenceDiagram
     EG-->>SRV: Challenge echoed
     SRV->>EG: 4. Signed delivery
     EG-->>SRV: 200 once stored
-    EG->>AG: 5. HTTP POST re-signed as Standard Webhooks, retried until the agent is back
+    EG->>AG: 5. HTTP POST with x-hookdeck-signature, retried until the agent is back
 ```
 
 What Event Gateway adds over the agent receiving directly ([destinations](https://hookdeck.com/docs/destinations), [retries](https://hookdeck.com/docs/retries)):

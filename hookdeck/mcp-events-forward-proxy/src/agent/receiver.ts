@@ -20,8 +20,8 @@ import { SUBSCRIPTION_HEADER, type ControlEnvelope, type McpEvent } from '../sha
  *      including the 5-minute window on `webhook-timestamp`, the same check it
  *      would make on a delivery sent straight from the MCP server;
  *    - a bearer token: the check an API gateway in front of the agent would
- *      make. There's no signature to verify; Event Gateway verified the MCP
- *      server's at the source;
+ *      make. The agent doesn't re-check the MCP server's signature; Event
+ *      Gateway verified it at the source;
  * 2. handles each `eventId` once, so a redelivery is harmless.
  */
 

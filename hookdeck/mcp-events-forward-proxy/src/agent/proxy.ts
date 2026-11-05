@@ -12,11 +12,14 @@ import type { HookdeckApi } from './hookdeck.js';
  * One MCP Events source per subscription, holding that subscription's secret,
  * plus one connection that delivers to the agent with a deduplicate rule on
  * `webhook-id` and a retry rule. The destination authenticates each delivery
- * attempt to the agent in one of two ways:
+ * attempt to the agent in one of three ways:
  *
- * - Standard Webhooks (the default): Event Gateway re-signs every attempt with
- *   the subscription's secret, so the agent verifies a delivery exactly as it
- *   would one sent straight from the MCP server.
+ * - Hookdeck signature (the default): each attempt carries x-hookdeck-signature,
+ *   an HMAC of the body with the project's signing secret. The MCP server's own
+ *   headers are forwarded too, so the agent can re-check its signature.
+ * - Standard Webhooks: Event Gateway re-signs every attempt with the
+ *   subscription's secret, so the agent verifies a delivery exactly as it would
+ *   one sent straight from the MCP server.
  * - A bearer token: SEP-3415's example of infrastructure HMAC doesn't get
  *   past, such as an API gateway that demands `Authorization: Bearer`. The
  *   proxy terminates HMAC and re-authenticates with what the network requires.
