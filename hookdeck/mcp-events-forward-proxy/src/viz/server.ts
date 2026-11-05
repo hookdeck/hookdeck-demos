@@ -205,7 +205,7 @@ const post = (url: string, headers: Record<string, string>, body: unknown) =>
   fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.text() }));
 
 /** The page's buttons. Emits answer at once: the sender's own retries can take several seconds. */
-const actions: Record<string, () => Promise<unknown>> = {
+const actions: Record<string, () => Promise<{ status: number; body: string } | void>> = {
   emit: async () => void post(`${senderBase}/demo/errors`, senderAuth, {}).catch(() => {}),
   duplicate: async () => void post(`${senderBase}/demo/errors`, senderAuth, { duplicate: true }).catch(() => {}),
   'bad-signature': async () => void post(`${senderBase}/demo/errors`, senderAuth, { badSignature: true }).catch(() => {}),
@@ -229,13 +229,18 @@ const types: Record<string, string> = {
 const server = http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url ?? '/', 'http://localhost');
   const json = (status: number, body: unknown) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+  // Only this machine, by name: a page on another origin, or a DNS name rebound to 127.0.0.1, gets nothing.
+  if (!allowedHosts.has(req.headers.host ?? '')) return json(421, { error: 'unexpected host' });
   try {
     if (pathname === '/api/state' && req.method === 'GET') return json(200, await state());
     if (pathname.startsWith('/api/action/') && req.method === 'POST') {
+      // A custom header makes a cross-origin request preflight, which this server never answers.
+      if (req.headers['x-viz-action'] !== '1') return json(403, { error: 'missing x-viz-action header' });
       const action = actions[pathname.slice('/api/action/'.length)];
       if (!action) return json(404, { error: 'unknown action' });
-      await action();
+      const result = await action();
       cached = undefined;
+      if (result && (result.status < 200 || result.status >= 300)) return json(502, { error: `${result.status}: ${result.body}` });
       return json(200, { ok: true });
     }
     const file = normalize(join(publicDir, pathname === '/' ? 'index.html' : pathname));
@@ -248,4 +253,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+const allowedHosts = new Set([`localhost:${port}`, `127.0.0.1:${port}`]);
 server.listen(port, '127.0.0.1', () => console.log(`[viz] http://localhost:${port} (sender ${senderBase}, agent ${agentBase})`));

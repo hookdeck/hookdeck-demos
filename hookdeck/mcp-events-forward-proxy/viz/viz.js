@@ -651,7 +651,7 @@
       const button = e.target.closest('button[data-action]');
       if (!button) return;
       button.disabled = true;
-      await fetch(`/api/action/${button.dataset.action}`, { method: 'POST' }).catch(() => {});
+      await fetch(`/api/action/${button.dataset.action}`, { method: 'POST', headers: { 'x-viz-action': '1' } }).catch(() => {});
       poll();
     });
 
