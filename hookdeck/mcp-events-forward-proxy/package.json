@@ -16,6 +16,7 @@
     "agent:listen": "tsx scripts/agent.ts listen",
     "scenarios": "tsx scripts/scenarios.ts",
     "teardown": "tsx scripts/teardown.ts",
+    "viz": "tsx src/viz/server.ts",
     "typecheck": "tsc"
   },
   "dependencies": {

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCP Events through Event Gateway</title>
+  <link rel="icon" href="ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="ds/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0&display=block">
+  <style>
+    main { padding: var(--s8) var(--s6) var(--s12); display: flex; flex-direction: column; gap: var(--s6); }
+    .eyebrow { font-family: var(--font-mono); text-transform: uppercase; color: var(--neutral-fg-3); }
+    header p { color: var(--neutral-fg-2); max-width: 760px; margin-top: var(--s2); }
+    #status { align-items: center; }
+    #status .badge { font-family: var(--font-mono); font-size: 12px; }
+    .stage { padding: 0; overflow: hidden; }
+    .stage svg { display: block; width: 100%; height: auto; }
+    #caption { min-height: var(--s14); padding: var(--s3) var(--s6) var(--s4); color: var(--neutral-fg-2); border-top: 1px dashed var(--neutral-outline-3); }
+    #controls { align-items: center; }
+    #controls .group { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+    #controls .group + .group { padding-left: var(--s4); border-left: 1px dashed var(--neutral-outline-3); }
+    #controls .eyebrow { margin-right: var(--s1); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; font-weight: 500; color: var(--neutral-fg-3); font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; padding: 0 var(--s2) var(--s2); }
+    td { padding: var(--s2); border-top: 1px solid var(--neutral-outline-1); vertical-align: top; }
+    td .badge { margin: 0 var(--s1) var(--s1) 0; font-size: 12px; }
+    td code { font-size: 12px; color: var(--neutral-fg-2); }
+    .empty { color: var(--neutral-fg-3); padding: var(--s4) var(--s2); }
+    .notice { color: var(--color-warning); }
+
+    /* The diagram. Colors come from the design system's tokens, so dark mode follows. */
+    svg text { font-family: var(--font-sans); fill: var(--neutral-fg-1); }
+    svg .mono { font-family: var(--font-mono); letter-spacing: .04em; }
+    svg .muted { fill: var(--neutral-fg-3); }
+    svg .secondary { fill: var(--neutral-fg-2); }
+    svg .ms { font-family: "Material Symbols Outlined"; font-size: 26px; fill: var(--primary-fg); }
+    svg .node { fill: var(--bg-0); stroke: var(--neutral-outline-2); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .08)) drop-shadow(0 2px 4px rgba(0, 0, 0, .06)); }
+    svg .node.dim { opacity: .45; }
+    svg .chip-bg { fill: var(--blue-badge-bg); stroke: var(--primary-badge-outline); }
+    svg .eg { fill: var(--bg-0); stroke: var(--primary-badge-outline); stroke-width: 1.5; filter: drop-shadow(0 4px 10px rgba(0, 68, 204, .18)); }
+    svg .conn { stroke: var(--neutral-outline-3); stroke-width: 2; fill: none; stroke-linecap: round; }
+    svg .conn.down { stroke-dasharray: 6 6; }
+    svg .lane { stroke: var(--neutral-outline-2); stroke-width: 1.5; fill: none; stroke-dasharray: 2 6; stroke-linecap: round; }
+    svg .tag rect { fill: var(--bg-2); stroke: var(--neutral-outline-2); }
+    svg .tag text { font-family: var(--font-mono); font-size: 12px; fill: var(--neutral-fg-2); }
+    svg .tag.ok rect { fill: var(--color-success-surface); stroke: var(--color-success-outline); }
+    svg .tag.ok text { fill: var(--color-success); }
+    svg .tag.bad rect { fill: var(--color-danger-surface); stroke: var(--color-danger-outline); }
+    svg .tag.bad text { fill: var(--color-danger); }
+    svg .tag.warn rect { fill: var(--color-warning-surface); stroke: var(--color-warning-outline); }
+    svg .tag.warn text { fill: var(--color-warning); }
+    svg .tag.info rect { fill: var(--blue-badge-bg); stroke: var(--primary-badge-outline); }
+    svg .tag.info text { fill: var(--primary-badge-fg); }
+    svg .tag.next rect { fill: var(--bg-0); stroke: var(--neutral-outline-3); stroke-dasharray: 3 3; }
+    svg .tag.next text { fill: var(--neutral-fg-2); }
+    td small { color: var(--neutral-fg-3); font-size: 12px; }
+    svg .dot { stroke: var(--bg-0); stroke-width: 2.5; }
+    svg .dot.info { fill: var(--primary-blue-bg); }
+    svg .dot.ok { fill: var(--color-success); }
+    svg .dot.bad { fill: var(--color-danger); }
+    svg .dot.warn { fill: var(--color-warning); }
+    svg .dot.muted { fill: var(--neutral-fg-3); }
+    svg .halo { fill: var(--primary-blue-bg); opacity: .14; }
+
+    #scenes { align-items: center; }
+    #scenes .button { padding: var(--s1) var(--s3); text-decoration: none; }
+    #scenes .spacer { flex: 1; }
+    .theme-switch { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius); background: var(--bg-2); box-shadow: var(--elevation-small); }
+    .theme-switch button { padding: var(--s1) var(--s2); background: transparent; color: var(--neutral-fg-3); box-shadow: none; }
+    .theme-switch button:hover { background: var(--bg-3); color: var(--neutral-fg-1); }
+    .theme-switch button[aria-pressed="true"] { background: var(--bg-0); color: var(--neutral-fg-1); box-shadow: var(--button-neutral-shadow); }
+    .theme-switch .material-symbols-outlined { font-size: 18px; line-height: 20px; }
+
+    /* Scripted scenes (?scene=...): the diagram, its caption and the scene bar. */
+    body.scene #status, body.scene #controls, body.scene #log-card { display: none; }
+    body.scene #caption { font-size: 18px; line-height: 26px; }
+    /* &capture=1: only the diagram and its caption, for recording GIFs. */
+    body.capture main { padding: 0; gap: 0; max-width: none; }
+    body.capture header, body.capture #scenes { display: none; }
+    body.capture .stage { border-radius: 0; box-shadow: none; }
+    body.capture #caption { padding: var(--s3) var(--s8) var(--s5); min-height: 0; }
+  </style>
+</head>
+<body>
+  <main class="max">
+    <header>
+      <div class="eyebrow body-xs">MCP Events · forward proxy demo</div>
+      <h2 class="title-2xl">MCP Events through <em>Event Gateway</em></h2>
+      <p>An error-tracking service’s MCP server sends an <code>error.detected</code> event when a new error appears in production. Event Gateway receives it for the agent: it verifies it, stores it, drops duplicates, and delivers it, retrying until the agent takes it. The agent can then investigate and propose a fix.</p>
+    </header>
+    <nav id="scenes" class="flex flex--tight" aria-label="Scenes"></nav>
+    <div id="status" class="flex flex--tight"></div>
+    <section class="card stage">
+      <svg id="diagram" viewBox="0 0 1200 520" role="img" aria-labelledby="caption"></svg>
+      <p id="caption" class="body-m" aria-live="polite"></p>
+    </section>
+    <section id="controls" class="flex"></section>
+    <section id="log-card" class="card"><table id="log"></table></section>
+  </main>
+  <script src="viz.js"></script>
+</body>
+</html>

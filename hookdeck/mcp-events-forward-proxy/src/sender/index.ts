@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { loadEnv, numberEnv } from '../shared/env.js';
-import { SEVERITIES, type Severity } from './events.js';
+import { LEVELS, type Level } from './events.js';
 import { buildMcpServer } from './mcp.js';
 import { Subscriptions } from './subscriptions.js';
 
@@ -60,17 +60,19 @@ const server = http.createServer(async (req, res) => {
       (req as http.IncomingMessage & { auth?: unknown }).auth = { token, clientId: 'demo-principal', scopes: [] };
       return await mcp(req, res);
     }
-    if (pathname === '/demo/incidents' && req.method === 'POST') {
+    if (pathname === '/demo/errors' && req.method === 'POST') {
       const input = await readJson(req);
-      const severity = SEVERITIES.includes(input.severity as Severity) ? (input.severity as Severity) : undefined;
+      const level = LEVELS.includes(input.level as Level) ? (input.level as Level) : undefined;
       return json(res, 201, await subscriptions.emit({
-        severity,
+        level,
         title: typeof input.title === 'string' ? input.title : undefined,
+        culprit: typeof input.culprit === 'string' ? input.culprit : undefined,
         duplicate: input.duplicate === true,
         badSignature: input.badSignature === true,
       }));
     }
     if (pathname === '/demo/subscriptions' && req.method === 'GET') return json(res, 200, subscriptions.list());
+    if (pathname === '/demo/errors' && req.method === 'GET') return json(res, 200, subscriptions.recentErrors());
     json(res, 404, { error: 'not found' });
   } catch (error) {
     log(`error on ${pathname}: ${(error as Error).message}`);
@@ -83,7 +85,7 @@ sweeper.unref();
 
 server.listen(port, () => {
   log(`MCP endpoint:    http://localhost:${port}/mcp  (Authorization: Bearer <SENDER_TOKEN>)`);
-  log(`Open incidents:  POST http://localhost:${port}/demo/incidents  (or: npm run emit)`);
+  log(`Report errors:   POST http://localhost:${port}/demo/errors  (or: npm run emit)`);
 });
 
 const shutdown = () => {

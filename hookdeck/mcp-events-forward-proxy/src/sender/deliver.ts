@@ -100,6 +100,8 @@ export interface DeliveryOptions extends PostOptions {
   /** Sign with a random secret instead of the subscription's, to show the receiver rejecting it. */
   badSignature?: boolean;
   log: (message: string) => void;
+  /** Called after each attempt, so a caller can show attempts as they happen. */
+  onAttempt?: (record: AttemptRecord) => void;
 }
 
 /**
@@ -121,6 +123,7 @@ export async function deliver(target: DeliveryTarget, webhookId: string, body: s
       record = { attempt, at: new Date().toISOString(), status: null, error: classifyNetworkError(error) };
     }
     attempts.push(record);
+    options.onAttempt?.(record);
     options.log(`deliver ${webhookId} -> ${target.subscriptionId} attempt ${attempt}: ${record.status ?? record.error}`);
     if (record.error === null) break;
     if (record.status === 410 || record.status === 413) break;

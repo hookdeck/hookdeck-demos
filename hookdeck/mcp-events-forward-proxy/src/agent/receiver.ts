@@ -1,19 +1,28 @@
 import http from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { verifyIgnoringTimestamp } from '../shared/standard-webhooks.js';
+import { verifyIgnoringTimestamp, verifyStandardWebhook } from '../shared/standard-webhooks.js';
 import { SUBSCRIPTION_HEADER, type ControlEnvelope, type McpEvent } from '../shared/mcp-events.js';
 
 /*
  * The agent's event endpoint: where Event Gateway delivers. Event Gateway has
  * already verified the MCP server's signature, answered the challenge and
- * stored the request. This endpoint:
+ * stored the request: as SEP-3415 puts it, the proxy terminates HMAC and
+ * re-authenticates downstream. This endpoint:
  *
- * 1. checks the request came from Event Gateway (`x-hookdeck-signature`, an
- *    HMAC of the body with the project's signing secret, no timestamp);
- * 2. re-checks the MCP server's Standard Webhooks signature with the
- *    subscription's secret, without the 5-minute window, because a retried or
- *    replayed delivery keeps its original `webhook-timestamp`;
- * 3. handles each `eventId` once, so a redelivery is harmless.
+ * 1. checks the delivery came through Event Gateway, with the destination's
+ *    auth method:
+ *    - Hookdeck signature (the default): `x-hookdeck-signature`, an HMAC of
+ *      the body with the project's signing secret, with no timestamp. It then
+ *      re-checks the MCP server's own signature without the 5-minute window,
+ *      because each attempt forwards the stored request's original headers;
+ *    - Standard Webhooks: Event Gateway re-signs each attempt with the
+ *      subscription's secret, so the endpoint verifies that signature,
+ *      including the 5-minute window on `webhook-timestamp`, the same check it
+ *      would make on a delivery sent straight from the MCP server;
+ *    - a bearer token: the check an API gateway in front of the agent would
+ *      make. The agent doesn't re-check the MCP server's signature; Event
+ *      Gateway verified it at the source;
+ * 2. handles each `eventId` once, so a redelivery is harmless.
  */
 
 export interface HandledEvent {
@@ -23,11 +32,15 @@ export interface HandledEvent {
   data: Record<string, unknown>;
   receivedAt: string;
   attempt: string | null;
+  /** What the agent would do next. The demo stops here; a real agent would act on it. */
+  next?: string;
 }
 
+/** What the endpoint expects of each delivery, matching the destination's auth method. */
+export type ReceiverAuth = { type: 'HOOKDECK_SIGNATURE'; signingSecret: string } | { type: 'STANDARD_WEBHOOKS' } | { type: 'BEARER_TOKEN'; token: string };
+
 export interface ReceiverOptions {
-  /** Event Gateway's project signing secret. Required when Event Gateway reaches the agent over the internet. */
-  hookdeckSigningSecret?: string;
+  auth: ReceiverAuth;
   secretFor: (subscriptionId: string) => string | undefined;
   onEvent?: (event: HandledEvent) => void;
   onTerminated?: (subscriptionId: string, envelope: ControlEnvelope) => void;
@@ -35,6 +48,16 @@ export interface ReceiverOptions {
 }
 
 const MAX_BODY_BYTES = 256 * 1024;
+
+/**
+ * What an agent would do with the event: for an error with a `culprit`, look
+ * at that code and propose a fix. The demo stops at saying so; the event
+ * carries enough for a real agent to start.
+ */
+function nextStep(event: McpEvent): string | undefined {
+  const culprit = (event.data as { culprit?: unknown } | undefined)?.culprit;
+  return typeof culprit === 'string' ? `investigate ${culprit}, then open a fix PR` : undefined;
+}
 
 export class Receiver {
   readonly handled: HandledEvent[] = [];
@@ -45,15 +68,19 @@ export class Receiver {
 
   constructor(private readonly options: ReceiverOptions) {}
 
-  private fromEventGateway(raw: Buffer, headers: http.IncomingHttpHeaders): boolean {
-    const secret = this.options.hookdeckSigningSecret;
-    if (!secret) return true;
-    const expected = createHmac('sha256', secret).update(raw).digest('base64');
+  /** `x-hookdeck-signature` (or `-2`, during a signing-secret rotation): base64 HMAC-SHA256 of the raw body. */
+  private hookdeckSignatureMatches(raw: Buffer, headers: http.IncomingHttpHeaders, signingSecret: string): boolean {
+    const expected = createHmac('sha256', signingSecret).update(raw).digest('base64');
     return ['x-hookdeck-signature', 'x-hookdeck-signature-2'].some((name) => {
       const value = headers[name];
-      if (typeof value !== 'string' || value.length !== expected.length) return false;
-      return timingSafeEqual(Buffer.from(value), Buffer.from(expected));
+      return typeof value === 'string' && value.length === expected.length && timingSafeEqual(Buffer.from(value), Buffer.from(expected));
     });
+  }
+
+  private bearerMatches(req: http.IncomingMessage, token: string): boolean {
+    const presented = Buffer.from(/^Bearer (.+)$/i.exec(req.headers.authorization ?? '')?.[1] ?? '');
+    const expected = Buffer.from(token);
+    return presented.length === expected.length && timingSafeEqual(presented, expected);
   }
 
   async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -71,9 +98,16 @@ export class Receiver {
     const webhookId = String(req.headers['webhook-id'] ?? '');
     const attempt = typeof req.headers['x-hookdeck-attempt-count'] === 'string' ? req.headers['x-hookdeck-attempt-count'] : null;
 
-    if (!this.fromEventGateway(raw, req.headers)) {
+    const { auth } = this.options;
+    // As an API gateway would, refuse a request without the token before routing it.
+    if (auth.type === 'BEARER_TOKEN' && !this.bearerMatches(req, auth.token)) {
       this.counts.rejected++;
-      this.options.log(`rejected ${webhookId}: not signed by Event Gateway`);
+      this.options.log(`rejected ${webhookId || '(no webhook-id)'}: missing or wrong bearer token`);
+      return send(401);
+    }
+    if (auth.type === 'HOOKDECK_SIGNATURE' && !this.hookdeckSignatureMatches(raw, req.headers, auth.signingSecret)) {
+      this.counts.rejected++;
+      this.options.log(`rejected ${webhookId || '(no webhook-id)'}: missing or wrong x-hookdeck-signature`);
       return send(401);
     }
 
@@ -89,9 +123,14 @@ export class Receiver {
       'webhook-timestamp': String(req.headers['webhook-timestamp'] ?? ''),
       'webhook-signature': String(req.headers['webhook-signature'] ?? ''),
     };
-    if (!verifyIgnoringTimestamp(secret, raw.toString('utf8'), signed)) {
+    if (auth.type === 'STANDARD_WEBHOOKS' && !verifyStandardWebhook(secret, raw.toString('utf8'), signed)) {
       this.counts.rejected++;
-      this.options.log(`rejected ${webhookId}: MCP server signature doesn't match the subscription's secret`);
+      this.options.log(`rejected ${webhookId}: the signature doesn't match the subscription's secret, or the timestamp is more than 5 minutes off`);
+      return send(401);
+    }
+    if (auth.type === 'HOOKDECK_SIGNATURE' && !verifyIgnoringTimestamp(secret, raw.toString('utf8'), signed)) {
+      this.counts.rejected++;
+      this.options.log(`rejected ${webhookId}: the MCP server's signature doesn't match the subscription's secret`);
       return send(401);
     }
 
@@ -116,12 +155,15 @@ export class Receiver {
     }
 
     const event = body as unknown as McpEvent;
-    if (this.seen.has(event.eventId)) {
+    // SEP-3415: deduplicating on eventId is scoped to the subscription. The same upstream event
+    // delivered on two subscriptions is two deliveries, and both are handled.
+    const seenKey = `${subscriptionId} ${event.eventId}`;
+    if (this.seen.has(seenKey)) {
       this.counts.duplicates++;
-      this.options.log(`already handled ${event.eventId}; ignoring the redelivery`);
+      this.options.log(`already handled ${event.eventId} on ${subscriptionId}; ignoring the redelivery`);
       return send(200);
     }
-    this.seen.add(event.eventId);
+    this.seen.add(seenKey);
     const handled: HandledEvent = {
       eventId: event.eventId,
       name: event.name,
@@ -129,9 +171,11 @@ export class Receiver {
       data: event.data,
       receivedAt: new Date().toISOString(),
       attempt,
+      next: nextStep(event),
     };
     this.handled.push(handled);
     this.options.log(`handled ${event.name} ${event.eventId} (attempt ${attempt ?? '?'}): ${JSON.stringify(event.data)}`);
+    if (handled.next) this.options.log(`next: ${handled.next} (not part of this demo)`);
     this.options.onEvent?.(handled);
     send(200);
   }

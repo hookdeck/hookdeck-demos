@@ -11,11 +11,15 @@ A demo of Hookdeck Event Gateway acting as the MCP Events "forward proxy" from S
 - **The client owns the proxy.** The agent creates one `MCP Events` source per subscription with that subscription's secret, then subscribes with the source URL. The SEP doesn't define the client-to-proxy step, so it lives only in `src/agent/proxy.ts`.
 - **Event Gateway is driven through the REST API** (`src/agent/hookdeck.ts`), not the CLI, so per-subscription secrets never appear on a command line. The CLI is used only for `hookdeck listen`.
 - **Two delivery paths: `hookdeck listen` (CLI destination), which needs no public URL and is the default when `AGENT_PUBLIC_URL` isn't set, and an HTTP destination, tested deployed** on Fly.io. The demo runs the CLI path locally only, but `hookdeck listen` isn't limited to local use. No third-party tunnels.
-- **The stand-in sender follows OpenAI's MCP Events profile** (top-level `capabilities.events`, `-32015`, idempotent unsubscribe). SEP-3415 differs; note differences rather than switching.
+- **The demo MCP server (`src/sender/`, an error-tracking service's, event type `error.detected`) follows OpenAI's MCP Events profile** (top-level `capabilities.events`, `-32015`, idempotent unsubscribe, `webhook-id` equal to `eventId`). SEP-3415 differs (since 23 Oct, `webhook-id` is a per-message ID not derived from `eventId`); note differences rather than switching. The agent deduplicates on `eventId` per subscription, which is right under either rule.
 - **Recovery uses request retry, never replay,** and retries an event only once it's settled (`next_attempt_at` null). Both rules prevent duplicate deliveries; see Phase 2 in `docs/PLAN.md`.
-- **The agent re-checks the MCP server's signature without the 5-minute window,** because Event Gateway delivers the stored request with its original `webhook-timestamp`. In HTTP mode it also checks `x-hookdeck-signature`.
+- **Event Gateway terminates the MCP server's HMAC and re-authenticates to the agent,** as SEP-3415 describes a forward proxy: the source verifies the MCP server's signature, and the destination's auth method authenticates each attempt to the agent. The default is Event Gateway's own signature (`HOOKDECK_SIGNATURE`, `x-hookdeck-signature` checked with `HOOKDECK_SIGNING_SECRET`), matching the public guide; the agent also re-checks the MCP server's signature without the 5-minute window, because retries carry the original timestamp. `AGENT_DESTINATION_AUTH=standard-webhooks` re-signs each attempt with the subscription's secret, for an agent that already verifies Standard Webhooks; `AGENT_DESTINATION_AUTH=bearer` shows an API gateway's bearer token. Keep all three working and run `npm run scenarios` against each.
+
+- **The view (`viz/`, `src/viz/server.ts`) uses the Hookdeck design system** in `viz/ds/`, the same token files as the other demos' `public/ds/`. Use its tokens and classes rather than new colors. Its scripted scenes (`SCENES` in `viz/viz.js`) and `viz/capture.sh` share scene names and durations; change both together, then re-run `viz/capture.sh` so `viz/gifs/` matches.
 
 ## Working conventions
+
+- **Start with `internal/NOW.md` if it exists** (gitignored, local only): current state, next steps and open questions. Update it, and `internal/PLAN.md` where the plan changed, before ending a session.
 
 - TypeScript, ESM, Node 22+. `npm run typecheck` must pass before committing. There are no unit tests; verification is by running the flows against a test project and recording results in `docs/PLAN.md`.
 - `.env` holds a real Event Gateway API key and signing secret. Don't print or commit it. Use a dedicated test project: the agent creates and deletes resources by name prefix (`AGENT_NAME`).
@@ -30,4 +34,4 @@ A demo of Hookdeck Event Gateway acting as the MCP Events "forward proxy" from S
 - `hookdeck listen` runs the CLI binary from `node_modules/hookdeck-cli/binaries/`, not the `.bin` wrapper, so SIGINT reaches it. Other `hookdeck listen` processes on the machine may belong to other projects; leave them alone.
 - Ctrl+C can deliver SIGINT several times; the agent's shutdown runs once.
 - The agent owns resources named `<AGENT_NAME>-<8 hex>` and matches that exactly. The deployed agent uses `AGENT_NAME=mcp-events-agent-fly` in the same test project, so a looser prefix match from a local agent deletes the deployed agent's source (it happened once).
-- Event Gateway answers `200` to a badly signed delivery and rejects it afterwards as `VERIFICATION_FAILED`. Check outcomes in the request log, not by status code.
+- Event Gateway answers `401` to a badly signed delivery and stores it as `VERIFICATION_FAILED` (since 2026-10-21; before that it answered `200`). The request log shows the outcome either way.
