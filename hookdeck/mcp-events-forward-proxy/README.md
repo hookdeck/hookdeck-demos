@@ -69,7 +69,7 @@ Prerequisites: Node.js 22 or later, and a **dedicated** Event Gateway project (t
 
 ```bash
 npm install
-cp .env.example .env   # add HOOKDECK_API_KEY; set SENDER_TOKEN and AGENT_TOKEN to random strings
+cp .env.example .env   # add HOOKDECK_API_KEY and HOOKDECK_SIGNING_SECRET; set SENDER_TOKEN and AGENT_TOKEN to random strings
 ```
 
 In one terminal, start the demo MCP server:
@@ -193,7 +193,7 @@ The deployed agent receives over HTTP at its public URL, and checks each deliver
 ```bash
 fly apps create <sender-app> && fly apps create <agent-app>   # then set the app names and URLs in fly.*.toml
 fly secrets set -c fly.sender.toml SENDER_TOKEN=...
-fly secrets set -c fly.agent.toml HOOKDECK_API_KEY=... AGENT_TOKEN=... SENDER_TOKEN=...
+fly secrets set -c fly.agent.toml HOOKDECK_API_KEY=... HOOKDECK_SIGNING_SECRET=... AGENT_TOKEN=... SENDER_TOKEN=...
 fly deploy -c fly.sender.toml --ha=false
 fly deploy -c fly.agent.toml --ha=false
 ```
