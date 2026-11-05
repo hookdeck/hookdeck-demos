@@ -41,10 +41,15 @@ duration_of() {
 }
 if [[ $# -gt 0 ]]; then SCENES=("$@"); else SCENES=(subscribe delivery duplicate bad-signature agent-down listen-gap); fi
 
+# Headless Chrome on macOS sometimes writes the screenshot, then crashes on teardown
+# ("Teardown watchdog expired") and exits non-zero. The frame is fine, so judge the
+# attempt by the file, not the exit code. Remove the file first so a stale one can't pass.
 shot() {
+  rm -f "$1"
   "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
     --window-size="${WIDTH},${HEIGHT}" --virtual-time-budget=2000 \
-    --screenshot="$1" "$2" >/dev/null 2>&1 && [[ -s "$1" ]]
+    --screenshot="$1" "$2" >/dev/null 2>&1 || true
+  [[ -s "$1" ]]
 }
 
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$VIZ" >/dev/null 2>&1 &
@@ -61,8 +66,8 @@ for scene in "${SCENES[@]}"; do
     t="$(awk -v i="$i" -v f="$FPS" 'BEGIN { printf "%.4f", i / f }')"
     printf -v frame "%s/frame-%04d.png" "$work" "$i"
     url="http://127.0.0.1:${PORT}/index.html?scene=${scene}&t=${t}&${EXTRA}"
-    # Headless Chrome occasionally exits non-zero on one frame; try that frame once more.
-    shot "$frame" "$url" || shot "$frame" "$url" || { echo "frame $i of $scene failed" >&2; exit 1; }
+    # A frame Chrome didn't write at all gets two more tries.
+    shot "$frame" "$url" || shot "$frame" "$url" || shot "$frame" "$url" || { echo "frame $i of $scene failed" >&2; exit 1; }
   done
   name="$scene${AUTH:+-$AUTH}${DELIVERY:+-$DELIVERY}$([[ "$THEME" == dark ]] && echo -dark || true)"
   ffmpeg -y -loglevel error -framerate "$FPS" -i "$work/frame-%04d.png" -vf "scale=960:-1:flags=lanczos,palettegen=stats_mode=diff" "$work/palette.png"
