@@ -1,6 +1,6 @@
 # Receive MCP Events with Event Gateway as a forward proxy
 
-**Status:** demo code, not production-ready. Verified on 2026-10-08 and 2026-10-09 against a dedicated Event Gateway test project: locally through `hookdeck listen`, deployed on Fly.io, and with two different MCP servers sending. Re-run on 2026-10-14 after Event Gateway's MCP Events handshake changes: 7 of 7 scenarios locally, 6 of 6 deployed. Re-run on 2026-10-22 after Event Gateway started answering `401` to a badly signed delivery and could re-sign deliveries: 8 of 8 scenarios locally with Event Gateway re-signing each attempt as Standard Webhooks, and 8 of 8 with a bearer token instead. Re-run on 2026-11-05 with Event Gateway's own signature as the default destination auth, as in the guide: 8 of 8 locally with each of the three auth methods. The deployed agent hasn't been redeployed with those changes yet. See [What's verified](#whats-verified) and [Known limits](#known-limits). [docs/PLAN.md](docs/PLAN.md) has the full proposal and the detailed results.
+**Status:** demo code, not production-ready. Verified on 2026-10-08 and 2026-10-09 against a dedicated Event Gateway test project: locally through `hookdeck listen`, deployed on Fly.io, and with two different MCP servers sending. Re-run on 2026-10-14 after Event Gateway's MCP Events handshake changes: 7 of 7 scenarios locally, 6 of 6 deployed. Re-run on 2026-10-22 after Event Gateway started answering `401` to a badly signed delivery and could re-sign deliveries: 8 of 8 scenarios locally with Event Gateway re-signing each attempt as Standard Webhooks, and 8 of 8 with a bearer token instead. Re-run on 2026-11-05 with Event Gateway's own signature as the default destination auth, as in the guide: 8 of 8 locally with each of the three auth methods, and 6 of 6 deployed on Fly.io with the default. See [What's verified](#whats-verified) and [Known limits](#known-limits). [docs/PLAN.md](docs/PLAN.md) has the full proposal and the detailed results.
 
 [MCP Events](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415) (SEP-3415, a proposed MCP extension) lets an agent subscribe to events an MCP server offers. In webhook mode the server POSTs each event to a callback URL the agent chose. The SEP describes a common deployment where that URL belongs to a **forward proxy** that receives webhooks on the agent's behalf.
 
@@ -222,10 +222,10 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's mostly 
 | An event is delivered and handled | Yes, attempt 1 | Yes, attempt 1, about 1 s | Yes, attempt 1, about 1 s |
 | The sender's filter applied (Outpost filters by subscription arguments) | n/a | n/a | Yes |
 | Duplicate `webhook-id`, re-signed: handled once | Yes | Yes | Not run |
-| Badly signed delivery refused with `401`, never reaches the agent | Yes | Never reached the agent (2026-10-14, when Event Gateway still answered `200`) | Not run |
+| Badly signed delivery refused with `401`, never reaches the agent | Yes | Yes | Not run |
 | Agent answers `503`, then recovers; the sender sees one `200` | Yes | Yes | Yes |
 | A request sent straight to the agent without Event Gateway's credentials is refused (`401`) | Yes, each auth method | Yes, with the Hookdeck signature | n/a |
-| Every scenario with each auth method (Hookdeck signature, Standard Webhooks, bearer token) | Yes | Hookdeck signature only (2026-10-14) | Not run |
+| Every scenario with each auth method (Hookdeck signature, Standard Webhooks, bearer token) | Yes | Hookdeck signature only | Not run |
 | Subscription refreshed before `refreshBefore` | Yes | Yes, for over 6 days | Not observed |
 | `listen` stopped cleanly; recovery retries the request | Yes | n/a | Yes |
 | `listen` killed; the retry rule delivers once it's back | Yes | n/a | Not run |
@@ -233,7 +233,7 @@ SEP-3415 puts these duties on whatever receives the webhook. Here that's mostly 
 | Agent restarted with `--keep`; recovery picks up what it missed | Yes, by hand | n/a | Not run |
 | Ctrl+C unsubscribes and deletes the source and connection | Yes | n/a | Yes |
 
-`npm run scenarios` covers the demo MCP server rows that aren't marked "by hand": 8 of 8 locally with each of the three auth methods (2026-11-05), 6 of 6 deployed (2026-10-14, with the Hookdeck signature, before the `401`). The first local run with a bearer token passed 6 of 8: Event Gateway held two first attempts for about 90 s and 170 s before delivering through `listen`, longer than the delivery check's timeout, and the same hold [docs/PLAN.md](docs/PLAN.md) records for CLI delivery. A re-run with `SCENARIO_TIMEOUT_MS=240000` passed 8 of 8.
+`npm run scenarios` covers the demo MCP server rows that aren't marked "by hand": 8 of 8 locally with each of the three auth methods (2026-11-05), 6 of 6 deployed (2026-11-05, with the Hookdeck signature; the two `listen` scenarios don't apply over HTTP). The first local run with a bearer token passed 6 of 8: Event Gateway held two first attempts for about 90 s and 170 s before delivering through `listen`, longer than the delivery check's timeout, and the same hold [docs/PLAN.md](docs/PLAN.md) records for CLI delivery. A re-run with `SCENARIO_TIMEOUT_MS=240000` passed 8 of 8.
 
 **Not verified:**
 
