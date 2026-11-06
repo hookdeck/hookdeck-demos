@@ -79,6 +79,15 @@
     body.capture header, body.capture #scenes { display: none; }
     body.capture .stage { border-radius: 0; box-shadow: none; }
     body.capture #caption { padding: var(--s3) var(--s8) var(--s5); min-height: 0; }
+    /* &frame=square: a 1:1 frame for social feeds. The view's eyebrow and title, the diagram at full
+       width and a larger caption, centred as one block, so the step text reads at phone-feed size. */
+    body.square main { height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+    body.square .stage { min-height: 0; }
+    body.square header { display: block; padding: 0 var(--s10) var(--s4); }
+    body.square header p { display: none; }
+    body.square header .eyebrow { font-size: 20px; line-height: 28px; }
+    body.square header h2 { font-size: 44px; line-height: 52px; margin: var(--s1) 0 0; }
+    body.square #caption { font-size: 34px; line-height: 46px; padding: var(--s6) var(--s10) var(--s8); min-height: calc(46px * 5 + var(--s6) + var(--s8)); box-sizing: border-box; color: var(--neutral-fg-1); }
   </style>
 </head>
 <body>
