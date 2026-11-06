@@ -135,6 +135,8 @@ A scene bar switches between the live view and scripted scenes, which play the s
 | **Agent down, then back** | **`hookdeck listen` stopped** |
 | ![The agent answers 503: Event Gateway retries until the agent takes it](viz/gifs/agent-down.gif) | ![listen stopped: the request is stored with no event, and the agent's recovery retries it when listen is back](viz/gifs/listen-gap.gif) |
 
+For social posts, `FORMAT=mp4` records an H.264 MP4 instead (1920 wide, 30 fps), and `ASPECT=square` a 1080×1080 frame with the view's title and a larger caption that still reads at phone-feed size. For example, `ASPECT=square FORMAT=mp4 DELIVERY=http OUT=/tmp/clips viz/capture.sh delivery` records the delivery scene over an HTTP destination.
+
 Press Ctrl+C in the agent's terminal to unsubscribe and delete its source and connection. If an agent was killed without cleaning up, `npm run teardown` removes what it left.
 
 ### Restart without losing events
