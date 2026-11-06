@@ -466,6 +466,7 @@
     if (!scene) throw new Error(`Unknown scene ${name}. Scenes: ${Object.keys(SCENES).join(', ')}`);
     document.body.classList.add('scene');
     if (params.get('capture')) document.body.classList.add('capture');
+    if (params.get('frame') === 'square') document.body.classList.add('square');
     const svg = document.getElementById('diagram');
     const caption = document.getElementById('caption');
     const base = {
@@ -479,7 +480,7 @@
       const v = { ...base, ...scene.view(t) };
       v.subscription = !scene.subscribed || scene.subscribed(t) ? { ...subscription, refreshBefore: scene.refreshBefore?.(t) ?? null } : null;
       v.numbering = 'scene';
-      caption.textContent = render(svg, v, t) ?? ' ';
+      setCaption(caption, render(svg, v, t) ?? ' ');
     };
     const fixed = params.get('t');
     if (fixed !== null) {
@@ -687,6 +688,16 @@
   }
 
   applyTheme();
+  /** Sets a scene's caption, keeping hyphenated terms such as x-hookdeck-signature on one line. */
+  function setCaption(el, text) {
+    el.replaceChildren(...String(text).split(/(\S+-\S+)/).filter(Boolean).map((part) => {
+      if (!/\S-\S/.test(part)) return document.createTextNode(part);
+      const span = document.createElement('span');
+      span.style.whiteSpace = 'nowrap';
+      span.textContent = part;
+      return span;
+    }));
+  }
   if (params.get('scene')) runScene(params.get('scene'));
   else runLive();
   window.ForwardProxyViz = { SCENES, render };
