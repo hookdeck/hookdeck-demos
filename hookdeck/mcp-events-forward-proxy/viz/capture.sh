@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Steps each scripted scene at a fixed clock and encodes a looping GIF per scene.
+# Steps each scripted scene at a fixed clock and encodes a looping GIF per scene, or an MP4.
 # Chrome screenshots a local static server so the page can load viz.js and the design system.
 #
 #   viz/capture.sh                      # every scene, light theme
 #   viz/capture.sh listen-gap           # one scene
 #   THEME=dark AUTH=bearer DELIVERY=http viz/capture.sh delivery
+#   FORMAT=mp4 DELIVERY=http OUT=/tmp/clips viz/capture.sh delivery   # 1920 wide, 30 fps, H.264, for social posts
 set -euo pipefail
 
 cd "$(dirname "$0")"
 VIZ="$(pwd)"
-OUT="$VIZ/gifs"
+FORMAT="${FORMAT:-gif}"
+[[ "$FORMAT" == gif || "$FORMAT" == mp4 ]] || { echo "FORMAT must be gif or mp4" >&2; exit 1; }
+OUT="${OUT:-$VIZ/gifs}"
 mkdir -p "$OUT"
 
 if [[ -n "${CHROME:-}" ]]; then
@@ -25,7 +28,8 @@ else
   exit 1
 fi
 
-FPS="${FPS:-12}"
+# An MP4 is screenshotted at 2x and 30 fps, so it stays sharp at 1920 wide and moves smoothly.
+if [[ "$FORMAT" == mp4 ]]; then FPS="${FPS:-30}"; SCALE="${SCALE:-2}"; else FPS="${FPS:-12}"; SCALE="${SCALE:-1}"; fi
 WIDTH=1200
 HEIGHT=600
 PORT="${PORT:-8767}"
@@ -46,7 +50,7 @@ if [[ $# -gt 0 ]]; then SCENES=("$@"); else SCENES=(subscribe delivery duplicate
 # attempt by the file, not the exit code. Remove the file first so a stale one can't pass.
 shot() {
   rm -f "$1"
-  "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
+  "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor="$SCALE" \
     --window-size="${WIDTH},${HEIGHT}" --virtual-time-budget=2000 \
     --screenshot="$1" "$2" >/dev/null 2>&1 || true
   [[ -s "$1" ]]
@@ -70,9 +74,16 @@ for scene in "${SCENES[@]}"; do
     shot "$frame" "$url" || shot "$frame" "$url" || shot "$frame" "$url" || { echo "frame $i of $scene failed" >&2; exit 1; }
   done
   name="$scene${AUTH:+-$AUTH}${DELIVERY:+-$DELIVERY}$([[ "$THEME" == dark ]] && echo -dark || true)"
-  ffmpeg -y -loglevel error -framerate "$FPS" -i "$work/frame-%04d.png" -vf "scale=960:-1:flags=lanczos,palettegen=stats_mode=diff" "$work/palette.png"
-  ffmpeg -y -loglevel error -framerate "$FPS" -i "$work/frame-%04d.png" -i "$work/palette.png" \
-    -lavfi "scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" -loop 0 "$OUT/$name.gif"
+  if [[ "$FORMAT" == mp4 ]]; then
+    # H.264 High, yuv420p and faststart: what X and LinkedIn play inline. No audio track.
+    ffmpeg -y -loglevel error -framerate "$FPS" -i "$work/frame-%04d.png" \
+      -vf "scale=1920:-2:flags=lanczos,format=yuv420p" -c:v libx264 -profile:v high -preset slow -crf 18 \
+      -r "$FPS" -movflags +faststart -an "$OUT/$name.mp4"
+  else
+    ffmpeg -y -loglevel error -framerate "$FPS" -i "$work/frame-%04d.png" -vf "scale=960:-1:flags=lanczos,palettegen=stats_mode=diff" "$work/palette.png"
+    ffmpeg -y -loglevel error -framerate "$FPS" -i "$work/frame-%04d.png" -i "$work/palette.png" \
+      -lavfi "scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" -loop 0 "$OUT/$name.gif"
+  fi
   rm -rf "$work"
-  echo "wrote gifs/$name.gif ($(du -h "$OUT/$name.gif" | cut -f1))"
+  echo "wrote $OUT/$name.$FORMAT ($(du -h "$OUT/$name.$FORMAT" | cut -f1))"
 done
