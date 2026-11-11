@@ -68,6 +68,12 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 |------|-------------|
 | [stt-tts](deepgram/stt-tts/) | Deepgram callbacks through Hookdeck: speech-to-text as JSON, and text-to-speech as binary `audio/mpeg` |
 
+### Vapi
+
+| Demo | Description |
+|------|-------------|
+| [agency-routing](vapi/agency-routing/) | A voice AI agency routes each client's Vapi call events to that client's endpoint, with an async tool that returns its result into the live call |
+
 ## Shared Utilities
 
 | Utility | Description |
