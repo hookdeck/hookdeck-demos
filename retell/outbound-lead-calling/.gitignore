@@ -1,0 +1,11 @@
+node_modules/
+package-lock.json
+dist/
+.env
+.env.local
+.DS_Store
+*.log
+# Lead store written by the app
+data/
+# Hookdeck CLI config and temporary files written by the setup and listen scripts
+run/

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hookdeck + Retell outbound lead calling</title>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="stylesheet" href="/demo.css">
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <main>
+    <section class="hero lined">
+      <div class="lined__box">
+        <span class="eyebrow mono-xs">{ Hookdeck + Retell }</span>
+        <h1 class="title-2xl">A lead arrives. Retell <em>calls</em>. Hookdeck reports back.</h1>
+        <p class="body-m">
+          Submit the form and Retell places an outbound call with the lead's details as dynamic variables. The call's
+          <code>call_started</code>, <code>call_ended</code> and <code>call_analyzed</code> events come back through
+          Hookdeck, which verifies <code>x-retell-signature</code>, deduplicates and retries, and update the lead below.
+        </p>
+      </div>
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+    <div id="config" class="message info body-s"></div>
+
+    <section class="card">
+      <h2 class="title-l">New lead</h2>
+      <form id="leadForm" class="form">
+        <label class="field"><span class="subtitle-xs">Name</span><input class="input" name="name" value="Alex" required></label>
+        <label class="field"><span class="subtitle-xs">Property</span><input class="input" name="property_interest" value="14 Oak Lane" required></label>
+        <label class="field"><span class="subtitle-xs">Notes from the form</span><textarea name="notes">Looking for a 3-bedroom house with a garden.</textarea></label>
+        <p class="body-xs muted">There is no phone field: the call goes to <code>TEST_LEAD_PHONE_NUMBER</code> from <code>.env</code>.</p>
+        <div class="actions">
+          <button class="button" id="callBtn" type="submit">Submit lead and call</button>
+          <button class="button button--secondary" id="demoBtn" type="button">Add a lead without calling</button>
+        </div>
+      </form>
+      <div id="message" class="message body-s"></div>
+    </section>
+
+    <section class="card">
+      <h2 class="title-l">Failure injection</h2>
+      <p class="body-s muted">
+        Make this app misbehave, then watch Hookdeck absorb it: the event stays queued and is retried until the app
+        answers 2xx. Retell itself is never kept waiting.
+      </p>
+      <div class="actions">
+        <label class="field inline"><span class="subtitle-xs">Fail the next</span><input class="input narrow" id="failNext" type="number" min="0" max="10" value="2"></label>
+        <label class="field inline"><span class="subtitle-xs">Delay each answer (s)</span><input class="input narrow" id="delay" type="number" min="0" max="60" value="0"></label>
+        <button class="button button--secondary" id="chaosBtn" type="button">Apply</button>
+        <span class="body-xs muted" id="chaosState"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2 class="title-l">Leads</h2>
+        <label class="check body-xs"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 2s</label>
+      </div>
+      <div id="leads" class="requests"></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

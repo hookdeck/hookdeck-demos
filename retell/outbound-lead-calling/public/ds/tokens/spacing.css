@@ -1,0 +1,7 @@
+/* Hookdeck spacing + radii — 4px base scale, verbatim from global.scss */
+:root{
+--base:4px;
+--s1:calc(var(--base)*1);--s1-5:calc(var(--base)*1.5);--s2:calc(var(--base)*2);--s3:calc(var(--base)*3);--s3-5:calc(var(--base)*3.5);--s4:calc(var(--base)*4);--s5:calc(var(--base)*5);--s6:calc(var(--base)*6);--s7:calc(var(--base)*7);--s8:calc(var(--base)*8);--s9:calc(var(--base)*9);--s10:calc(var(--base)*10);--s11:calc(var(--base)*11);--s12:calc(var(--base)*12);--s13:calc(var(--base)*13);--s14:calc(var(--base)*14);--s15:calc(var(--base)*15);--s16:calc(var(--base)*16);--s18:calc(var(--base)*18);
+--radius-s:4px;--radius:6px;--radius-xl:10px;
+--max-width:1128px;
+}
