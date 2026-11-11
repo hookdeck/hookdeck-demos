@@ -1,0 +1,23 @@
+{
+  "pieces": {
+    "ds": "_shared/ds",
+    "hookdeck-cli": "_shared/hookdeck/hookdeck-cli.ts",
+    "hookdeck-listen": "_shared/hookdeck/hookdeck-listen.ts"
+  },
+  "demos": {
+    "deepgram/stt-tts": {
+      "ds": "public/ds",
+      "hookdeck-cli": "scripts/hookdeck-cli.ts",
+      "hookdeck-listen": "scripts/hookdeck-listen.ts"
+    },
+    "hookdeck/binary-payloads": {
+      "ds": "public/ds"
+    },
+    "hookdeck/transformations": {
+      "ds": "public/ds"
+    },
+    "hookdeck/mcp-events-forward-proxy": {
+      "ds": "viz/ds"
+    }
+  }
+}

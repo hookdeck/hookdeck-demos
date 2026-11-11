@@ -10,10 +10,10 @@
  * npm dependency with a config file of its own (see hookdeck-cli.ts). Set
  * HOOKDECK_CLI to use a different CLI binary (e.g. a local build).
  */
-import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { HOOKDECK_CLI, login, withConfig } from './hookdeck-cli';
+import { compareVersions } from './hookdeck-cli';
+import { cli } from './hookdeck';
 
 const PROJECT_DIR = path.join(__dirname, '..');
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
@@ -47,58 +47,36 @@ const DEMOS: Demo[] = [
   },
 ];
 
-function hookdeck(args: string[]): string {
-  return execFileSync(HOOKDECK_CLI, withConfig(args), { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
-}
-
-function hookdeckJson(args: string[]): any {
-  return JSON.parse(hookdeck([...args, '--output', 'json']));
-}
-
-function isOlderOrEqual(version: string, than: string): boolean {
-  const a = version.split('.').map(Number);
-  const b = than.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (a[i] !== b[i]) return a[i] < b[i];
-  }
-  return true;
-}
-
 function checkCli(): void {
-  let output: string;
+  let version: string | undefined;
   try {
-    output = hookdeck(['version']);
+    version = cli.version();
   } catch {
-    console.error(`❌ Hookdeck CLI not found (${HOOKDECK_CLI}). Install: https://hookdeck.com/docs/cli`);
+    console.error(`❌ Hookdeck CLI not found (${cli.bin}). Install: https://hookdeck.com/docs/cli`);
     process.exit(1);
   }
 
-  const version = output.match(/(\d+\.\d+\.\d+)/)?.[1];
-  console.log(`Using Hookdeck CLI ${version || output.split('\n')[0].replace('hookdeck version', '').trim()}`);
-  if (version && isOlderOrEqual(version, LAST_CLI_WITHOUT_BINARY)) {
+  console.log(`Using Hookdeck CLI ${version || 'unknown version'}`);
+  if (version && compareVersions(version, LAST_CLI_WITHOUT_BINARY) <= 0) {
     console.warn(`⚠️  CLI ${version} can't forward binary bodies, so the TTS demo won't receive audio.`);
     console.warn('   Upgrade to 3.1.0 or later.');
   }
 
-  login();
-  const whoami = hookdeck(['whoami']).split('\n').find(line => line.startsWith('Logged in as'));
+  cli.login();
+  const whoami = cli.whoami();
   console.log(whoami || 'Not logged in: check HOOKDECK_API_KEY in .env');
   console.log('');
 }
 
 function setupDemo(demo: Demo): string {
-  const destination = hookdeckJson([
-    'gateway', 'destination', 'upsert', demo.destination,
-    '--type', 'CLI',
-    '--cli-path', demo.cliPath,
-  ]);
+  const destination = cli.upsertCliDestination({ name: demo.destination, path: demo.cliPath });
 
-  const connection = hookdeckJson([
-    'gateway', 'connection', 'upsert', demo.connection,
-    '--source-name', demo.source,
-    '--source-type', 'WEBHOOK',
-    '--destination-id', destination.id,
-  ]);
+  const connection = cli.upsertConnection({
+    name: demo.connection,
+    sourceName: demo.source,
+    sourceType: 'WEBHOOK',
+    destinationId: destination.id,
+  });
 
   // An existing connection keeps its original destination: the API doesn't
   // change it on upsert. Earlier versions of this demo shared one destination

@@ -12,8 +12,19 @@ trigger-dev/    Trigger.dev integration demos
 stripe/         Stripe integration demos
 shopify/        Shopify integration demos
 deepgram/       Deepgram integration demos
-_shared/        Shared utilities used across demos
+_shared/        Source of truth for code shared across demos
 ```
+
+## Get one demo
+
+Each demo is standalone. You do not need to clone this repo.
+
+```bash
+npx giget@latest gh:hookdeck/hookdeck-demos/<vendor>/<demo> my-demo
+cd my-demo && npm install
+```
+
+For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-demo`. Prefer git? Clone the repo and `cd <vendor>/<demo>`. Each demo's README has its setup steps.
 
 ## Demos
 
@@ -61,7 +72,20 @@ _shared/        Shared utilities used across demos
 
 | Utility | Description |
 |---------|-------------|
+| [ds](_shared/ds/) | Hookdeck design system: tokens, styles and brand assets (copied into demos, see Shared code) |
+| [hookdeck](_shared/hookdeck/) | Hookdeck CLI helper and `hookdeck listen` wrapper (TypeScript) |
 | [tmux-presenter](_shared/tmux-presenter/) | Tmux-based live demo presenter for running scripted terminal demos |
+
+## Shared code
+
+Some code is the same in several demos: the Hookdeck design system (`ds/`) and the Hookdeck CLI helpers (`scripts/hookdeck-cli.ts`, `scripts/hookdeck-listen.ts`). So a demo still works when downloaded alone, each demo holds a real copy of what it uses. The source of truth is `_shared/`.
+
+- **Edit in `_shared/` only.** Copies carry a "Generated from" header (directories also have a `GENERATED.md`), so an edit in the wrong place is easy to spot in review.
+- **`_shared/manifest.json`** lists which demo takes which piece and where it goes inside the demo. A demo not listed for a piece may own its own copy.
+- **`npm run sync-shared`** (from the repo root, Node 22) copies the pieces into the demos. `npm run sync-shared -- --check` changes nothing, prints the files that differ and exits non-zero if any do.
+- **CI** (`.github/workflows/shared.yml`) runs `--check` on every pull request and push to `main`. It also copies each demo in the manifest to an empty folder on its own, runs `npm ci` (or `npm install`) and the demo's `typecheck` script if it has one.
+
+To add a demo to a piece, add it to `demos` in the manifest and run `npm run sync-shared`.
 
 ## Contributing
 

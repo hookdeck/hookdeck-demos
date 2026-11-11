@@ -4,11 +4,7 @@
  *
  * Usage: npm run listen
  */
-import { spawn } from 'child_process';
-import { HOOKDECK_CLI, SOURCES, login, withConfig } from './hookdeck-cli';
+import { runListen } from './hookdeck-listen';
+import { cli, SOURCES } from './hookdeck';
 
-const PORT = process.env.PORT || '4000';
-
-login();
-const child = spawn(HOOKDECK_CLI, withConfig(['listen', PORT, SOURCES.join(',')]), { stdio: 'inherit' });
-child.on('exit', (code) => process.exit(code ?? 0));
+runListen(cli, SOURCES);
