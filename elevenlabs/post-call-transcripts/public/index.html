@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ElevenLabs post-call transcripts</title>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="stylesheet" href="/demo.css">
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <main>
+    <section class="hero lined">
+      <div class="lined__box">
+        <span class="eyebrow mono-xs">{ Hookdeck + ElevenLabs }</span>
+        <h1 class="title-2xl">Post-call transcripts, <em>delivered once</em></h1>
+        <p class="body-m">
+          ElevenLabs sends a webhook when a conversation with your voice agent ends. Hookdeck verifies the
+          <code>ElevenLabs-Signature</code>, drops duplicates, retries failures, and delivers each event to this
+          app, which stores the conversation.
+        </p>
+      </div>
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+    <section class="card controls">
+      <h2 class="title-l">Retry demo</h2>
+      <p class="body-s">
+        Make the next deliveries fail with a 500. Hookdeck retries them on its schedule; once this counter reaches
+        zero the app recovers and a retry succeeds. You can also replay any event from the Hookdeck dashboard.
+      </p>
+      <div class="actions">
+        <label class="field" style="max-width: 120px">
+          <span class="subtitle-xs">Failures</span>
+          <input id="failCount" class="input" type="number" min="1" value="1">
+        </label>
+        <button id="failBtn" class="button">Fail next deliveries</button>
+        <button id="clearFailBtn" class="button button--secondary">Recover now</button>
+        <button id="resetBtn" class="button button--minimal">Clear stored data</button>
+      </div>
+      <div id="state" class="message info body-s"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2 class="title-l">Conversations</h2>
+        <span id="count" class="body-xs"></span>
+      </div>
+      <div id="conversations" class="requests"></div>
+    </section>
+
+    <section class="card">
+      <h2 class="title-l">Webhook deliveries received</h2>
+      <p class="body-s">Every request this app received, newest first, including the failures and the retries.</p>
+      <div class="scroll"><table class="log body-xs">
+        <thead><tr><th>Received</th><th>Type</th><th>Conversation</th><th>Size</th><th>Result</th><th>Hookdeck event</th><th>SDK check</th></tr></thead>
+        <tbody id="deliveries"></tbody>
+      </table></div>
+    </section>
+
+    <footer class="body-xs">
+      Learn more: <a href="https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks" target="_blank" rel="noopener">ElevenLabs post-call webhooks</a> ·
+      <a href="https://hookdeck.com" target="_blank" rel="noopener">Hookdeck</a>
+    </footer>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

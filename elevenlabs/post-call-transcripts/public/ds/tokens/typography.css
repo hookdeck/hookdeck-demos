@@ -1,0 +1,23 @@
+/* Hookdeck typescale — compiled from website/src/styles/type.scss ($phone = 744px) */
+h1,h2,.badge,.title-4xl,.title-3xl,.title-2xl,.title-xl,.title-l,.title-m,.title-s,.title-xs{font-style:normal;font-weight:600;line-height:1.25}
+h3,h4,.subtitle-4xl,.subtitle-3xl,.subtitle-2xl,.subtitle-xl,.subtitle-l,.subtitle-m,.subtitle-s,.subtitle-xs{font-style:normal;font-weight:500;line-height:1.25}
+p,small,.body-4xl,.body-3xl,.body-2xl,.body-xl,.body-l,.body-m,.body-s,.body-xs{font-style:normal;font-weight:400;line-height:1.25}
+em,pre,code,.mono-4xl,.mono-3xl,.mono-2xl,.mono-xl,.mono-l,.mono-m,.mono-s,.mono-xs{font-family:var(--font-mono);font-style:normal;font-weight:400;line-height:1.25}
+.h0,.title-4xl,.subtitle-4xl,.body-4xl,.mono-4xl{font-size:var(--s15);letter-spacing:-1.8px;line-height:var(--s18)}
+h1,.title-3xl,.subtitle-3xl,.body-3xl,.mono-3xl{font-size:var(--s12);letter-spacing:-1.44px;line-height:var(--s14)}
+h2,.title-2xl,.subtitle-2xl,.body-2xl,.mono-2xl{font-size:var(--s10);letter-spacing:-1.2px;line-height:var(--s12)}
+h3,.title-xl,.subtitle-xl,.body-xl,.mono-xl{font-size:var(--s8);letter-spacing:-0.64px;line-height:var(--s10)}
+h4,.title-l,.subtitle-l,.body-l,.mono-l{font-size:var(--s6);letter-spacing:-0.24px;line-height:var(--s8)}
+.title-m,.subtitle-m,p,.body-m,.mono-m{font-size:var(--s5);letter-spacing:.08px;line-height:var(--s7)}
+.title-s,.subtitle-s,small,.body-s,pre,code,.mono-s{font-size:var(--s4);line-height:var(--s6);letter-spacing:.08px}
+.badge,.title-xs,.subtitle-xs,.body-xs,.mono-xs{font-size:var(--s3-5);line-height:var(--s5);letter-spacing:.07px}
+@media (max-width:744px){
+.h0,.title-4xl,.subtitle-4xl,.body-4xl,.mono-4xl{font-size:var(--s8);line-height:var(--s10);letter-spacing:-0.64px}
+h1,.title-3xl,.subtitle-3xl,.body-3xl,.mono-3xl{font-size:var(--s7);line-height:var(--s9);letter-spacing:-0.56px}
+h2,.title-2xl,.subtitle-2xl,.body-2xl,.mono-2xl{font-size:var(--s6);line-height:var(--s8);letter-spacing:-0.24px}
+h3,.title-xl,.subtitle-xl,.body-xl,.mono-xl{font-size:var(--s5);line-height:var(--s7);letter-spacing:0}
+h4,.title-l,.subtitle-l,.body-l,.mono-l{font-size:calc(var(--s4) + 1px);line-height:var(--s6);letter-spacing:.085px}
+.title-m,.subtitle-m,p,.body-m,.mono-m{font-size:var(--s4);line-height:var(--s6);letter-spacing:.08px}
+.title-s,.subtitle-s,small,.body-s,pre,code,.mono-s{font-size:var(--s3-5);line-height:var(--s5);letter-spacing:.07px}
+.badge,.title-xs,.subtitle-xs,.body-xs,.mono-xs{font-size:var(--s3);line-height:var(--s5);letter-spacing:.12px}
+}

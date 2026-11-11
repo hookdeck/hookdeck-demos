@@ -12,6 +12,7 @@ trigger-dev/    Trigger.dev integration demos
 stripe/         Stripe integration demos
 shopify/        Shopify integration demos
 deepgram/       Deepgram integration demos
+elevenlabs/     ElevenLabs integration demos
 _shared/        Source of truth for code shared across demos
 ```
 
@@ -67,6 +68,12 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 | Demo | Description |
 |------|-------------|
 | [stt-tts](deepgram/stt-tts/) | Deepgram callbacks through Hookdeck: speech-to-text as JSON, and text-to-speech as binary `audio/mpeg` |
+
+### ElevenLabs
+
+| Demo | Description |
+|------|-------------|
+| [post-call-transcripts](elevenlabs/post-call-transcripts/) | ElevenLabs Agents post-call webhooks through Hookdeck: signature verification, deduplication on `conversation_id`, retries and replay, and large transcript and audio payloads, stored and shown in a small app |
 
 ## Shared Utilities
 
