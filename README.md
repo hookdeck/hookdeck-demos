@@ -12,6 +12,7 @@ trigger-dev/    Trigger.dev integration demos
 stripe/         Stripe integration demos
 shopify/        Shopify integration demos
 deepgram/       Deepgram integration demos
+livekit/        LiveKit integration demos
 _shared/        Source of truth for code shared across demos
 ```
 
@@ -67,6 +68,12 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 | Demo | Description |
 |------|-------------|
 | [stt-tts](deepgram/stt-tts/) | Deepgram callbacks through Hookdeck: speech-to-text as JSON, and text-to-speech as binary `audio/mpeg` |
+
+### LiveKit
+
+| Demo | Description |
+|------|-------------|
+| [call-log](livekit/call-log/) | LiveKit room, participant and egress webhooks through Hookdeck into a call log with start, end, duration, participants and recording links |
 
 ## Shared Utilities
 
