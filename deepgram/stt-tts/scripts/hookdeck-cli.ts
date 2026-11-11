@@ -36,8 +36,15 @@ export interface SourceSpec {
   name: string;
   /** Source type, e.g. WEBHOOK, VAPI, ELEVENLABS, RETELL, LIVEKIT. */
   type: string;
-  /** Source config (e.g. { webhook_secret }). Passed through a private temp file, never on the command line. */
+  /** Non-secret source config (e.g. { trim_payload }). Passed through a private temp file, never on the command line. */
   config?: Record<string, unknown>;
+  /**
+   * Signature verification settings, i.e. the API's `config.auth` (e.g. VAPI:
+   * { webhook_secret_key, algorithm, encoding, header_key }). Set through the Hookdeck API,
+   * not the CLI: CLI 3.1.0 silently ignores auth passed with --source-config / --config-file
+   * for at least VAPI sources, leaving verification off.
+   */
+  auth?: Record<string, unknown>;
 }
 
 export interface ConnectionSpec {
@@ -132,10 +139,29 @@ export function createHookdeckCli(options: HookdeckCliOptions = {}) {
     }
   }
 
-  function upsertSource(spec: SourceSpec): any {
+  /**
+   * Creates or updates a source. `config` goes through the CLI; `auth` (if given) is then set
+   * with PUT /sources/{id} {type, config: {...config, auth}} and the call throws if the API
+   * rejects it.
+   *
+   * Confirmation is limited by the API: GET /sources redacts `auth`, so the secret and settings
+   * can't be read back. The PUT response is the only check: an error status means it wasn't
+   * applied; on success we also return the response's `config.auth_type` (undefined if the API
+   * doesn't send it for this source type). Treat a signed + unsigned probe request as the only
+   * end-to-end proof.
+   */
+  async function upsertSource(spec: SourceSpec): Promise<any> {
     const args = ['gateway', 'source', 'upsert', spec.name, '--type', spec.type];
-    if (!spec.config) return json(args);
-    return withPrivateJson(`source-${spec.name}.json`, spec.config, (file) => json([...args, '--config-file', file]));
+    const source = spec.config
+      ? withPrivateJson(`source-${spec.name}.json`, spec.config, (file) => json([...args, '--config-file', file]))
+      : json(args);
+    if (!spec.auth) return source;
+    const updated = await api('PUT', `/sources/${source.id}`, {
+      type: spec.type,
+      config: { ...spec.config, auth: spec.auth },
+    });
+    if (updated?.id !== source.id) throw new Error(`Setting auth on source ${spec.name}: unexpected API response`);
+    return { ...source, auth_applied: true, auth_type: updated.config?.auth_type as string | undefined };
   }
 
   function upsertCliDestination(spec: { name: string; path: string }): any {
