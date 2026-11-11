@@ -1,0 +1,64 @@
+name: Shared code
+
+# No `paths:` filter on purpose: the drift check must run on every PR and push,
+# including changes to the sync script, the manifest and the workflow itself.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sync-check:
+    name: Shared copies are in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run sync-shared -- --check
+
+  demos:
+    name: List demos in the manifest
+    runs-on: ubuntu-latest
+    outputs:
+      demos: ${{ steps.list.outputs.demos }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: list
+        run: echo "demos=$(node scripts/sync-shared.mjs --list-demos)" >> "$GITHUB_OUTPUT"
+
+  fresh-copy:
+    name: Fresh copy of ${{ matrix.demo }}
+    needs: demos
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        demo: ${{ fromJSON(needs.demos.outputs.demos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Proves the "download one folder" promise: the demo builds with nothing
+      # from the rest of the repo. git archive works for forks, unlike giget.
+      - name: Copy the demo folder alone
+        run: |
+          mkdir "$RUNNER_TEMP/demo"
+          depth=$(echo "${{ matrix.demo }}" | awk -F/ '{print NF}')
+          git archive HEAD "${{ matrix.demo }}" | tar -x -C "$RUNNER_TEMP/demo" --strip-components="$depth"
+      - name: Install
+        working-directory: ${{ runner.temp }}/demo
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Typecheck
+        working-directory: ${{ runner.temp }}/demo
+        run: |
+          if [ -n "$(node -p "require('./package.json').scripts?.typecheck || ''")" ]; then npm run typecheck; else echo "No typecheck script"; fi

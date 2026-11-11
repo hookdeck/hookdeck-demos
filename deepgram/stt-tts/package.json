@@ -6,7 +6,8 @@
     "start": "ts-node src/server.ts",
     "dev": "ts-node src/server.ts",
     "setup": "ts-node scripts/setup-hookdeck.ts",
-    "listen": "ts-node scripts/listen.ts"
+    "listen": "ts-node scripts/listen.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",

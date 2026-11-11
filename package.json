@@ -1,0 +1,11 @@
+{
+  "name": "hookdeck-demos",
+  "private": true,
+  "description": "Hookdeck demos. Each demo is standalone; this file only runs repo-level tooling.",
+  "scripts": {
+    "sync-shared": "node scripts/sync-shared.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
