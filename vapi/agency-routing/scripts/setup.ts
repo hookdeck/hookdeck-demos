@@ -13,7 +13,7 @@ import 'dotenv/config';
 import { execFileSync } from 'child_process';
 import * as crypto from 'crypto';
 import { CLIENTS, Client } from '../src/clients';
-import { HOOKDECK_CLI, login, withConfig } from './hookdeck-cli';
+import { HOOKDECK_CLI, login, requireApiKey, withConfig } from './hookdeck-cli';
 import { writeEnv } from './env-file';
 import { vapi, requireVapiKey } from './vapi-api';
 
@@ -30,7 +30,7 @@ function hookdeck(args: string[]): string {
 }
 const hookdeckJson = (args: string[]): any => JSON.parse(hookdeck([...args, '--output', 'json']));
 
-function setupHookdeck(client: Client, secret: string): string {
+async function setupHookdeck(client: Client, secret: string): Promise<string> {
   const destination = hookdeckJson([
     'gateway', 'destination', 'upsert', client.destination, '--type', 'CLI', '--cli-path', client.path,
   ]);
@@ -38,13 +38,6 @@ function setupHookdeck(client: Client, secret: string): string {
     'gateway', 'connection', 'upsert', client.source,
     '--source-name', client.source,
     '--source-type', 'VAPI',
-    '--source-config', JSON.stringify({
-      webhook_secret_key: secret,
-      algorithm: 'sha256',
-      encoding: 'hex',
-      header_key: 'x-signature',
-      trim_payload: TRIM_PAYLOAD,
-    }),
     '--destination-id', destination.id,
   ]);
   if (connection.destination.id !== destination.id) {
@@ -53,6 +46,20 @@ function setupHookdeck(client: Client, secret: string): string {
     console.error(`  hookdeck gateway connection delete ${connection.id} --force`);
     process.exit(1);
   }
+  // Verification is set through the API: the CLI's --source-config doesn't apply VAPI auth settings
+  // (it ignored them silently), so PUT the source config directly.
+  const response = await fetch(`https://api.hookdeck.com/2025-07-01/sources/${connection.source.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${requireApiKey()}` },
+    body: JSON.stringify({
+      type: 'VAPI',
+      config: {
+        trim_payload: TRIM_PAYLOAD,
+        auth: { webhook_secret_key: secret, algorithm: 'sha256', encoding: 'hex', header_key: 'x-signature' },
+      },
+    }),
+  });
+  if (!response.ok) throw new Error(`Setting verification on ${client.source} failed: ${response.status} ${await response.text()}`);
   console.log(`Hookdeck ${client.name}: ${connection.source.url} -> ${client.path}`);
   return connection.source.url;
 }
@@ -140,7 +147,7 @@ async function main() {
   const env: { [key: string]: string } = { VAPI_WEBHOOK_SECRET: secret };
   const urls: { [slug: string]: string } = {};
   for (const client of CLIENTS) {
-    urls[client.slug] = setupHookdeck(client, secret);
+    urls[client.slug] = await setupHookdeck(client, secret);
     env[client.env_source_url] = urls[client.slug];
   }
   console.log('');
