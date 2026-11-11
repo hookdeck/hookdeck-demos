@@ -18,6 +18,7 @@
   .call button.end { background: #c0392b; border-color: #c0392b; } .call button:disabled { opacity: .5; cursor: not-allowed; }
   .call .status { margin-left: 10px; color: #5b6570; } .call .say { margin-top: 8px; } .call .say q { font-weight: 600; }
   .call .err { color: #c0392b; margin-top: 6px; }
+  .expect { font-size: 13px; color: #3d4752; margin-bottom: 12px; }
   .empty { color: #8a949e; }
 </style>
 </head>
@@ -32,6 +33,7 @@ async function refresh() {
   const data = await (await fetch('/api/state')).json();
   document.getElementById('cols').innerHTML = data.map((c) => `
     <div class="col"><h2>${esc(c.name)}</h2><div class="path">${esc(c.path)}</div>
+    <div class="expect">${esc(c.expect_note)}</div>
     <div class="call" id="call-${esc(c.slug)}"></div>
     ${c.events.length ? c.events.map((e) => `<div class="ev ${esc(e.type)}"><b>${esc(e.type)}</b>
       <span class="t">${new Date(e.at).toLocaleTimeString()}${e.bytes ? ' · ' + (e.bytes / 1024).toFixed(1) + ' KB' : ''}${e.call_id ? ' · ' + esc(e.call_id.slice(0, 8)) : ''}</span>

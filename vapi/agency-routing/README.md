@@ -14,7 +14,7 @@ No Vapi dashboard needed.
 
 1. Open http://localhost:4000.
 2. In the Acme Dental column, click **Start call** and allow microphone access.
-3. Say: "Hi, I'm Priya Shah, what's my next appointment?" Keep chatting for about 6 seconds after the assistant says it is checking; the CRM result is spoken into the call.
+3. Say: "Hi, I'm Priya Shah, what's my next appointment?" The assistant says it is checking, then stays quiet; about 6 seconds later the CRM result is spoken into the call.
 4. Click **End call**. Repeat in the Globex Plumbing column with: "Hi, I'm Maria Lopez, when is my plumber coming?"
 
 Each column shows the events that arrived through that client's Hookdeck source. The page loads the Vapi Web SDK (`@vapi-ai/web`, pinned) from esm.sh; the server only exposes `VAPI_PUBLIC_KEY` and the assistant IDs at `/api/config`.

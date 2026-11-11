@@ -113,7 +113,7 @@ export function createApp() {
   }
 
   app.get('/api/state', (_req, res) => {
-    res.json(CLIENTS.map((c) => ({ slug: c.slug, name: c.name, path: c.path, events: logs[c.slug] })));
+    res.json(CLIENTS.map((c) => ({ slug: c.slug, name: c.name, path: c.path, expect_note: c.expect_note, events: logs[c.slug] })));
   });
   // Browser-safe config for the Start call buttons. Only the PUBLIC key; VAPI_API_KEY never leaves the server.
   app.get('/api/config', (_req, res) => {
