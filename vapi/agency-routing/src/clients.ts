@@ -25,6 +25,8 @@ export interface Client {
   first_message: string;
   system_prompt: string;
   crm: CrmRecord[];
+  /** Question to say on a test call; names the first CRM record */
+  suggested_question: string;
 }
 
 const TOOL_RULES = `When the caller asks about their account, appointment or order, ask for their name, then call lookup_customer.
@@ -44,6 +46,7 @@ export const CLIENTS: Client[] = [
     assistant_name: 'Hookdeck demo - Acme Dental',
     first_message: 'Thanks for calling Acme Dental. How can I help?',
     system_prompt: `You are the phone receptionist for Acme Dental. Keep replies short and spoken-style.\n${TOOL_RULES}`,
+    suggested_question: "what's my next appointment?",
     crm: [
       { name: 'Priya Shah', phone: '555-0101', summary: 'Next appointment is a hygiene clean on Thursday at 9:30 am with Dr Lee. No outstanding balance.' },
       { name: 'Tom Becker', phone: '555-0102', summary: 'Crown fitting is booked for Monday at 2 pm. A 40 dollar balance is outstanding.' },
@@ -60,11 +63,15 @@ export const CLIENTS: Client[] = [
     assistant_name: 'Hookdeck demo - Globex Plumbing',
     first_message: 'Globex Plumbing, how can I help you today?',
     system_prompt: `You are the phone dispatcher for Globex Plumbing. Keep replies short and spoken-style.\n${TOOL_RULES}`,
+    suggested_question: 'when is my plumber coming?',
     crm: [
       { name: 'Maria Lopez', phone: '555-0201', summary: 'Water heater repair job 4471 is scheduled for tomorrow between 8 and 10 am. Technician is Sam.' },
       { name: 'Ken Ito', phone: '555-0202', summary: 'Quote 3380 for a bathroom re-pipe was sent last week and is awaiting approval.' },
     ],
   },
 ];
+
+/** What to say on a test call, built from the client's first CRM record */
+export const suggestedLine = (c: Client): string => `Hi, I'm ${c.crm[0].name}, ${c.suggested_question}`;
 
 export const clientBySlug = (slug: string): Client | undefined => CLIENTS.find((c) => c.slug === slug);

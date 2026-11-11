@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import * as path from 'path';
-import { CLIENTS, Client, clientBySlug } from './clients';
+import { CLIENTS, Client, clientBySlug, suggestedLine } from './clients';
 import { findCustomer } from './crm';
 import { sendToCall } from './live-call-control';
 
@@ -114,6 +114,13 @@ export function createApp() {
 
   app.get('/api/state', (_req, res) => {
     res.json(CLIENTS.map((c) => ({ slug: c.slug, name: c.name, path: c.path, events: logs[c.slug] })));
+  });
+  // Browser-safe config for the Start call buttons. Only the PUBLIC key; VAPI_API_KEY never leaves the server.
+  app.get('/api/config', (_req, res) => {
+    res.json({
+      vapi_public_key: process.env.VAPI_PUBLIC_KEY || null,
+      clients: CLIENTS.map((c) => ({ slug: c.slug, name: c.name, assistant_id: process.env[c.env_assistant_id] || null, suggested_line: suggestedLine(c) })),
+    });
   });
   app.use(express.static(path.join(__dirname, '..', 'public')));
   return app;
