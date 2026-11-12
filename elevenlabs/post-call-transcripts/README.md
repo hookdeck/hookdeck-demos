@@ -109,7 +109,7 @@ This sends the same signed transcription twice. Hookdeck accepts both requests, 
 
 ## Retries and replay
 
-1. In the UI, set **Failures** to `1` and click **Fail next deliveries**.
+1. In the UI, under **Retry demo**, set **Fail the next** to `1` deliveries and click **Apply**.
 2. Make a call (or run `npm run send`).
 3. The first delivery attempt gets a `500`. In the Hookdeck dashboard the event shows a failed attempt, and Hookdeck retries it on the connection's retry rule (linear, every 10 seconds, up to 5 times). The next attempt succeeds and the conversation appears.
 4. Fail more attempts than the retry rule allows, then open the event in the Hookdeck dashboard and click **Retry** to replay it.

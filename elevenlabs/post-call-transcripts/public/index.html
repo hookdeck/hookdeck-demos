@@ -47,13 +47,11 @@
         zero the app recovers and a retry succeeds. You can also replay any event from the Hookdeck dashboard.
       </p>
       <div class="actions">
-        <label class="field" style="max-width: 120px">
-          <span class="subtitle-xs">Failures</span>
-          <input id="failCount" class="input" type="number" min="1" value="1">
-        </label>
-        <button id="failBtn" class="button">Fail next deliveries</button>
+        <label class="inline-field body-s">Fail the next
+          <input id="failCount" class="input input--count" type="number" min="1" max="10" value="1" aria-label="Number of deliveries to fail">
+          deliveries</label>
+        <button id="failBtn" class="button">Apply</button>
         <button id="clearFailBtn" class="button button--secondary">Recover now</button>
-        <button id="resetBtn" class="button button--minimal">Clear stored data</button>
       </div>
       <div id="state" class="message info body-s"></div>
     </section>
@@ -61,7 +59,10 @@
     <section class="card">
       <div class="section-head">
         <h2 class="title-l">Conversations</h2>
-        <span id="count" class="body-xs"></span>
+        <div class="section-tools">
+          <span id="count" class="body-xs"></span>
+          <button id="resetBtn" class="button button--secondary button--small">Clear stored data</button>
+        </div>
       </div>
       <div id="conversations" class="requests"></div>
     </section>
