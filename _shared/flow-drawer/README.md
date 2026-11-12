@@ -1,6 +1,6 @@
 # Flow drawer
 
-A bottom drawer, closed by default, that shows each message moving from a sending platform through Event Gateway to the demo app, live: request received, verified or rejected (401), event, delivery attempts (status, latency, retries), the app's result, and any call the app makes back to the platform while handling it.
+A bottom drawer, closed by default, that shows each message moving from a sending platform through Event Gateway to the demo app, live: request received, verified or rejected (401, or 200 for source types verified after ingestion: set `rejectedStatus`), event, delivery attempts (status, latency, retries), the app's result, and any call the app makes back to the platform while handling it.
 
 Two pieces, both copied into a demo by `npm run sync-shared` (see the manifest):
 

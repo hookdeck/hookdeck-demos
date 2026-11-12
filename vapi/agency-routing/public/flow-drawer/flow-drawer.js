@@ -95,12 +95,16 @@
         <div class="fd-sub">to the ${esc(m.source_label)} source</div></div>`;
     }
 
+    // `rejected` is set by the server; older payloads only had sender_status 401
+    const isRejected = (m) => m.rejected ?? m.sender_status === 401;
+
     function stageGateway(m) {
-      const rejected = m.sender_status === 401;
       return `<div class="fd-stage"><div class="fd-stage-label">Event Gateway</div>
-        ${rejected
-          ? `<span class="badge badge--danger">Rejected &middot; 401</span>
-             <div class="fd-sub">${esc((m.rejection_cause || 'VERIFICATION_FAILED').toLowerCase().replace(/_/g, ' '))}; the sender gets 401</div>`
+        ${isRejected(m)
+          ? `<span class="badge badge--danger">Rejected &middot; ${m.sender_status}</span>
+             <div class="fd-sub">${esc((m.rejection_cause || 'VERIFICATION_FAILED').toLowerCase().replace(/_/g, ' '))}; ${m.sender_status === 200
+               ? 'the sender still gets 200, because this source type is verified after ingestion'
+               : `the sender gets ${m.sender_status}`}</div>`
           : m.verified
             ? `<span class="badge badge--success">Verified &middot; 200</span>
                <div class="fd-sub">request <code>${esc(short(m.request_id))}</code> received</div>`
@@ -112,7 +116,7 @@
     const EVENT_BADGE = { SUCCESSFUL: 'badge--success', FAILED: 'badge--danger', SCHEDULED: 'badge--warning', QUEUED: 'badge--warning', HOLD: 'badge--warning' };
 
     function stageEvent(m) {
-      if (m.sender_status === 401) {
+      if (isRejected(m)) {
         return `<div class="fd-stage fd-skipped"><div class="fd-stage-label">Event</div><span class="badge badge--mono">none</span><div class="fd-sub">nothing is created or delivered</div></div>`;
       }
       if (!m.events.length) {
@@ -124,8 +128,8 @@
     }
 
     function stageDelivery(m) {
-      if (m.sender_status === 401 || !m.events.length) {
-        return `<div class="fd-stage fd-skipped"><div class="fd-stage-label">Delivery to ${esc(state.app_label)}</div><span class="badge badge--mono">${m.sender_status === 401 ? 'none' : 'waiting'}</span></div>`;
+      if (isRejected(m) || !m.events.length) {
+        return `<div class="fd-stage fd-skipped"><div class="fd-stage-label">Delivery to ${esc(state.app_label)}</div><span class="badge badge--mono">${isRejected(m) ? 'none' : 'waiting'}</span></div>`;
       }
       const rows = m.events.flatMap((e) => {
         const items = e.attempts.map((a) => {
@@ -147,8 +151,8 @@
 
     function stageApp(m) {
       const entries = m.events.flatMap((e) => e.app);
-      if (m.sender_status === 401 || !m.events.length) {
-        return `<div class="fd-stage fd-skipped"><div class="fd-stage-label">${esc(state.app_label)}</div><span class="badge badge--mono">${m.sender_status === 401 ? 'never called' : 'waiting'}</span></div>`;
+      if (isRejected(m) || !m.events.length) {
+        return `<div class="fd-stage fd-skipped"><div class="fd-stage-label">${esc(state.app_label)}</div><span class="badge badge--mono">${isRejected(m) ? 'never called' : 'waiting'}</span></div>`;
       }
       if (!entries.length) {
         return `<div class="fd-stage fd-pending"><div class="fd-stage-label">${esc(state.app_label)}</div><span class="badge badge--mono"><span class="fd-spinner"></span>waiting</span></div>`;
@@ -166,7 +170,7 @@
     }
 
     function message(m, is_new) {
-      return `<article class="fd-msg${m.sender_status === 401 ? ' fd-rejected' : ''}${is_new ? ' fd-new' : ''}">
+      return `<article class="fd-msg${isRejected(m) ? ' fd-rejected' : ''}${is_new ? ' fd-new' : ''}">
         <div class="fd-msg-head"><span class="fd-time">${esc(clock(m.received_at))}</span>
           <span class="badge badge--primary">${esc(m.source_label)}</span>
           <span class="fd-label">${esc(m.label)}</span>
