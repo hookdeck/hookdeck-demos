@@ -21,7 +21,7 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 ## Prerequisites
 
 - Node.js 22 or later
-- An [ElevenLabs](https://elevenlabs.io) account with an agent, and an [ElevenLabs API key](https://elevenlabs.io/app/settings/api-keys) that can read and write agents and workspace webhooks
+- An [ElevenLabs](https://elevenlabs.io) account and an [ElevenLabs API key](https://elevenlabs.io/app/settings/api-keys) that can read and write agents and workspace webhooks
 - A [Hookdeck](https://dashboard.hookdeck.com/signup) project and a project API key (Project settings -> API keys)
 
 ## Quick start
@@ -32,13 +32,13 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
    npm install
    ```
 
-2. Create `.env` and fill in `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID` and `HOOKDECK_API_KEY`:
+2. Create `.env` and fill in `ELEVENLABS_API_KEY` and `HOOKDECK_API_KEY`:
 
    ```bash
    cp .env.example .env
    ```
 
-   The agent ID is the `agent_...` value in the agent's dashboard URL. Use an agent you can change: setup attaches the webhook to it.
+   You don't need an agent of your own: setup creates a dedicated one and writes its ID to `.env`.
 
 3. Set up Hookdeck and ElevenLabs:
 
@@ -51,7 +51,8 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
    - creates a Hookdeck source `elevenlabs-post-call` (type `ELEVENLABS`), a CLI destination `local-elevenlabs` (path `/webhooks/elevenlabs`) and a connection with a deduplication rule and a retry rule
    - creates an ElevenLabs workspace webhook (HMAC authentication) that points at the Hookdeck source URL, which returns the signing secret
    - sets that secret on the Hookdeck source, so Hookdeck verifies every `ElevenLabs-Signature`
-   - attaches the webhook to your agent for the transcript, audio and `call_initiation_failure` events
+   - creates (first run) or updates the agent "Hookdeck demo: post-call transcripts": a greeting, a salon booking prompt, a 10-second turn timeout, three data collection items and a `booking_made` evaluation criterion. Your other agents are not touched
+   - attaches the webhook to that agent for the transcript, audio and `call_initiation_failure` events
    - writes `ELEVENLABS_WEBHOOK_URL`, `ELEVENLABS_WEBHOOK_SECRET` and `ELEVENLABS_WEBHOOK_ID` to `.env`
 
 4. In one terminal, forward the source to the app:
@@ -88,7 +89,7 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 - **Data flow** (the drawer at the bottom of the page): each webhook moving from ElevenLabs through Event Gateway (request, verification, event) to this app, with every delivery attempt, including failed ones and their retries, and what the app answered. It reads Event Gateway with `HOOKDECK_API_KEY` on the server.
 - **Deliveries received** (collapsed): the latest requests the app received, with body size and result, and the result of the ElevenLabs SDK's `constructEvent` on the forwarded requests.
 
-Data collection results and evaluation criteria are configured per agent (agent -> **Analysis**). Add a few, for example `caller_name` and `reason_for_call` as data collection items and "caller got what they needed" as an evaluation criterion, and they show up in the conversation detail.
+Data collection results and evaluation criteria are configured per agent (agent -> **Analysis**). Setup gives the demo agent `caller_name`, `requested_service` and `requested_time` as data collection items and `booking_made` as an evaluation criterion; they show up in the conversation detail.
 
 ## Deduplication
 
