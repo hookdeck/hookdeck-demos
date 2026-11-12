@@ -27,6 +27,19 @@
       <span class="lined__dots lined__dots--bottom_right"></span>
     </section>
 
+    <section class="card">
+      <h2 class="title-l">Talk to the agent</h2>
+      <p class="body-s">
+        Start a voice call from this page (the browser asks for your microphone), say something, then
+        <strong>End call</strong>. A few seconds later the post-call webhooks arrive below.
+      </p>
+      <p class="body-s">Suggested line: <em id="suggested"></em></p>
+      <div class="actions">
+        <button id="callBtn" class="button" disabled>Start call</button>
+        <span id="callStatus" class="body-xs"></span>
+      </div>
+    </section>
+
     <section class="card controls">
       <h2 class="title-l">Retry demo</h2>
       <p class="body-s">
@@ -68,5 +81,6 @@
     </footer>
   </main>
   <script src="/app.js"></script>
+  <script type="module" src="/call.js"></script>
 </body>
 </html>

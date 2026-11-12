@@ -19,16 +19,7 @@ import 'dotenv/config';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-  CLI_PATH,
-  CONNECTION_NAME,
-  DESTINATION_NAME,
-  RUN_DIR,
-  SOURCE_NAME,
-  hookdeck,
-  hookdeckJson,
-  login,
-} from './hookdeck-cli';
+import { CLI_PATH, CONNECTION_NAME, DESTINATION_NAME, SOURCE_NAME, cli } from './config';
 
 const PROJECT_DIR = path.join(__dirname, '..');
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
@@ -67,39 +58,33 @@ function writeEnv(values: { [key: string]: string }): void {
   fs.writeFileSync(ENV_FILE, env);
 }
 
-function setupHookdeck(): string {
-  login();
-  const whoami = hookdeck(['whoami']).split('\n').find((line) => line.startsWith('Logged in as'));
-  console.log(whoami || 'Not logged in: check HOOKDECK_API_KEY in .env');
+async function setupHookdeck(): Promise<{ source_url: string; source_id: string }> {
+  cli.login();
+  console.log(cli.whoami() || 'Not logged in: check HOOKDECK_API_KEY in .env');
 
-  const destination = hookdeckJson([
-    'gateway', 'destination', 'upsert', DESTINATION_NAME,
-    '--type', 'CLI',
-    '--cli-path', CLI_PATH,
-  ]);
-
-  const connection = hookdeckJson([
-    'gateway', 'connection', 'upsert', CONNECTION_NAME,
-    '--source-name', SOURCE_NAME,
-    '--source-type', 'ELEVENLABS',
-    '--destination-id', destination.id,
-    '--rules', JSON.stringify(RULES),
-  ]);
+  const destination = cli.upsertCliDestination({ name: DESTINATION_NAME, path: CLI_PATH });
+  const connection = cli.upsertConnection({
+    name: CONNECTION_NAME,
+    sourceName: SOURCE_NAME,
+    sourceType: 'ELEVENLABS',
+    destinationId: destination.id,
+    rules: RULES,
+  });
   console.log(`Hookdeck: ${connection.source.url} -> ${DESTINATION_NAME} (${CLI_PATH})`);
-  return connection.source.url;
+  return { source_url: connection.source.url, source_id: connection.source.id };
 }
 
-/** Sets the signing secret on the source. The secret goes in a file, not on the command line. */
-function setSourceSecret(secret: string): void {
-  fs.mkdirSync(RUN_DIR, { recursive: true });
-  const config_file = path.join(RUN_DIR, 'source-config.json');
-  fs.writeFileSync(config_file, JSON.stringify({ webhook_secret: secret }), { mode: 0o600 });
-  try {
-    hookdeckJson(['gateway', 'source', 'upsert', SOURCE_NAME, '--type', 'ELEVENLABS', '--config-file', config_file]);
-  } finally {
-    fs.rmSync(config_file, { force: true });
-  }
-  console.log('Hookdeck: signature verification enabled on the source');
+/**
+ * Sets the signing secret on the source through the API (config.auth). The header name,
+ * algorithm and timestamp format are fixed by the ELEVENLABS source type, so only the secret is needed.
+ */
+async function setSourceSecret(secret: string): Promise<void> {
+  const source = await cli.upsertSource({
+    name: SOURCE_NAME,
+    type: 'ELEVENLABS',
+    auth: { webhook_secret_key: secret },
+  });
+  console.log(`Hookdeck: signature verification enabled on the source (auth ${source.auth_applied ? 'applied' : 'not applied'})`);
 }
 
 async function setupElevenLabs(source_url: string): Promise<{ id: string; secret?: string }> {
@@ -141,9 +126,9 @@ async function setupElevenLabs(source_url: string): Promise<{ id: string; secret
 }
 
 async function main(): Promise<void> {
-  const source_url = setupHookdeck();
+  const { source_url } = await setupHookdeck();
   const { id, secret } = await setupElevenLabs(source_url);
-  if (secret) setSourceSecret(secret);
+  if (secret) await setSourceSecret(secret);
 
   writeEnv({
     ELEVENLABS_WEBHOOK_URL: source_url,
