@@ -62,9 +62,9 @@ async function probeSource(name: string, secret: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  const secret = process.env.RETELL_API_KEY;
+  const secret = process.env.RETELL_SECRET_KEY || process.env.RETELL_API_KEY;
   if (!secret || secret.startsWith('your_')) {
-    console.error('RETELL_API_KEY is not set in .env.');
+    console.error('RETELL_SECRET_KEY (or RETELL_API_KEY) is not set in .env.');
     process.exit(1);
   }
   cli.login();

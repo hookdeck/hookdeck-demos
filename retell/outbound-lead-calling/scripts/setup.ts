@@ -20,6 +20,9 @@ const ENV_FILE = path.join(PROJECT_DIR, '.env');
 const ENV_EXAMPLE_FILE = path.join(PROJECT_DIR, '.env.example');
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY || '';
+// Retell signs every webhook with the one API key that has the webhook badge. It can be a
+// different key from RETELL_API_KEY; when it's the same key, RETELL_SECRET_KEY can be left empty.
+const RETELL_SECRET_KEY = process.env.RETELL_SECRET_KEY || RETELL_API_KEY;
 const WITH_FUNCTION = process.env.ENABLE_LIVE_INJECTION === 'true';
 
 const fail = (message: string): never => {
@@ -62,7 +65,7 @@ async function setupFlow(flow: Flow): Promise<string> {
   const source = await cli.upsertSource({
     name: flow.name,
     type: 'RETELL',
-    auth: { webhook_secret_key: RETELL_API_KEY },
+    auth: { webhook_secret_key: RETELL_SECRET_KEY },
   });
   const destination = cli.upsertCliDestination({ name: `local-${flow.name}`, path: flow.cliPath });
   const connection = cli.upsertConnection({
@@ -186,7 +189,7 @@ async function main(): Promise<void> {
     fail('HOOKDECK_API_KEY is not set. Add a project API key to .env (Hookdeck dashboard: Project settings -> API keys).');
   }
   if (!RETELL_API_KEY || RETELL_API_KEY.startsWith('your_')) {
-    fail('RETELL_API_KEY is not set. Add the Retell API key that has the webhook badge to .env (Retell dashboard: API Keys).');
+    fail('RETELL_API_KEY is not set. Add a Retell API key to .env (Retell dashboard: Settings -> API Keys).');
   }
 
   cli.login();

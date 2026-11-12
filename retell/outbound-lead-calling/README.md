@@ -29,7 +29,7 @@ Everything you need is in this directory: the app, your Retell account and Hookd
 You need three things from outside this repo (a fourth, a phone number, is optional).
 
 1. **A Hookdeck project API key.** [Sign up for free](https://dashboard.hookdeck.com/signup), then open Project settings, API keys.
-2. **A Retell account, its API key and its webhook key.** In the Retell dashboard, open Settings, API Keys. Retell signs every webhook with the one key designated as the webhook key, and Hookdeck verifies with the same key. Select a key and choose **Set as Webhook Key**, and put that key in `RETELL_API_KEY`. Only one key can be the webhook key at a time. If you restrict this key's permissions, it needs Agent Edit and Call Edit (see [Manage API keys](https://docs.retellai.com/accounts/manage-api-keys)).
+2. **A Retell account, its API key and its webhook key.** In the Retell dashboard, open Settings, API Keys. Retell signs every webhook with the one key designated as the webhook key, and Hookdeck verifies with the same key. Put that key in `RETELL_SECRET_KEY` (or leave it empty if it's the key in `RETELL_API_KEY`); setup gives it to the Hookdeck source. Only one key can be the webhook key at a time. If you restrict this key's permissions, it needs Agent Edit and Call Edit (see [Manage API keys](https://docs.retellai.com/accounts/manage-api-keys)).
 3. **A Retell public key, for the browser call.** In the Retell dashboard open **API Keys**, then **Public Keys**, create a key and add `localhost` to its allowed domains ([Public keys](https://docs.retellai.com/accounts/public-keys)). Put it in `RETELL_PUBLIC_KEY`. A public key is meant for browser code: Retell only accepts it from the domains you allow, and the app hands it to the page. Your API key never reaches the browser.
 4. **Optional, for phone calls: a Retell phone number**, used as the caller ID. Add a payment method, then open Phone Numbers in the sidebar, choose **Add number**, then **Buy new number** ([Purchase phone number](https://docs.retellai.com/deploy/purchase-number)). Some newly purchased numbers have a 2-minute hold on outbound calls, during which the create-call API returns HTTP 409. Retell-managed numbers can call [15 countries](https://docs.retellai.com/deploy/international-call). The demo calls one number, your own mobile, set in `.env`; the form has no phone field, so the app can't be used to dial anyone else.
 
@@ -40,7 +40,7 @@ npm install
 cp .env.example .env
 ```
 
-Fill in `.env`: `HOOKDECK_API_KEY`, `RETELL_API_KEY` and `RETELL_PUBLIC_KEY`. For phone calls only, also `RETELL_FROM_NUMBER` (the number you bought, E.164) and `TEST_LEAD_PHONE_NUMBER` (your mobile, E.164).
+Fill in `.env`: `HOOKDECK_API_KEY`, `RETELL_API_KEY`, `RETELL_SECRET_KEY` (the webhook key, if it's a different key) and `RETELL_PUBLIC_KEY`. For phone calls only, also `RETELL_FROM_NUMBER` (the number you bought, E.164) and `TEST_LEAD_PHONE_NUMBER` (your mobile, E.164).
 
 ```bash
 npm run setup     # creates the Hookdeck connection and the Retell agent, writes the rest of .env
@@ -108,7 +108,7 @@ retell/outbound-lead-calling/
 
 ## Troubleshooting
 
-- **A request shows `VERIFICATION_FAILED` in Hookdeck.** The `RETELL_API_KEY` in `.env` isn't the key set as the webhook key. Set it in the Retell dashboard, then run `npm run setup` again.
+- **A request shows `VERIFICATION_FAILED` in Hookdeck.** The key setup gave the source (`RETELL_SECRET_KEY`, or `RETELL_API_KEY` when that's empty) isn't the key with the webhook badge in the Retell dashboard. Fix `.env`, then run `npm run setup` again.
 - **The call is created but nothing arrives.** Check that `npm run listen` is running. If it wasn't when the request arrived, Hookdeck stored the request but made no event for the CLI: start it, then replay the request.
 - **The browser call says it was rejected or the key is not allowed.** The public key's allowed domains must include `localhost` (or the host you opened the page on).
 - **HTTP 409 when creating the phone call.** A newly purchased Retell number can have a 2-minute outbound hold. Wait and retry.
