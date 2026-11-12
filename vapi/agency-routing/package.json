@@ -1,0 +1,30 @@
+{
+  "name": "hookdeck-vapi-agency-routing",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "ts-node src/server.ts",
+    "dev": "ts-node src/server.ts",
+    "setup": "ts-node scripts/setup.ts",
+    "listen": "ts-node scripts/listen.ts",
+    "teardown": "ts-node scripts/teardown.ts",
+    "probe": "ts-node scripts/probe.ts",
+    "simulate": "ts-node scripts/simulate-call.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "ts-node test/run.ts"
+  },
+  "engines": { "node": ">=22" },
+  "license": "ISC",
+  "description": "Vapi agency call routing and async tools with Hookdeck",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "hookdeck-cli": "3.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -68,17 +68,24 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 |------|-------------|
 | [stt-tts](deepgram/stt-tts/) | Deepgram callbacks through Hookdeck: speech-to-text as JSON, and text-to-speech as binary `audio/mpeg` |
 
+### Vapi
+
+| Demo | Description |
+|------|-------------|
+| [agency-routing](vapi/agency-routing/) | A voice AI agency routes each client's Vapi call events to that client's endpoint, with an async tool that returns its result into the live call |
+
 ## Shared Utilities
 
 | Utility | Description |
 |---------|-------------|
 | [ds](_shared/ds/) | Hookdeck design system: tokens, styles and brand assets (copied into demos, see Shared code) |
+| [flow-drawer](_shared/flow-drawer/) | Bottom drawer that shows each message moving through Event Gateway to the app, live (client JS and CSS, plus a server module that reads the Hookdeck API) |
 | [hookdeck](_shared/hookdeck/) | Hookdeck CLI helper and `hookdeck listen` wrapper (TypeScript) |
 | [tmux-presenter](_shared/tmux-presenter/) | Tmux-based live demo presenter for running scripted terminal demos |
 
 ## Shared code
 
-Some code is the same in several demos: the Hookdeck design system (`ds/`) and the Hookdeck CLI helpers (`scripts/hookdeck-cli.ts`, `scripts/hookdeck-listen.ts`). So a demo still works when downloaded alone, each demo holds a real copy of what it uses. The source of truth is `_shared/`.
+Some code is the same in several demos: the Hookdeck design system (`ds/`) and the Hookdeck CLI helpers (`scripts/hookdeck-cli.ts`, `scripts/hookdeck-listen.ts`) and the data-flow drawer (`flow-drawer/`). So a demo still works when downloaded alone, each demo holds a real copy of what it uses. The source of truth is `_shared/`.
 
 - **Edit in `_shared/` only.** Copies carry a "Generated from" header (directories also have a `GENERATED.md`), so an edit in the wrong place is easy to spot in review.
 - **`_shared/manifest.json`** lists which demo takes which piece and where it goes inside the demo. A demo not listed for a piece may own its own copy.

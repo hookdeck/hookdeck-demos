@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vapi agency routing with Hookdeck</title>
+<link rel="icon" href="/ds/assets/brand/favicon.svg">
+<link rel="stylesheet" href="/ds/styles.css">
+<link rel="stylesheet" href="/flow-drawer/flow-drawer.css">
+<script src="/theme.js"></script>
+<style>
+  body { background: var(--tan-bg); }
+  main { padding: var(--s10) var(--s4) var(--s16); max-width: 1320px; }
+  code { font-size: 12px; overflow-wrap: anywhere; }
+
+  /* Header: the "lined" blueprint frame */
+  .hero { margin-bottom: var(--s8); }
+  .hero .lined__box { border-right: none; border-bottom: none; display: grid; gap: var(--s3); }
+  .eyebrow { color: var(--neutral-fg-3); text-transform: uppercase; }
+  .hero h1 { margin: 0; }
+  .hero p { color: var(--neutral-fg-2); max-width: 860px; margin: 0; }
+
+  /* One card per client */
+  .clients { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: var(--s6); align-items: start; }
+  .card.client { padding: var(--s5); display: flex; flex-direction: column; justify-content: flex-start; align-self: start; gap: var(--s4); min-width: 0; }
+  .card.client > * { margin: 0; }
+  .log-list { max-height: 340px; overflow: auto; }
+  .client-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
+  .client-head h2 { margin: 0; }
+  .client-head code { color: var(--neutral-fg-3); }
+  .expect { margin: 0; color: var(--neutral-fg-2); }
+
+  .call { display: grid; gap: var(--s2); padding: var(--s3); border-radius: var(--radius); background: var(--bg-1); border: 1px solid var(--neutral-outline-2); }
+  .call-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+  .call .status { color: var(--neutral-fg-2); display: inline-flex; align-items: center; gap: var(--s1-5); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--disabled-fg); }
+  .dot.live { background: var(--color-success); }
+  .dot.busy { background: var(--color-warning); }
+  .dot.bad { background: var(--color-danger); }
+  .say { color: var(--neutral-fg-2); }
+  .say q { color: var(--neutral-fg-1); font-weight: 600; quotes: '\201C' '\201D'; }
+  .err { color: var(--color-danger); }
+  .button--danger { color: var(--color-danger); border: 1px solid var(--color-danger-outline); background: var(--color-danger-surface); box-shadow: none; }
+  .button--danger:hover { color: var(--color-danger); background: var(--color-danger-outline); }
+
+  /* The app's log for the client */
+  .log { display: grid; gap: 0; }
+  .log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--s1); }
+  .log-head span { color: var(--neutral-fg-3); text-transform: uppercase; font-family: var(--font-mono); font-size: 12px; }
+  .ev { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s1) var(--s3); padding: var(--s2) 0; border-top: 1px solid var(--neutral-outline-1); align-items: baseline; }
+  .ev .badge { font-size: 12px; }
+  .ev .meta { color: var(--neutral-fg-3); font-family: var(--font-mono); font-size: 12px; }
+  .ev .d { grid-column: 2; color: var(--neutral-fg-2); overflow-wrap: anywhere; font-size: 13px; line-height: 18px; }
+  .chaos { display: grid; gap: var(--s1-5); padding: var(--s2) var(--s3); border-radius: var(--radius); background: var(--bg-1); border: 1px solid var(--neutral-outline-2); }
+  .chaos-head { display: flex; align-items: center; gap: var(--s2); min-height: 28px; }
+  .chaos-head .chaos-apply { margin-left: auto; padding: 2px 10px; font-size: 13px; line-height: 20px; }
+  .chaos-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1-5) var(--s3); }
+  .chaos label { display: inline-flex; align-items: center; gap: var(--s1-5); }
+  .chaos .input { font-family: var(--font-sans); font-size: 13px; line-height: 18px; padding: 3px 8px; width: 52px;
+    border-radius: var(--radius); border: 1px solid var(--neutral-outline-2); background: var(--bg-0); color: var(--neutral-fg-1); box-shadow: var(--button-box-shadow); }
+  .chaos .input:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 1px; }
+  .chaos-title { color: var(--neutral-fg-3); text-transform: uppercase; font-family: var(--font-mono); font-size: 12px; }
+  .empty { color: var(--neutral-fg-3); padding: var(--s3) 0; }
+</style>
+</head>
+<body>
+<main class="max">
+  <section class="hero lined">
+    <div class="lined__box">
+      <span class="eyebrow mono-xs">{ Vapi + Hookdeck Event Gateway }</span>
+      <h1 class="title-2xl">Vapi agency routing <em>with Hookdeck</em></h1>
+      <p class="body-m">
+        A voice AI agency runs one Vapi assistant for each of its clients. Each assistant sends its call webhooks to that client's own Hookdeck source,
+        which checks Vapi's signature and delivers them to that client's endpoint in this app.
+      </p>
+      <p class="body-m">
+        Click <strong>Start call</strong> on a client's card and talk to its assistant. The card then lists every webhook that client's endpoint received
+        during the call. To see how each webhook got there, open <strong>Data flow</strong> at the bottom of the page.
+      </p>
+    </div>
+    <span class="lined__dots lined__dots--top_left"></span>
+    <span class="lined__dots lined__dots--top_right"></span>
+    <span class="lined__dots"></span>
+    <span class="lined__dots lined__dots--bottom_right"></span>
+  </section>
+
+  <div class="clients" id="cols"></div>
+  <p id="cfg-error" class="empty body-s"></p>
+</main>
+
+<script src="/flow-drawer/flow-drawer.js"></script>
+<script>
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const BADGE = { 'tool-calls': 'badge--primary', 'live-call-control': 'badge--success', misrouted: 'badge--danger', 'lookup-error': 'badge--danger', 'end-of-call-report': 'badge--mono' };
+
+// Rendered once per client; later refreshes only update the parts that change, so the Start call
+// button keeps focus and the page doesn't flicker.
+function ensureColumns(data) {
+  const cols = document.getElementById('cols');
+  if (cols.childElementCount === data.length) return;
+  cols.innerHTML = data.map((c) => `
+    <section class="card client" id="client-${esc(c.slug)}">
+      <div class="client-head"><h2 class="title-l">${esc(c.name)}</h2><code>${esc(c.path)}</code></div>
+      <p class="expect body-s">${esc(c.expect_note)}</p>
+      <div class="call" id="call-${esc(c.slug)}"></div>
+      <div class="chaos" data-slug="${esc(c.slug)}">
+        <div class="chaos-head">
+          <span class="chaos-title">Failure injection</span>
+          <span class="body-xs muted" id="chaos-state-${esc(c.slug)}"></span>
+          <button class="button button--secondary chaos-apply" type="button" data-chaos="${esc(c.slug)}">Apply</button>
+        </div>
+        <div class="chaos-row">
+          <label class="body-s">Fail next <input class="input" type="number" min="0" max="10" value="2" data-f="fail_next" aria-label="Number of deliveries to fail"> with 503</label>
+          <label class="body-s">Delay <input class="input" type="number" min="0" max="25" value="0" data-f="delay_seconds" aria-label="Seconds to delay each response"> s</label>
+          <label class="check body-s"><input type="checkbox" data-f="include_tool_calls"> Include tool calls</label>
+        </div>
+        <span class="body-xs muted">Hookdeck keeps each failed event and retries it after about 10s, then 20s and 40s. Tool calls are skipped unless ticked, because a failed one delays the spoken CRM answer.</span>
+      </div>
+      <div class="log"><div class="log-head"><span>Received by this endpoint</span></div><div class="log-list" id="log-${esc(c.slug)}"></div></div>
+    </section>`).join('');
+}
+
+async function refresh() {
+  const data = await (await fetch('/api/state')).json();
+  ensureColumns(data);
+  const chaos = await (await fetch('/api/chaos')).json();
+  for (const c of data) {
+    const st = chaos[c.slug];
+    document.getElementById('chaos-state-' + c.slug).textContent = st.fail_next || st.delay_seconds
+      ? `Active: fail next ${st.fail_next}${st.delay_seconds ? `, delay ${st.delay_seconds}s` : ''}${st.include_tool_calls ? ', incl. tool calls' : ''}` : '';
+    document.getElementById('log-' + c.slug).innerHTML = c.events.length
+      ? c.events.map((e) => `<div class="ev"><span class="badge ${BADGE[e.type] || ''}">${esc(e.type)}</span>
+          <span class="meta">${new Date(e.at).toLocaleTimeString([], { hour12: false })}${e.bytes ? ' · ' + (e.bytes / 1024).toFixed(1) + ' KB' : ''}${e.call_id ? ' · ' + esc(e.call_id.slice(0, 8)) : ''}</span>
+          ${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ''}</div>`).join('')
+      : '<div class="empty body-s">Nothing received yet.</div>';
+  }
+}
+
+// ---- Start call: Vapi Web SDK, pinned and loaded as an ESM build from esm.sh (no build step in this demo)
+let vapi = null, config = null, active = null; // active: slug of the client with a call in progress
+const status = {};  // slug -> { text, error, kind }
+const setStatus = (slug, text, error, kind) => { status[slug] = { text, error, kind }; renderCalls(); };
+
+function renderCalls() {
+  if (!config) return;
+  for (const c of config.clients) {
+    const el = document.getElementById('call-' + c.slug);
+    if (!el) continue;
+    const st = status[c.slug] || { text: 'Idle' };
+    const in_call = active === c.slug;
+    const can_start = !!(config.vapi_public_key && c.assistant_id) && !active;
+    const dot = st.error ? 'bad' : in_call ? 'live' : st.kind || '';
+    const html = `<div class="call-row">
+        <button class="button ${in_call ? 'button--danger' : ''}" data-slug="${esc(c.slug)}" ${in_call || can_start ? '' : 'disabled'}>${in_call ? 'End call' : 'Start call'}</button>
+        <span class="status body-s"><span class="dot ${dot}"></span>${esc(st.text)}</span>
+      </div>
+      <div class="say body-s">Say: <q>${esc(c.suggested_line)}</q></div>
+      ${!config.vapi_public_key ? '<div class="err body-s">VAPI_PUBLIC_KEY is not set in .env</div>' : !c.assistant_id ? '<div class="err body-s">No assistant ID; run npm run setup</div>' : ''}
+      ${st.error ? '<div class="err body-s">' + esc(st.error) + '</div>' : ''}`;
+    if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+  }
+}
+
+async function startCall(slug) {
+  const c = config.clients.find((x) => x.slug === slug);
+  active = slug; setStatus(slug, 'Connecting...', null, 'busy');
+  try {
+    if (!vapi) {
+      const { default: Vapi } = await import('https://esm.sh/@vapi-ai/web@3.0.1');
+      vapi = new Vapi(config.vapi_public_key);
+      vapi.on('call-start', () => active && setStatus(active, 'In call', null, 'live'));
+      vapi.on('call-end', () => { const s = active; active = null; if (s) setStatus(s, 'Call ended'); });
+      vapi.on('speech-start', () => active && setStatus(active, 'Assistant speaking', null, 'live'));
+      vapi.on('speech-end', () => active && setStatus(active, 'Listening', null, 'live'));
+      vapi.on('message', (m) => { if (m.type === 'transcript' && m.transcriptType === 'final' && active) console.log(m.role + ': ' + m.transcript); });
+      vapi.on('error', (e) => { const s = active; active = null; if (s) setStatus(s, 'Error', (e && (e.errorMsg || e.error?.message || e.message)) || JSON.stringify(e)); });
+    }
+    await vapi.start(c.assistant_id);
+  } catch (e) { active = null; setStatus(slug, 'Error', e.message || String(e)); }
+}
+
+document.addEventListener('click', (ev) => {
+  const apply = ev.target.closest('button[data-chaos]');
+  if (apply) {
+    const box = apply.closest('.chaos'), val = (f) => box.querySelector(`[data-f="${f}"]`);
+    fetch('/api/chaos/' + apply.dataset.chaos, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fail_next: Number(val('fail_next').value), delay_seconds: Number(val('delay_seconds').value), include_tool_calls: val('include_tool_calls').checked }) })
+      .then(refresh);
+    return;
+  }
+  const b = ev.target.closest('.call button'); if (!b || b.disabled) return;
+  if (active === b.dataset.slug) { setStatus(active, 'Ending...', null, 'busy'); vapi.stop(); } else startCall(b.dataset.slug);
+});
+
+(async () => {
+  await refresh();
+  try { config = await (await fetch('/api/config')).json(); } catch (e) { document.getElementById('cfg-error').textContent = 'Could not load /api/config'; }
+  renderCalls();
+})();
+setInterval(async () => { try { await refresh(); renderCalls(); } catch (e) {} }, 1500);
+
+FlowDrawer.mount({ endpoint: '/api/flow', title: 'Data flow' });
+</script>
+</body>
+</html>
