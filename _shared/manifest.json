@@ -18,6 +18,11 @@
     },
     "hookdeck/mcp-events-forward-proxy": {
       "ds": "viz/ds"
+    },
+    "vapi/agency-routing": {
+      "ds": "public/ds",
+      "hookdeck-cli": "scripts/hookdeck-cli.ts",
+      "hookdeck-listen": "scripts/hookdeck-listen.ts"
     }
   }
 }

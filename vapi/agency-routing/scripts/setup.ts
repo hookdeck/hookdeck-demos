@@ -10,10 +10,9 @@
  * Writes the Source URLs, IDs and the generated signing secret to .env.
  */
 import 'dotenv/config';
-import { execFileSync } from 'child_process';
 import * as crypto from 'crypto';
 import { CLIENTS, Client } from '../src/clients';
-import { HOOKDECK_CLI, login, requireApiKey, withConfig } from './hookdeck-cli';
+import { createHookdeckCli } from './hookdeck-cli';
 import { writeEnv } from './env-file';
 import { vapi, requireVapiKey } from './vapi-api';
 
@@ -25,43 +24,31 @@ const SIGNATURE_PREFIX = process.env.VAPI_SIGNATURE_PREFIX || '';
 const TRIM_PAYLOAD = process.env.TRIM_PAYLOAD === 'true';
 const MODEL = { provider: 'openai', model: process.env.VAPI_MODEL || 'gpt-4o' };
 
-function hookdeck(args: string[]): string {
-  return execFileSync(HOOKDECK_CLI, withConfig(args), { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
-}
-const hookdeckJson = (args: string[]): any => JSON.parse(hookdeck([...args, '--output', 'json']));
+const cli = createHookdeckCli();
 
 async function setupHookdeck(client: Client, secret: string): Promise<string> {
-  const destination = hookdeckJson([
-    'gateway', 'destination', 'upsert', client.destination, '--type', 'CLI', '--cli-path', client.path,
-  ]);
-  const connection = hookdeckJson([
-    'gateway', 'connection', 'upsert', client.source,
-    '--source-name', client.source,
-    '--source-type', 'VAPI',
-    '--destination-id', destination.id,
-  ]);
+  const destination = cli.upsertCliDestination({ name: client.destination, path: client.path });
+  // Verification (`auth`) is applied through the API by upsertSource: the CLI's --source-config
+  // ignores VAPI auth settings silently, which leaves verification off.
+  const source = await cli.upsertSource({
+    name: client.source,
+    type: 'VAPI',
+    config: { trim_payload: TRIM_PAYLOAD },
+    auth: { webhook_secret_key: secret, algorithm: 'sha256', encoding: 'hex', header_key: 'x-signature' },
+  });
+  const connection = cli.upsertConnection({
+    name: client.source,
+    sourceId: source.id,
+    destinationId: destination.id,
+  });
   if (connection.destination.id !== destination.id) {
     console.error(`Connection ${client.source} points at destination ${connection.destination.name}, not ${client.destination}.`);
     console.error(`A connection's destination can't be changed. Delete it and run this script again:`);
     console.error(`  hookdeck gateway connection delete ${connection.id} --force`);
     process.exit(1);
   }
-  // Verification is set through the API: the CLI's --source-config doesn't apply VAPI auth settings
-  // (it ignored them silently), so PUT the source config directly.
-  const response = await fetch(`https://api.hookdeck.com/2025-07-01/sources/${connection.source.id}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${requireApiKey()}` },
-    body: JSON.stringify({
-      type: 'VAPI',
-      config: {
-        trim_payload: TRIM_PAYLOAD,
-        auth: { webhook_secret_key: secret, algorithm: 'sha256', encoding: 'hex', header_key: 'x-signature' },
-      },
-    }),
-  });
-  if (!response.ok) throw new Error(`Setting verification on ${client.source} failed: ${response.status} ${await response.text()}`);
-  console.log(`Hookdeck ${client.name}: ${connection.source.url} -> ${client.path}`);
-  return connection.source.url;
+  console.log(`Hookdeck ${client.name}: ${source.url} -> ${client.path} (verification: ${source.auth_type ?? 'set'})`);
+  return source.url;
 }
 
 async function upsertByName(list_path: string, name_of: (x: any) => string, name: string, create: () => Promise<any>, update: (id: string) => Promise<any>): Promise<any> {
@@ -137,8 +124,8 @@ async function setupVapi(secret: string, urls: { [slug: string]: string }) {
 
 async function main() {
   requireVapiKey();
-  login();
-  console.log((hookdeck(['whoami']).split('\n').find((l) => l.startsWith('Logged in as')) || '') + '\n');
+  cli.login();
+  console.log((cli.whoami() || '') + '\n');
 
   const secret = process.env.VAPI_WEBHOOK_SECRET && !process.env.VAPI_WEBHOOK_SECRET.startsWith('your_')
     ? process.env.VAPI_WEBHOOK_SECRET
