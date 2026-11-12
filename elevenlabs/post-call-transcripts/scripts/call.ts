@@ -61,6 +61,8 @@ async function main() {
       case 'conversation_initiation_metadata':
         conversation_id = event.conversation_initiation_metadata_event?.conversation_id;
         console.log(`conversation ${conversation_id} started`);
+        // An agent with no first message waits for the user, so speak first
+        setTimeout(() => { if (next === 0) sendNext(); }, 2500);
         break;
       case 'agent_response':
         console.log(`agent: ${event.agent_response_event?.agent_response}`);
