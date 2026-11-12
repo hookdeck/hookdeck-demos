@@ -65,8 +65,12 @@ export interface SceneConfig {
 /** A small gap after each resting state, so nothing in step N+1 renders when seeking to step N exactly. */
 const STEP_GAP = 0.05
 
-declare global {
-  interface Window { __scenes?: Record<string, Scene> }
+// The registry of mounted scenes, for capture and debugging. Typed through a cast rather than a
+// global Window augmentation, so a host that loads another scene kit (the website's MCP Events
+// set declares its own `__scenes`) still type-checks.
+function sceneRegistry(): Record<string, Scene> {
+  const host = window as unknown as { __scenes?: Record<string, Scene> }
+  return (host.__scenes ??= {})
 }
 
 export function defineScene(name: string, build: (b: SceneBuild) => void, config: SceneConfig = {}): SceneFactory {
@@ -135,13 +139,13 @@ export function defineScene(name: string, build: (b: SceneBuild) => void, config
         driver?.destroy()
         tl.kill()
         stage.destroy()
-        if (window.__scenes?.[name] === scene)
-          delete window.__scenes[name]
+        const registry = sceneRegistry()
+        if (registry[name] === scene)
+          delete registry[name]
       },
     }
 
-    window.__scenes ??= {}
-    window.__scenes[name] = scene
+    sceneRegistry()[name] = scene
     return scene
   }
   factory.sceneName = name
