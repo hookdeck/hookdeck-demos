@@ -24,6 +24,9 @@ const SIGNATURE_PREFIX = process.env.VAPI_SIGNATURE_PREFIX || '';
 const TRIM_PAYLOAD = process.env.TRIM_PAYLOAD === 'true';
 const MODEL = { provider: 'openai', model: process.env.VAPI_MODEL || 'gpt-4o' };
 
+// Production would use a longer interval (and more attempts). Short here so a retry is visible in the drawer.
+const RETRY_RULES = [{ type: 'retry', strategy: 'exponential', count: 4, interval: 10000 }];
+
 const cli = createHookdeckCli();
 
 async function setupHookdeck(client: Client, secret: string): Promise<string> {
@@ -40,6 +43,9 @@ async function setupHookdeck(client: Client, secret: string): Promise<string> {
     name: client.source,
     sourceId: source.id,
     destinationId: destination.id,
+    // Event Gateway answers Vapi at once, then delivers to the app. If the app answers 5xx or is down, retry
+    // with short demo intervals: attempt #2 after about 10s, #3 after 20s, #4 after 40s, #5 after 80s.
+    rules: RETRY_RULES,
   });
   if (connection.destination.id !== destination.id) {
     console.error(`Connection ${client.source} points at destination ${connection.destination.name}, not ${client.destination}.`);

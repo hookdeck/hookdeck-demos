@@ -68,6 +68,19 @@ async function main() {
   await post('/clients/globex/webhook', tool_calls('asst-acme', 'Priya Shah'));
   assert.equal(logs.globex[0].type, 'misrouted');
 
+  // 6. failure injection: the next N deliveries get 503, per client; tool calls are spared unless asked for
+  const set_chaos = (slug: string, body: object) => fetch(`${base}/api/chaos/${slug}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const status_update = { type: 'status-update', status: 'in-progress', call: { id: 'c3', assistantId: 'asst-acme' } };
+  await set_chaos('acme', { fail_next: 2 });
+  assert.equal((await post('/clients/globex/webhook', { ...status_update, call: { id: 'c3', assistantId: 'asst-globex' } })).status, 200, 'other client unaffected');
+  assert.equal((await post('/clients/acme/webhook', tool_calls('asst-acme', 'Priya Shah'))).status, 200, 'tool calls are spared by default');
+  assert.equal((await post('/clients/acme/webhook', status_update)).status, 503);
+  assert.equal((await post('/clients/acme/webhook', status_update)).status, 503);
+  assert.equal((await post('/clients/acme/webhook', status_update)).status, 200, 'back to normal after N failures');
+  await set_chaos('acme', { fail_next: 1, include_tool_calls: true });
+  assert.equal((await post('/clients/acme/webhook', tool_calls('asst-acme', 'Priya Shah'))).status, 503);
+  await set_chaos('acme', {});
+
   console.log('All checks passed');
   app.close(); control.close();
 }

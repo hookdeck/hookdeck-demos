@@ -31,6 +31,13 @@ function recordFlow(entry: Omit<AppFlowEntry, 'id' | 'at'>): void {
   if (flow_entries.length > MAX_FLOW) flow_entries.splice(0, flow_entries.length - MAX_FLOW);
 }
 
+// Failure injection, per client: the next N deliveries get a 503 (and/or every answer is slow), so the
+// data-flow drawer can show Hookdeck retrying. Vapi is never affected: Event Gateway has already answered it.
+// tool-calls deliveries are spared unless include_tool_calls is on, because a failed one delays the CRM
+// lookup and the spoken answer with it.
+export interface ChaosState { fail_next: number; delay_seconds: number; include_tool_calls: boolean }
+export const chaos: { [slug: string]: ChaosState } = Object.fromEntries(CLIENTS.map((c) => [c.slug, { fail_next: 0, delay_seconds: 0, include_tool_calls: false }]));
+
 function log(client: Client, entry: Omit<LogEntry, 'at'>): string {
   logs[client.slug].unshift({ at: new Date().toISOString(), ...entry });
   logs[client.slug].length = Math.min(logs[client.slug].length, MAX_LOG);
@@ -99,7 +106,7 @@ export function createApp() {
 
   // One route per client: the client's own endpoint in this simulation
   for (const client of CLIENTS) {
-    app.post(client.path, (req: Request & { raw_bytes?: number }, res: Response) => {
+    app.post(client.path, async (req: Request & { raw_bytes?: number }, res: Response) => {
       const message = req.body?.message;
       const bytes = req.raw_bytes || 0;
       // Event Gateway adds the event's ID to every delivery; the drawer joins on it
@@ -117,6 +124,17 @@ export function createApp() {
       if (got && expected && got !== expected) {
         res.locals.flow_detail = log(client, { type: 'misrouted', call_id: message.call?.id, detail: `assistant ${got} is not ${client.name}'s`, bytes });
         return void res.status(200).json({ ignored: true });
+      }
+
+      // Failure injection (see `chaos`). Checked after the misroute test so only this client's messages count.
+      const inject = chaos[client.slug];
+      if (message.type !== 'tool-calls' || inject.include_tool_calls) {
+        if (inject.delay_seconds > 0) await new Promise((resolve) => setTimeout(resolve, inject.delay_seconds * 1000));
+        if (inject.fail_next > 0) {
+          inject.fail_next -= 1;
+          res.locals.flow_detail = log(client, { type: 'failed-on-purpose', call_id: message.call?.id, detail: `503 for ${message.type}, ${inject.fail_next} more to fail`, bytes });
+          return void res.status(503).json({ error: 'failing on purpose' });
+        }
       }
 
       switch (message.type) {
@@ -152,6 +170,16 @@ export function createApp() {
     },
   });
   app.get('/api/flow', (req, res) => void flow.handler(req, res));
+
+  app.get('/api/chaos', (_req, res) => void res.json(chaos));
+  app.post('/api/chaos/:slug', (req, res) => {
+    const state = chaos[req.params.slug];
+    if (!state) return void res.status(404).json({ error: 'unknown client' });
+    state.fail_next = Math.max(0, Math.min(10, Math.floor(Number(req.body.fail_next)) || 0));
+    state.delay_seconds = Math.max(0, Math.min(25, Math.floor(Number(req.body.delay_seconds)) || 0));
+    state.include_tool_calls = req.body.include_tool_calls === true;
+    res.json(state);
+  });
 
   app.get('/api/state', (_req, res) => {
     res.json(CLIENTS.map((c) => ({ slug: c.slug, name: c.name, path: c.path, expect_note: c.expect_note, events: logs[c.slug] })));
