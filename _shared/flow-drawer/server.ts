@@ -74,6 +74,12 @@ export interface FlowStateOptions {
   appEntries?: () => AppFlowEntry[];
   /** Most recent requests to show per source. Default 15. */
   limit?: number;
+  /**
+   * What Event Gateway answers the sender when verification fails. 401 (default) for source
+   * types verified at the edge, such as VAPI and HMAC; 200 for source types verified after
+   * ingestion, such as ELEVENLABS, where the request is still recorded as VERIFICATION_FAILED.
+   */
+  rejectedStatus?: 401 | 200;
 }
 
 export interface FlowAttempt {
@@ -110,7 +116,9 @@ export interface FlowMessage {
   detail: string | null;
   verified: boolean | null;
   rejection_cause: string | null;
-  /** What Event Gateway answered the sender: 401 when verification failed, otherwise 200. */
+  /** Verification failed: Event Gateway created no event. */
+  rejected: boolean;
+  /** What Event Gateway answered the sender: `rejectedStatus` when verification failed, otherwise 200. */
   sender_status: number;
   events: FlowEvent[];
 }
@@ -133,6 +141,7 @@ export function createFlowState(options: FlowStateOptions) {
   const limit = options.limit ?? 15;
   const sender_label = options.senderLabel ?? 'Sender';
   const app_label = options.appLabel ?? 'App';
+  const rejected_status = options.rejectedStatus ?? 401;
   const describe = options.describeRequest ?? (() => ({ label: 'request' }));
 
   async function api<T = any>(route: string): Promise<T> {
@@ -227,7 +236,8 @@ export function createFlowState(options: FlowStateOptions) {
             detail: info?.detail ?? null,
             verified: r.verified ?? null,
             rejection_cause: r.rejection_cause ?? null,
-            sender_status: rejected ? 401 : 200,
+            rejected,
+            sender_status: rejected ? rejected_status : 200,
             events: with_attempts
               .filter(({ e }) => e.request_id === r.id)
               .map(({ e, attempts }) => ({

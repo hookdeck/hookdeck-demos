@@ -33,6 +33,8 @@ const flow = createFlowState({
   apiKey: process.env.HOOKDECK_API_KEY || '',
   senderLabel: 'ElevenLabs',
   appLabel: 'Demo app',
+  // ELEVENLABS sources are verified after ingestion: a bad signature still gets 200
+  rejectedStatus: 200,
   sources: [{ name: SOURCE_NAME, label: 'ElevenLabs agent' }],
   appEntries: () => flow_entries,
   describeRequest: ({ body }) => ({
