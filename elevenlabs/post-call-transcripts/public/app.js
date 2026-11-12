@@ -69,19 +69,29 @@ async function refresh() {
     ? conversations.map((c, i) => renderConversation(c, openIds.has(c.conversation_id) || (i === 0 && !openIds.size))).join('')
     : '<span class="empty body-s">No conversations yet. Run <code>npm run call</code>, or start a test call from your agent in the ElevenLabs dashboard.</span>';
 
-  $('deliveries').innerHTML = deliveries
-    .map(
-      (d) => `<tr>
-        <td>${esc(new Date(d.received_at).toLocaleTimeString())}</td>
-        <td><code>${esc(d.type)}</code></td>
-        <td><code>${esc(d.conversation_id || '')}</code></td>
-        <td>${size(d.bytes)}</td>
-        <td>${resultBadge(d.result)} ${d.status_code}</td>
-        <td><code>${esc(d.hookdeck_event_id || '')}</code>${d.hookdeck_attempt ? ` attempt ${esc(d.hookdeck_attempt)}` : ''}</td>
-        <td>${esc(d.sdk_check || '')}</td>
-      </tr>`,
-    )
-    .join('');
+  const checked = deliveries.filter((d) => d.sdk_check);
+  const sdk_ok = checked.filter((d) => d.sdk_check === 'ok').length;
+  const failed = deliveries.filter((d) => d.status_code >= 400).length;
+  $('deliverySummary').textContent = deliveries.length
+    ? `${deliveries.length} received${failed ? `, ${failed} failed on purpose or by error` : ''}`
+    : 'none yet';
+  $('sdkBadge').innerHTML = checked.length
+    ? `<span class="badge ${sdk_ok === checked.length ? 'badge--success' : 'badge--danger'}" title="ElevenLabs SDK constructEvent run on each forwarded request">SDK check ${sdk_ok === checked.length ? 'ok' : `${sdk_ok}/${checked.length}`}</span>`
+    : state.sdk_check ? '<span class="badge">SDK check: no deliveries yet</span>' : '';
+  $('deliveries').innerHTML = deliveries.length
+    ? deliveries
+        .slice(0, 6)
+        .map(
+          (d) => `<div class="delivery">
+            <span>${esc(new Date(d.received_at).toLocaleTimeString([], { hour12: false }))}</span>
+            <code>${esc(d.type)}</code>
+            <span>${size(d.bytes)}</span>
+            ${resultBadge(d.result)}<span>${d.status_code}</span>
+            ${d.hookdeck_attempt ? `<span>attempt ${esc(d.hookdeck_attempt)}</span>` : ''}
+          </div>`,
+        )
+        .join('') + (deliveries.length > 6 ? `<div class="more">${deliveries.length - 6} older not shown.</div>` : '')
+    : '<span class="empty">Nothing received yet.</span>';
 
   $('state').textContent = state.fail_next
     ? `The next ${state.fail_next} delivery attempt(s) will fail with a 500.`
@@ -95,7 +105,10 @@ async function post(url, body) {
 
 $('failBtn').addEventListener('click', () => post('/api/fail-next', { count: Number($('failCount').value) || 1 }));
 $('clearFailBtn').addEventListener('click', () => post('/api/fail-next', { count: 0 }));
+$('flowBtn').addEventListener('click', () => document.getElementById('fd-handle')?.click());
 $('resetBtn').addEventListener('click', () => confirm('Delete all stored conversations and the delivery log?') && post('/api/reset'));
 
 refresh();
 setInterval(refresh, 3000);
+
+FlowDrawer.mount({ endpoint: '/api/flow', title: 'Data flow' });

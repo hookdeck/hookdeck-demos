@@ -85,7 +85,8 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 ## What you'll see
 
 - **Conversations**: each stored conversation with its summary, outcome badge (`call_successful`), transcript, data collection results and evaluation criteria. If the audio event is enabled, an audio player appears when it arrives.
-- **Webhook deliveries received**: every request the app received, including failed attempts and retries, with the body size, the Hookdeck event ID and the result of the ElevenLabs SDK's `constructEvent` on the forwarded request.
+- **Data flow** (the drawer at the bottom of the page): each webhook moving from ElevenLabs through Event Gateway (request, verification, event) to this app, with every delivery attempt, including failed ones and their retries, and what the app answered. It reads Event Gateway with `HOOKDECK_API_KEY` on the server.
+- **Deliveries received** (collapsed): the latest requests the app received, with body size and result, and the result of the ElevenLabs SDK's `constructEvent` on the forwarded requests.
 
 Data collection results and evaluation criteria are configured per agent (agent -> **Analysis**). Add a few, for example `caller_name` and `reason_for_call` as data collection items and "caller got what they needed" as an evaluation criterion, and they show up in the conversation detail.
 

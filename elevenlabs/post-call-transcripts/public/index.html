@@ -7,6 +7,7 @@
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
   <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/flow-drawer/flow-drawer.css">
   <script src="/theme.js"></script>
 </head>
 <body>
@@ -18,7 +19,8 @@
         <p class="body-m">
           ElevenLabs sends a webhook when a conversation with your voice agent ends. Hookdeck verifies the
           <code>ElevenLabs-Signature</code>, drops duplicates, retries failures, and delivers each event to this
-          app, which stores the conversation.
+          app, which stores the conversation. Open <strong>Data flow</strong> at the bottom of the page to watch each
+          webhook move through Event Gateway.
         </p>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
@@ -61,6 +63,7 @@
         <h2 class="title-l">Conversations</h2>
         <div class="section-tools">
           <span id="count" class="body-xs"></span>
+          <button id="flowBtn" class="button button--secondary button--small">Open data flow</button>
           <button id="resetBtn" class="button button--secondary button--small">Clear stored data</button>
         </div>
       </div>
@@ -68,12 +71,15 @@
     </section>
 
     <section class="card">
-      <h2 class="title-l">Webhook deliveries received</h2>
-      <p class="body-s">Every request this app received, newest first, including the failures and the retries.</p>
-      <div class="scroll"><table class="log body-xs">
-        <thead><tr><th>Received</th><th>Type</th><th>Conversation</th><th>Size</th><th>Result</th><th>Hookdeck event</th><th>SDK check</th></tr></thead>
-        <tbody id="deliveries"></tbody>
-      </table></div>
+      <details class="deliveries" id="deliveriesBox">
+        <summary>
+          <h2 class="title-l">Deliveries received</h2>
+          <span id="deliverySummary" class="body-xs"></span>
+          <span id="sdkBadge"></span>
+        </summary>
+        <p class="body-xs">The latest requests this app received, including failures and retries. The <strong>Data flow</strong> drawer at the bottom shows the full path of each one.</p>
+        <div id="deliveries" class="delivery-list body-xs"></div>
+      </details>
     </section>
 
     <footer class="body-xs">
@@ -81,6 +87,7 @@
       <a href="https://hookdeck.com" target="_blank" rel="noopener">Hookdeck</a>
     </footer>
   </main>
+  <script src="/flow-drawer/flow-drawer.js"></script>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>
 </body>

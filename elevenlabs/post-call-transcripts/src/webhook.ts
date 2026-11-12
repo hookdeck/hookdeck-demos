@@ -2,7 +2,9 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Request, Response, Router } from 'express';
 import { randomUUID } from 'crypto';
 import { DeliveryRecord, ElevenLabsEvent, HANDLED_TYPES } from './events';
+import { SOURCE_NAME } from './source-name';
 import { Store } from './store';
+import type { AppFlowEntry } from './flow-drawer-server';
 
 export interface FailureMode {
   /** Respond 500 to this many more deliveries, then recover */
@@ -31,10 +33,11 @@ async function sdkCheck(raw_body: string, signature: string | undefined, secret:
   }
 }
 
-export function webhookRouter(store: Store, failure: FailureMode): Router {
+export function webhookRouter(store: Store, failure: FailureMode, flow_entries: AppFlowEntry[] = []): Router {
   const router = Router();
 
   router.post('/webhooks/elevenlabs', async (req: Request, res: Response) => {
+    const started = Date.now();
     const raw = req.rawBody || Buffer.alloc(0);
     const body = req.body as Partial<ElevenLabsEvent> | undefined;
     const signature = req.header('elevenlabs-signature');
@@ -55,6 +58,13 @@ export function webhookRouter(store: Store, failure: FailureMode): Router {
       delivery.status_code = status_code;
       delivery.result = result;
       store.logDelivery(delivery);
+      // For the data-flow drawer: what this app answered, joined to the Hookdeck event by ID
+      flow_entries.push({
+        id: delivery.id, at: delivery.received_at, source: SOURCE_NAME, kind: 'result',
+        event_id: delivery.hookdeck_event_id, label: `returned ${status_code}`, detail: result,
+        status: status_code, ok: status_code < 400, duration_ms: Date.now() - started,
+      });
+      if (flow_entries.length > 300) flow_entries.splice(0, flow_entries.length - 300);
       console.log(`${delivery.type} ${delivery.conversation_id ?? ''} ${delivery.bytes} bytes -> ${status_code} ${result}`);
       res.status(status_code).json(payload);
     };

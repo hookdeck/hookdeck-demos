@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { createHookdeckCli } from './hookdeck-cli';
 
-export const SOURCE_NAME = 'elevenlabs-post-call';
+import { SOURCE_NAME } from '../src/source-name';
+export { SOURCE_NAME };
 export const DESTINATION_NAME = 'local-elevenlabs';
 export const CONNECTION_NAME = 'elevenlabs-post-call';
 export const CLI_PATH = '/webhooks/elevenlabs';

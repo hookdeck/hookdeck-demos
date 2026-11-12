@@ -3,6 +3,8 @@ import express, { Request, Response } from 'express';
 import * as path from 'path';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Store } from './store';
+import { createFlowState, AppFlowEntry } from './flow-drawer-server';
+import { SOURCE_NAME } from './source-name';
 import { FailureMode, webhookRouter } from './webhook';
 
 const PORT = process.env.PORT || 4000;
@@ -22,7 +24,23 @@ app.use(
   }),
 );
 
-app.use(webhookRouter(store, failure));
+const flow_entries: AppFlowEntry[] = [];
+app.use(webhookRouter(store, failure, flow_entries));
+
+// Data-flow drawer: Event Gateway's requests, events and delivery attempts for the source (read with
+// the project API key, here on the server) merged with what this app answered.
+const flow = createFlowState({
+  apiKey: process.env.HOOKDECK_API_KEY || '',
+  senderLabel: 'ElevenLabs',
+  appLabel: 'Demo app',
+  sources: [{ name: SOURCE_NAME, label: 'ElevenLabs agent' }],
+  appEntries: () => flow_entries,
+  describeRequest: ({ body }) => ({
+    label: body?.type ?? 'not an ElevenLabs event',
+    group: body?.data?.conversation_id,
+  }),
+});
+app.get('/api/flow', (req, res) => void flow.handler(req, res));
 
 // Start call button: the browser asks for a signed URL; the API key stays on the server.
 app.get('/api/config', (_req, res) =>
