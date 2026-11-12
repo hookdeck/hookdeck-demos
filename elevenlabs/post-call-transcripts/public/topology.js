@@ -94,7 +94,7 @@
 
   function mountLive() {
     count.textContent = '';
-    renderCaption('Waiting for a webhook. Start a call above, or run npm run call or npm run send in a terminal.');
+    renderCaption('Waiting for a webhook. Start a call below, or run npm run call or npm run send in a terminal.');
     const live = scene.live;
     feed = createFlowFeed({
       live,
