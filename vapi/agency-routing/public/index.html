@@ -2,49 +2,115 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Vapi agency routing</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vapi agency routing with Hookdeck</title>
+<link rel="icon" href="/ds/assets/brand/favicon.svg">
+<link rel="stylesheet" href="/ds/styles.css">
+<link rel="stylesheet" href="/flow-drawer/flow-drawer.css">
+<script src="/theme.js"></script>
 <style>
-  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 24px; background: #f6f7f9; color: #1b1f24; }
-  h1 { font-size: 20px; margin: 0 0 4px; } p.sub { margin: 0 0 20px; color: #5b6570; }
-  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
-  .col { background: #fff; border: 1px solid #dde1e6; border-radius: 8px; padding: 16px; }
-  .col h2 { font-size: 16px; margin: 0; } .path { color: #5b6570; font-family: ui-monospace, monospace; font-size: 12px; margin-bottom: 12px; }
-  .ev { border-top: 1px solid #eef0f2; padding: 8px 0; } .ev b { font-family: ui-monospace, monospace; font-size: 12px; }
-  .t { color: #8a949e; font-size: 12px; } .d { word-break: break-word; }
-  .live-call-control b { color: #0a7d4f; } .tool-calls b { color: #1d5fd1; } .misrouted b, .lookup-error b { color: #c0392b; }
-  .call { background: #f0f4ff; border: 1px solid #d3defa; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
-  .call button { font: inherit; font-weight: 600; padding: 6px 14px; border-radius: 6px; border: 1px solid #1d5fd1; background: #1d5fd1; color: #fff; cursor: pointer; }
-  .call button.end { background: #c0392b; border-color: #c0392b; } .call button:disabled { opacity: .5; cursor: not-allowed; }
-  .call .status { margin-left: 10px; color: #5b6570; } .call .say { margin-top: 8px; } .call .say q { font-weight: 600; }
-  .call .err { color: #c0392b; margin-top: 6px; }
-  .expect { font-size: 13px; color: #3d4752; margin-bottom: 12px; }
-  .empty { color: #8a949e; }
+  body { background: var(--tan-bg); }
+  main { padding: var(--s10) var(--s4) var(--s16); max-width: 1320px; }
+  code { font-size: 12px; overflow-wrap: anywhere; }
+
+  /* Header: the "lined" blueprint frame */
+  .hero { margin-bottom: var(--s8); }
+  .hero .lined__box { border-right: none; border-bottom: none; display: grid; gap: var(--s3); }
+  .eyebrow { color: var(--neutral-fg-3); text-transform: uppercase; }
+  .hero h1 { margin: 0; }
+  .hero p { color: var(--neutral-fg-2); max-width: 860px; margin: 0; }
+
+  /* One card per client */
+  .clients { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: var(--s6); align-items: start; }
+  .card.client { padding: var(--s5); display: flex; flex-direction: column; justify-content: flex-start; align-self: start; gap: var(--s4); min-width: 0; }
+  .card.client > * { margin: 0; }
+  .log-list { max-height: 340px; overflow: auto; }
+  .client-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
+  .client-head h2 { margin: 0; }
+  .client-head code { color: var(--neutral-fg-3); }
+  .expect { margin: 0; color: var(--neutral-fg-2); }
+
+  .call { display: grid; gap: var(--s2); padding: var(--s3); border-radius: var(--radius); background: var(--bg-1); border: 1px solid var(--neutral-outline-2); }
+  .call-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+  .call .status { color: var(--neutral-fg-2); display: inline-flex; align-items: center; gap: var(--s1-5); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--disabled-fg); }
+  .dot.live { background: var(--color-success); }
+  .dot.busy { background: var(--color-warning); }
+  .dot.bad { background: var(--color-danger); }
+  .say { color: var(--neutral-fg-2); }
+  .say q { color: var(--neutral-fg-1); font-weight: 600; quotes: '\201C' '\201D'; }
+  .err { color: var(--color-danger); }
+  .button--danger { color: var(--color-danger); border: 1px solid var(--color-danger-outline); background: var(--color-danger-surface); box-shadow: none; }
+  .button--danger:hover { color: var(--color-danger); background: var(--color-danger-outline); }
+
+  /* The app's log for the client */
+  .log { display: grid; gap: 0; }
+  .log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--s1); }
+  .log-head span { color: var(--neutral-fg-3); text-transform: uppercase; font-family: var(--font-mono); font-size: 12px; }
+  .ev { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s1) var(--s3); padding: var(--s2) 0; border-top: 1px solid var(--neutral-outline-1); align-items: baseline; }
+  .ev .badge { font-size: 12px; }
+  .ev .meta { color: var(--neutral-fg-3); font-family: var(--font-mono); font-size: 12px; }
+  .ev .d { grid-column: 2; color: var(--neutral-fg-2); overflow-wrap: anywhere; font-size: 13px; line-height: 18px; }
+  .empty { color: var(--neutral-fg-3); padding: var(--s3) 0; }
 </style>
 </head>
 <body>
-<h1>Vapi agency routing</h1>
-<p class="sub">Each column is one client's endpoint. Events arrive through that client's Hookdeck source.</p>
-<div class="cols" id="cols"></div>
-<div id="cfg-error" class="empty"></div>
+<main class="max">
+  <section class="hero lined">
+    <div class="lined__box">
+      <span class="eyebrow mono-xs">{ Vapi + Hookdeck Event Gateway }</span>
+      <h1 class="title-2xl">Vapi agency routing <em>with Hookdeck</em></h1>
+      <p class="body-m">
+        A voice AI agency runs one Vapi assistant per client. Each assistant's Server URL is that client's Hookdeck source, which verifies Vapi's signature and
+        delivers the call's webhooks to that client's endpoint. Start a call below; the columns are what each client's endpoint received. Open
+        <strong>Data flow</strong> at the bottom to watch each webhook move through Event Gateway.
+      </p>
+    </div>
+    <span class="lined__dots lined__dots--top_left"></span>
+    <span class="lined__dots lined__dots--top_right"></span>
+    <span class="lined__dots"></span>
+    <span class="lined__dots lined__dots--bottom_right"></span>
+  </section>
+
+  <div class="clients" id="cols"></div>
+  <p id="cfg-error" class="empty body-s"></p>
+</main>
+
+<script src="/flow-drawer/flow-drawer.js"></script>
 <script>
-const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const BADGE = { 'tool-calls': 'badge--primary', 'live-call-control': 'badge--success', misrouted: 'badge--danger', 'lookup-error': 'badge--danger', 'end-of-call-report': 'badge--mono' };
+
+// Rendered once per client; later refreshes only update the parts that change, so the Start call
+// button keeps focus and the page doesn't flicker.
+function ensureColumns(data) {
+  const cols = document.getElementById('cols');
+  if (cols.childElementCount === data.length) return;
+  cols.innerHTML = data.map((c) => `
+    <section class="card client" id="client-${esc(c.slug)}">
+      <div class="client-head"><h2 class="title-l">${esc(c.name)}</h2><code>${esc(c.path)}</code></div>
+      <p class="expect body-s">${esc(c.expect_note)}</p>
+      <div class="call" id="call-${esc(c.slug)}"></div>
+      <div class="log"><div class="log-head"><span>Received by this endpoint</span></div><div class="log-list" id="log-${esc(c.slug)}"></div></div>
+    </section>`).join('');
+}
+
 async function refresh() {
   const data = await (await fetch('/api/state')).json();
-  document.getElementById('cols').innerHTML = data.map((c) => `
-    <div class="col"><h2>${esc(c.name)}</h2><div class="path">${esc(c.path)}</div>
-    <div class="expect">${esc(c.expect_note)}</div>
-    <div class="call" id="call-${esc(c.slug)}"></div>
-    ${c.events.length ? c.events.map((e) => `<div class="ev ${esc(e.type)}"><b>${esc(e.type)}</b>
-      <span class="t">${new Date(e.at).toLocaleTimeString()}${e.bytes ? ' · ' + (e.bytes / 1024).toFixed(1) + ' KB' : ''}${e.call_id ? ' · ' + esc(e.call_id.slice(0, 8)) : ''}</span>
-      <div class="d">${esc(e.detail)}</div></div>`).join('') : '<div class="empty">No events yet.</div>'}
-    </div>`).join('');
+  ensureColumns(data);
+  for (const c of data) {
+    document.getElementById('log-' + c.slug).innerHTML = c.events.length
+      ? c.events.map((e) => `<div class="ev"><span class="badge ${BADGE[e.type] || ''}">${esc(e.type)}</span>
+          <span class="meta">${new Date(e.at).toLocaleTimeString([], { hour12: false })}${e.bytes ? ' · ' + (e.bytes / 1024).toFixed(1) + ' KB' : ''}${e.call_id ? ' · ' + esc(e.call_id.slice(0, 8)) : ''}</span>
+          ${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ''}</div>`).join('')
+      : '<div class="empty body-s">Nothing received yet.</div>';
+  }
 }
 
 // ---- Start call: Vapi Web SDK, pinned and loaded as an ESM build from esm.sh (no build step in this demo)
 let vapi = null, config = null, active = null; // active: slug of the client with a call in progress
-const status = {};  // slug -> { text, error }
-const setStatus = (slug, text, error) => { status[slug] = { text, error }; renderCalls(); };
+const status = {};  // slug -> { text, error, kind }
+const setStatus = (slug, text, error, kind) => { status[slug] = { text, error, kind }; renderCalls(); };
 
 function renderCalls() {
   if (!config) return;
@@ -54,25 +120,29 @@ function renderCalls() {
     const st = status[c.slug] || { text: 'Idle' };
     const in_call = active === c.slug;
     const can_start = !!(config.vapi_public_key && c.assistant_id) && !active;
-    el.innerHTML = `<button class="${in_call ? 'end' : ''}" data-slug="${esc(c.slug)}" ${in_call || can_start ? '' : 'disabled'}>${in_call ? 'End call' : 'Start call'}</button>
-      <span class="status">${esc(st.text)}</span>
-      <div class="say">Say: <q>${esc(c.suggested_line)}</q></div>
-      ${!config.vapi_public_key ? '<div class="err">VAPI_PUBLIC_KEY is not set in .env</div>' : !c.assistant_id ? '<div class="err">No assistant ID; run npm run setup</div>' : ''}
-      ${st.error ? '<div class="err">' + esc(st.error) + '</div>' : ''}`;
+    const dot = st.error ? 'bad' : in_call ? 'live' : st.kind || '';
+    const html = `<div class="call-row">
+        <button class="button ${in_call ? 'button--danger' : ''}" data-slug="${esc(c.slug)}" ${in_call || can_start ? '' : 'disabled'}>${in_call ? 'End call' : 'Start call'}</button>
+        <span class="status body-s"><span class="dot ${dot}"></span>${esc(st.text)}</span>
+      </div>
+      <div class="say body-s">Say: <q>${esc(c.suggested_line)}</q></div>
+      ${!config.vapi_public_key ? '<div class="err body-s">VAPI_PUBLIC_KEY is not set in .env</div>' : !c.assistant_id ? '<div class="err body-s">No assistant ID; run npm run setup</div>' : ''}
+      ${st.error ? '<div class="err body-s">' + esc(st.error) + '</div>' : ''}`;
+    if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
   }
 }
 
 async function startCall(slug) {
   const c = config.clients.find((x) => x.slug === slug);
-  active = slug; setStatus(slug, 'Connecting...');
+  active = slug; setStatus(slug, 'Connecting...', null, 'busy');
   try {
     if (!vapi) {
       const { default: Vapi } = await import('https://esm.sh/@vapi-ai/web@3.0.1');
       vapi = new Vapi(config.vapi_public_key);
-      vapi.on('call-start', () => active && setStatus(active, 'In call'));
+      vapi.on('call-start', () => active && setStatus(active, 'In call', null, 'live'));
       vapi.on('call-end', () => { const s = active; active = null; if (s) setStatus(s, 'Call ended'); });
-      vapi.on('speech-start', () => active && setStatus(active, 'Assistant speaking'));
-      vapi.on('speech-end', () => active && setStatus(active, 'Listening'));
+      vapi.on('speech-start', () => active && setStatus(active, 'Assistant speaking', null, 'live'));
+      vapi.on('speech-end', () => active && setStatus(active, 'Listening', null, 'live'));
       vapi.on('message', (m) => { if (m.type === 'transcript' && m.transcriptType === 'final' && active) console.log(m.role + ': ' + m.transcript); });
       vapi.on('error', (e) => { const s = active; active = null; if (s) setStatus(s, 'Error', (e && (e.errorMsg || e.error?.message || e.message)) || JSON.stringify(e)); });
     }
@@ -82,7 +152,7 @@ async function startCall(slug) {
 
 document.addEventListener('click', (ev) => {
   const b = ev.target.closest('.call button'); if (!b || b.disabled) return;
-  if (active === b.dataset.slug) { setStatus(active, 'Ending...'); vapi.stop(); } else startCall(b.dataset.slug);
+  if (active === b.dataset.slug) { setStatus(active, 'Ending...', null, 'busy'); vapi.stop(); } else startCall(b.dataset.slug);
 });
 
 (async () => {
@@ -90,7 +160,9 @@ document.addEventListener('click', (ev) => {
   try { config = await (await fetch('/api/config')).json(); } catch (e) { document.getElementById('cfg-error').textContent = 'Could not load /api/config'; }
   renderCalls();
 })();
-setInterval(async () => { await refresh(); renderCalls(); }, 1500);
+setInterval(async () => { try { await refresh(); renderCalls(); } catch (e) {} }, 1500);
+
+FlowDrawer.mount({ endpoint: '/api/flow', title: 'Data flow' });
 </script>
 </body>
 </html>

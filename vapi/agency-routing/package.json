@@ -8,6 +8,9 @@
     "setup": "ts-node scripts/setup.ts",
     "listen": "ts-node scripts/listen.ts",
     "teardown": "ts-node scripts/teardown.ts",
+    "probe": "ts-node scripts/probe.ts",
+    "simulate": "ts-node scripts/simulate-call.ts",
+    "typecheck": "tsc --noEmit",
     "test": "ts-node test/run.ts"
   },
   "engines": { "node": ">=22" },

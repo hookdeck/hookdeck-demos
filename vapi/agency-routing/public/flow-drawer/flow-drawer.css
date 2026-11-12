@@ -1,0 +1,83 @@
+/* Generated from `_shared/flow-drawer/client/flow-drawer.css`; edit there and run `npm run sync-shared`. */
+/*
+ * Data-flow drawer. Uses the Hookdeck design system's tokens (load ds/styles.css first), so light
+ * and dark mode (the `dark` class on <html>) follow the page. All classes start with `fd-`.
+ */
+:root { --fd-height: min(46vh, 460px); --fd-bar: 44px; }
+
+body.fd-enabled { padding-bottom: calc(var(--fd-bar) + var(--s4)); }
+body.fd-enabled.fd-open { padding-bottom: calc(var(--fd-height) + var(--fd-bar) + var(--s4)); }
+
+.fd-root { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; pointer-events: none; font-family: var(--font-sans); color: var(--neutral-fg-1); }
+.fd-root > * { pointer-events: auto; }
+
+/* The handle: always visible, opens and closes the drawer */
+.fd-handle {
+  display: flex; align-items: center; gap: var(--s3); width: 100%; height: var(--fd-bar); padding: 0 var(--s4);
+  border-radius: 0; border-top: 1px solid var(--neutral-outline-2); background: var(--bg-1); color: var(--neutral-fg-1);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, .06); font-weight: 600; text-align: left;
+}
+.fd-handle:hover { background: var(--bg-2); color: var(--neutral-fg-1); }
+.fd-handle .fd-chevron { display: inline-block; transition: transform 200ms ease; color: var(--neutral-fg-3); }
+.fd-open .fd-handle .fd-chevron { transform: rotate(180deg); }
+.fd-handle .fd-hint { color: var(--neutral-fg-3); font-weight: 400; margin-left: auto; }
+.fd-live { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 0 var(--color-success); animation: fd-pulse 2s infinite; }
+.fd-live.fd-off { background: var(--disabled-fg); animation: none; }
+@keyframes fd-pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 102, 51, .45); } 70% { box-shadow: 0 0 0 7px rgba(0, 102, 51, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 102, 51, 0); } }
+
+/* The panel slides up above the handle */
+.fd-panel {
+  position: absolute; left: 0; right: 0; bottom: var(--fd-bar); height: var(--fd-height);
+  display: flex; flex-direction: column; background: var(--bg-1); border-top: 1px solid var(--neutral-outline-2);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .12);
+  transform: translateY(calc(100% + var(--fd-bar))); visibility: hidden;
+  transition: transform 260ms ease, visibility 0s linear 260ms;
+}
+.fd-open .fd-panel { transform: none; visibility: visible; transition: transform 260ms ease; }
+@media (prefers-reduced-motion: reduce) { .fd-panel, .fd-handle .fd-chevron { transition: none; } .fd-live { animation: none; } }
+
+.fd-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); padding: var(--s2) var(--s4); border-bottom: 1px dashed var(--neutral-outline-3); }
+.fd-head .fd-title { font-weight: 600; }
+.fd-legend { display: flex; align-items: center; gap: var(--s2); color: var(--neutral-fg-3); font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; }
+.fd-filters { display: flex; flex-wrap: wrap; gap: var(--s1); margin-left: auto; align-items: center; }
+.fd-filters button { padding: 2px var(--s2); font-size: 12px; line-height: 20px; }
+.fd-filters button[aria-pressed="true"] { background-color: var(--bg-3); }
+.fd-error { color: var(--color-danger); font-size: 12px; }
+
+.fd-list { flex: 1; overflow: auto; padding: var(--s3) var(--s4) var(--s4); display: grid; gap: var(--s3); align-content: start; }
+.fd-empty { color: var(--neutral-fg-3); padding: var(--s6) var(--s2); text-align: center; }
+
+/* One message */
+.fd-msg { border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); background: var(--bg-0); padding: var(--s2) var(--s3) var(--s3); display: grid; gap: var(--s2); min-width: 0; }
+.fd-msg.fd-new { animation: fd-flash 1.6s ease-out; }
+@keyframes fd-flash { from { background: var(--blue-badge-bg); } to { background: var(--bg-0); } }
+.fd-msg.fd-rejected { border-color: var(--color-danger-outline); }
+.fd-msg-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
+.fd-msg-head .fd-time { font-family: var(--font-mono); font-size: 12px; color: var(--neutral-fg-3); }
+.fd-msg-head .fd-label { font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.fd-msg-head .fd-group { font-family: var(--font-mono); font-size: 12px; color: var(--neutral-fg-3); margin-left: auto; }
+
+.fd-flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s3); align-items: stretch; }
+.fd-stage { position: relative; min-width: 0; display: grid; align-content: start; gap: var(--s1); padding: var(--s2); border-radius: var(--radius-s, 6px); background: var(--bg-1); border: 1px solid var(--neutral-outline-1); }
+.fd-stage + .fd-stage::before { content: '\2192'; position: absolute; left: calc(-1 * var(--s3) - 1px); top: 10px; width: var(--s3); text-align: center; color: var(--neutral-fg-3); font-size: 13px; line-height: 16px; }
+.fd-stage.fd-skipped { border-style: dashed; background: transparent; }
+.fd-stage-label { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--neutral-fg-3); letter-spacing: .04em; }
+.fd-stage .badge { font-size: 12px; line-height: 18px; justify-self: start; white-space: nowrap; }
+.fd-sub { font-size: 12px; line-height: 16px; color: var(--neutral-fg-2); overflow-wrap: anywhere; }
+.fd-sub code, .fd-stage code { font-size: 11.5px; color: var(--neutral-fg-2); }
+.fd-attempt { display: grid; gap: 2px; }
+.fd-attempt + .fd-attempt { padding-top: var(--s1); border-top: 1px dashed var(--neutral-outline-2); }
+.fd-pending .badge { color: var(--color-warning); }
+.fd-spinner { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); animation: fd-blink 1s infinite; }
+@keyframes fd-blink { 50% { opacity: .25; } }
+
+/* The app's own outbound calls while handling this message */
+.fd-outbound { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding-left: var(--s2); border-left: 2px solid var(--primary-badge-outline); }
+.fd-outbound .badge { font-size: 12px; line-height: 18px; }
+.fd-outbound .fd-stage-label { color: var(--primary-badge-fg); }
+
+@media (max-width: 900px) {
+  .fd-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fd-stage + .fd-stage::before { display: none; }
+}
+@media (max-width: 560px) { .fd-flow { grid-template-columns: minmax(0, 1fr); } .fd-handle .fd-hint { display: none; } }

@@ -2,7 +2,9 @@
   "pieces": {
     "ds": "_shared/ds",
     "hookdeck-cli": "_shared/hookdeck/hookdeck-cli.ts",
-    "hookdeck-listen": "_shared/hookdeck/hookdeck-listen.ts"
+    "hookdeck-listen": "_shared/hookdeck/hookdeck-listen.ts",
+    "flow-drawer": "_shared/flow-drawer/client",
+    "flow-drawer-server": "_shared/flow-drawer/server.ts"
   },
   "demos": {
     "deepgram/stt-tts": {
@@ -22,7 +24,9 @@
     "vapi/agency-routing": {
       "ds": "public/ds",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
-      "hookdeck-listen": "scripts/hookdeck-listen.ts"
+      "hookdeck-listen": "scripts/hookdeck-listen.ts",
+      "flow-drawer": "public/flow-drawer",
+      "flow-drawer-server": "src/flow-drawer-server.ts"
     }
   }
 }

@@ -7,6 +7,7 @@ A voice AI agency routes each client's Vapi call events to that client's endpoin
 1. Copy `.env.example` to `.env` and set `VAPI_API_KEY` (private), `VAPI_PUBLIC_KEY` (public, for the Start call buttons) and `HOOKDECK_API_KEY`. Both Vapi keys are at https://dashboard.vapi.ai/org/api-keys.
 2. `npm install`, then `npm run setup` (creates the Hookdeck sources and connections and the Vapi credential, tool and assistants).
 3. `npm run listen` in one terminal and `npm start` in another.
+4. Open http://localhost:4000 and use **Data flow** at the bottom (or `/?flow=open`) to watch each webhook move through Event Gateway. `npm run simulate` replays a signed sample call without a microphone; `npm run probe` checks that a correctly signed request is accepted and a badly signed one gets 401.
 
 ## Make a test call
 
