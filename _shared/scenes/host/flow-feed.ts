@@ -18,6 +18,10 @@ export interface FeedAttempt {
   status: string
   response_status: number | null
   error_code: string | null
+  /** When the attempt was made. */
+  at?: string
+  /** How long the app took to answer, in ms. */
+  response_latency?: number | null
 }
 
 export interface FeedEvent {
@@ -25,6 +29,8 @@ export interface FeedEvent {
   status: string
   next_attempt_at: string | null
   attempts: FeedAttempt[]
+  /** What the app recorded for each delivery it answered. */
+  app?: Array<{ label: string, status?: number | null, detail?: string }>
 }
 
 export interface FeedMessage {
@@ -44,6 +50,10 @@ export interface FeedMessage {
 
 export interface FeedState {
   now: string
+  /** Hookdeck project (team) id, for dashboard links. */
+  team_id?: string
+  sender_label?: string
+  app_label?: string
   messages: FeedMessage[]
 }
 
@@ -89,6 +99,8 @@ export interface FlowFeedOptions {
   bigBytes?: number
   /** Called with each message the feed starts to animate, and when the feed's state changes (for a host that shows "waiting for a webhook"). */
   onActivity?: (m: FeedMessage) => void
+  /** Called with each flow state the feed polls, for a host that shows more than the feed animates. */
+  onFlow?: (state: FeedState) => void
   /** Polls `fetchImpl` instead of `fetch`, for tests. */
   fetchImpl?: typeof fetch
 }
@@ -321,6 +333,7 @@ export function createFlowFeed(options: FlowFeedOptions) {
       if (response.ok) {
         const state = (await response.json()) as FeedState
         // Oldest first, so journeys queue in the order the webhooks arrived.
+        options.onFlow?.(state)
         messages = [...state.messages].sort((a, b) => a.received_at.localeCompare(b.received_at))
         for (const m of messages)
           track(m, !first)

@@ -1,14 +1,13 @@
 /**
- * Renders each scripted scene to GIF and MP4 by seeking its GSAP timeline frame by frame, so
+ * Renders each scripted scene to MP4 (H.264) by seeking its GSAP timeline frame by frame, so
  * every frame is exact whatever the machine's speed.
  *
- *   npm run capture                          every scene, landscape, light theme: GIF + MP4
+ *   npm run capture                          every scene, landscape, light theme, MP4
  *   npm run capture -- delivery app-down     some scenes
  *   ASPECT=square npm run capture            1080x1080 for social (phone layout + large caption)
- *   THEME=dark FORMAT=mp4 OUT=/tmp/clips npm run capture -- delivery
+ *   THEME=dark OUT=/tmp/clips npm run capture -- delivery
  *
- * Options (flags or environment): --aspect|ASPECT wide|square, --theme|THEME light|dark,
- * --format|FORMAT gif|mp4|both, --out|OUT directory (default scenes/captures), --fps|FPS
+ * Options (flags or environment): --aspect|ASPECT wide|square, --theme|THEME light|dark, --out|OUT directory (default scenes/captures), --fps|FPS
  * (default 30), --hold|HOLD seconds each resting state is held (default 1.8), --stills|STILLS
  * also write a PNG of each resting state; --stills-only|STILLS_ONLY writes the PNGs and no video.
  *
@@ -28,7 +27,6 @@ const { values, positionals } = parseArgs({
   options: {
     aspect: { type: 'string' },
     theme: { type: 'string' },
-    format: { type: 'string' },
     out: { type: 'string' },
     fps: { type: 'string' },
     hold: { type: 'string' },
@@ -40,7 +38,6 @@ const { values, positionals } = parseArgs({
 const ROOT = process.cwd()
 const aspect = values.aspect ?? process.env.ASPECT ?? 'wide'
 const theme = values.theme ?? process.env.THEME ?? 'light'
-const format = values.format ?? process.env.FORMAT ?? 'both'
 const fps = Number(values.fps ?? process.env.FPS ?? 30)
 const hold = Number(values.hold ?? process.env.HOLD ?? 1.8)
 const stills_only = values['stills-only'] ?? Boolean(process.env.STILLS_ONLY)
@@ -147,15 +144,6 @@ async function capture(browser: Browser, base: string, name: string) {
   })
   console.log(`wrote ${mp4} (${frames} frames, ${(frames / fps).toFixed(1)} s)`)
   await page.close()
-
-  if (format === 'mp4')
-    return
-  const gif = path.join(out, `${name}${suffix}.gif`)
-  const width = aspect === 'square' ? 720 : 960
-  await ffmpeg(['-i', mp4, '-vf', `fps=15,scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`, '-loop', '0', gif])
-  console.log(`wrote ${gif} (${(fs.statSync(gif).size / 1024 / 1024).toFixed(1)} MB)`)
-  if (format === 'gif')
-    fs.rmSync(mp4)
 }
 
 async function main() {
