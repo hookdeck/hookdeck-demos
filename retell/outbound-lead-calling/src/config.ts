@@ -2,6 +2,8 @@ import 'dotenv/config';
 
 export const PORT = Number(process.env.PORT || 4000);
 export const RETELL_API_KEY = process.env.RETELL_API_KEY || '';
+/** Browser credential for web calls. Meant to be public: Retell checks it against the domains you allow. */
+export const RETELL_PUBLIC_KEY = process.env.RETELL_PUBLIC_KEY || '';
 export const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER || '';
 export const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID || '';
 export const TEST_LEAD_PHONE_NUMBER = process.env.TEST_LEAD_PHONE_NUMBER || '';
@@ -22,10 +24,10 @@ export function missingCallConfig(): string[] {
   return missing;
 }
 
-/** What the in-page "Start call" button needs (no phone numbers involved). */
+/** What the browser web call needs: a public key and the agent. No API key, no phone numbers. */
 export function missingWebCallConfig(): string[] {
   const missing: string[] = [];
-  if (!RETELL_API_KEY || RETELL_API_KEY.startsWith('your_')) missing.push('RETELL_API_KEY');
+  if (!RETELL_PUBLIC_KEY || RETELL_PUBLIC_KEY.startsWith('your_')) missing.push('RETELL_PUBLIC_KEY');
   if (!RETELL_AGENT_ID) missing.push('RETELL_AGENT_ID (run npm run setup)');
   return missing;
 }

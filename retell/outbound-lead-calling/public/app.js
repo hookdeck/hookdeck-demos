@@ -16,7 +16,7 @@ async function loadConfig() {
   const config = await (await fetch('/api/config')).json();
   const box = $('config');
   box.textContent = config.missing.length
-    ? `Not ready to place calls yet. Missing: ${config.missing.join(', ')}. See README.md.`
+    ? `Phone calls are not set up. Missing: ${config.missing.join(', ')}. The browser call does not need these. See README.md.`
     : '';
   $('callBtn').disabled = config.missing.length > 0;
   $('chaosState').textContent = config.chaos.fail_next || config.chaos.delay_seconds

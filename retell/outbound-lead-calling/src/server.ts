@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { ENABLE_LIVE_INJECTION, PORT, TEST_LEAD_PHONE_NUMBER, missingCallConfig, missingWebCallConfig } from './config';
+import { ENABLE_LIVE_INJECTION, PORT, RETELL_AGENT_ID, RETELL_PUBLIC_KEY, TEST_LEAD_PHONE_NUMBER, missingCallConfig, missingWebCallConfig } from './config';
 import { applyRetellEvent, RetellWebhook } from './events';
-import { createPhoneCall, createWebCall, updateLiveCall } from './retell';
-import { addLead, addTimeline, findLeadByCall, listLeads, updateLead } from './store';
+import { createPhoneCall, updateLiveCall } from './retell';
+import { addLead, addTimeline, findLeadByCall, getLead, listLeads, updateLead } from './store';
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -17,7 +17,14 @@ const mask = (phone: string) => `${phone.slice(0, 2)}${'•'.repeat(Math.max(pho
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 app.get('/api/config', (_req, res) => {
-  res.json({ missing: missingCallConfig(), web_missing: missingWebCallConfig(), live_injection: ENABLE_LIVE_INJECTION, chaos });
+  const web_missing = missingWebCallConfig();
+  // The public key is meant for the browser; the API key never leaves the server
+  res.json({
+    missing: missingCallConfig(),
+    web_missing,
+    retell_public_key: web_missing.length ? undefined : RETELL_PUBLIC_KEY,
+    agent_id: RETELL_AGENT_ID || undefined,
+    live_injection: ENABLE_LIVE_INJECTION, chaos });
 });
 
 app.get('/api/leads', (_req, res) => {
@@ -66,9 +73,9 @@ app.post('/api/leads', async (req: Request, res: Response) => {
   }
 });
 
-// Start call: a lead plus a browser (web) call to the same agent. The API key stays on the server;
-// the page gets a short-lived access token for retell-client-js-sdk.
-app.post('/api/web-call', async (req: Request, res: Response) => {
+// Browser web call, step 1: the lead arrives. The page then calls Retell itself with the public key
+// (RetellClient.createWebCall) and passes back what it gets in step 2. No Retell API key is involved.
+app.post('/api/web-leads', (req: Request, res: Response) => {
   const missing = missingWebCallConfig();
   if (missing.length) return res.status(400).json({ error: `Missing configuration: ${missing.join(', ')}` });
   const name = String(req.body.name || '').trim();
@@ -84,15 +91,30 @@ app.post('/api/web-call', async (req: Request, res: Response) => {
     created_at: new Date().toISOString(),
     timeline: [],
   });
-  try {
-    const call = await createWebCall({ lead_id, lead_name: name, property_interest, lead_notes: notes });
-    updateLead(lead_id, { call_id: call.call_id, status: 'calling' });
-    addTimeline(lead_id, { event: 'web call created (API)' });
-    res.status(201).json({ id: lead_id, ...call });
-  } catch (error: any) {
-    updateLead(lead_id, { status: 'failed', error: error.message });
-    res.status(502).json({ error: error.message });
+  // What the page sends to Retell: `metadata.lead_id` comes back on every webhook for the call
+  res.status(201).json({
+    id: lead_id,
+    agent_id: RETELL_AGENT_ID,
+    retell_llm_dynamic_variables: { lead_name: name, property_interest, lead_notes: notes || 'none' },
+    metadata: { lead_id },
+  });
+});
+
+// Step 2: the page reports the call it created (or why it couldn't)
+app.post('/api/web-leads/:id/call', (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!getLead(id)) return res.status(404).json({ error: 'Unknown lead' });
+  if (req.body.error) {
+    updateLead(id, { status: 'failed', error: String(req.body.error).slice(0, 300) });
+    return res.json({ ok: true });
   }
+  const call_id = String(req.body.call_id || '');
+  if (!call_id) return res.status(400).json({ error: 'call_id is required' });
+  // A fast webhook can win the race; never move the lead backwards
+  const lead = getLead(id)!;
+  updateLead(id, { call_id, ...(lead.status === 'new' ? { status: 'calling' as const } : {}) });
+  addTimeline(id, { event: 'web call created (browser, public key)' });
+  res.json({ ok: true });
 });
 
 // A lead without a call, for `npm run simulate` and trying the UI before real keys are in place

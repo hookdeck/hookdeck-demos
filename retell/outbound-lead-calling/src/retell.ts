@@ -59,29 +59,3 @@ export async function updateLiveCall(call_id: string, additional_context: string
     call_control: { additional_context, trigger_response: true },
   });
 }
-
-export interface WebCallDetails {
-  call_id: string;
-  access_token: string;
-  transport?: string;
-  ice_servers?: unknown[];
-  expires_at?: number;
-}
-
-/**
- * Creates a browser call. Same agent, same webhooks as the phone call: the lead id rides in
- * `metadata` and comes back on every webhook. The API key stays here; the browser only gets the
- * short-lived access token.
- * https://docs.retellai.com/api-references/create-web-call
- */
-export async function createWebCall(input: Omit<LeadCallInput, 'to_number'>): Promise<WebCallDetails> {
-  return retell('POST', '/v3/create-web-call', {
-    agent_id: RETELL_AGENT_ID,
-    retell_llm_dynamic_variables: {
-      lead_name: input.lead_name,
-      property_interest: input.property_interest,
-      lead_notes: input.lead_notes || 'none',
-    },
-    metadata: { lead_id: input.lead_id },
-  });
-}
