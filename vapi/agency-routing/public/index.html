@@ -51,10 +51,12 @@
   .ev .badge { font-size: 12px; }
   .ev .meta { color: var(--neutral-fg-3); font-family: var(--font-mono); font-size: 12px; }
   .ev .d { grid-column: 2; color: var(--neutral-fg-2); overflow-wrap: anywhere; font-size: 13px; line-height: 18px; }
-  .chaos { display: grid; gap: var(--s2); padding: var(--s3); border-radius: var(--radius); background: var(--bg-1); border: 1px solid var(--neutral-outline-2); }
-  .chaos-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
-  .chaos label { display: inline-flex; align-items: center; gap: var(--s2); }
-  .chaos .input { font-family: var(--font-sans); font-size: 14px; line-height: 20px; padding: 5px 10px; width: 64px;
+  .chaos { display: grid; gap: var(--s1-5); padding: var(--s2) var(--s3); border-radius: var(--radius); background: var(--bg-1); border: 1px solid var(--neutral-outline-2); }
+  .chaos-head { display: flex; align-items: center; gap: var(--s2); min-height: 28px; }
+  .chaos-head .chaos-apply { margin-left: auto; padding: 2px 10px; font-size: 13px; line-height: 20px; }
+  .chaos-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1-5) var(--s3); }
+  .chaos label { display: inline-flex; align-items: center; gap: var(--s1-5); }
+  .chaos .input { font-family: var(--font-sans); font-size: 13px; line-height: 18px; padding: 3px 8px; width: 52px;
     border-radius: var(--radius); border: 1px solid var(--neutral-outline-2); background: var(--bg-0); color: var(--neutral-fg-1); box-shadow: var(--button-box-shadow); }
   .chaos .input:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 1px; }
   .chaos-title { color: var(--neutral-fg-3); text-transform: uppercase; font-family: var(--font-mono); font-size: 12px; }
@@ -102,15 +104,17 @@ function ensureColumns(data) {
       <p class="expect body-s">${esc(c.expect_note)}</p>
       <div class="call" id="call-${esc(c.slug)}"></div>
       <div class="chaos" data-slug="${esc(c.slug)}">
-        <span class="chaos-title">Failure injection</span>
-        <div class="chaos-row">
-          <label class="body-s">Fail next <input class="input" type="number" min="0" max="10" value="2" data-f="fail_next"> deliveries with 503</label>
-          <label class="body-s">Slow <input class="input" type="number" min="0" max="25" value="0" data-f="delay_seconds"> s</label>
-          <label class="check body-s"><input type="checkbox" data-f="include_tool_calls"> include tool calls</label>
-          <button class="button button--secondary" type="button" data-chaos="${esc(c.slug)}">Apply</button>
+        <div class="chaos-head">
+          <span class="chaos-title">Failure injection</span>
           <span class="body-xs muted" id="chaos-state-${esc(c.slug)}"></span>
+          <button class="button button--secondary chaos-apply" type="button" data-chaos="${esc(c.slug)}">Apply</button>
         </div>
-        <span class="body-xs muted">Hookdeck keeps the event and retries about 10s later (then 20s, 40s). Vapi has already been answered. Tool calls are skipped by default: a failed one delays the spoken CRM answer.</span>
+        <div class="chaos-row">
+          <label class="body-s">Fail next <input class="input" type="number" min="0" max="10" value="2" data-f="fail_next" aria-label="Number of deliveries to fail"> with 503</label>
+          <label class="body-s">Delay <input class="input" type="number" min="0" max="25" value="0" data-f="delay_seconds" aria-label="Seconds to delay each response"> s</label>
+          <label class="check body-s"><input type="checkbox" data-f="include_tool_calls"> Include tool calls</label>
+        </div>
+        <span class="body-xs muted">Hookdeck keeps each failed event and retries it after about 10s, then 20s and 40s. Tool calls are skipped unless ticked, because a failed one delays the spoken CRM answer.</span>
       </div>
       <div class="log"><div class="log-head"><span>Received by this endpoint</span></div><div class="log-list" id="log-${esc(c.slug)}"></div></div>
     </section>`).join('');
@@ -123,7 +127,7 @@ async function refresh() {
   for (const c of data) {
     const st = chaos[c.slug];
     document.getElementById('chaos-state-' + c.slug).textContent = st.fail_next || st.delay_seconds
-      ? `Active: fail next ${st.fail_next}${st.delay_seconds ? `, slow ${st.delay_seconds}s` : ''}${st.include_tool_calls ? ', incl. tool calls' : ''}` : '';
+      ? `Active: fail next ${st.fail_next}${st.delay_seconds ? `, delay ${st.delay_seconds}s` : ''}${st.include_tool_calls ? ', incl. tool calls' : ''}` : '';
     document.getElementById('log-' + c.slug).innerHTML = c.events.length
       ? c.events.map((e) => `<div class="ev"><span class="badge ${BADGE[e.type] || ''}">${esc(e.type)}</span>
           <span class="meta">${new Date(e.at).toLocaleTimeString([], { hour12: false })}${e.bytes ? ' · ' + (e.bytes / 1024).toFixed(1) + ' KB' : ''}${e.call_id ? ' · ' + esc(e.call_id.slice(0, 8)) : ''}</span>
