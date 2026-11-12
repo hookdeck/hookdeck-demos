@@ -17,7 +17,7 @@ Everything you need is in this directory: the app, your Retell account and Hookd
 
 | Hookdeck feature | Where to see it |
 |---|---|
-| **Signature verification.** The `RETELL` source type verifies `x-retell-signature` (`v=<ms>,d=<hex>`, HMAC-SHA256 over the raw body plus the timestamp) with your webhook-badged Retell API key, so the app contains no verification code. | `npm run simulate -- call_ended --bad-signature` is rejected |
+| **Signature verification.** The `RETELL` source type verifies `x-retell-signature` (`v=<ms>,d=<hex>`, HMAC-SHA256 over the raw body plus the timestamp) with your webhook-badged Retell API key, so the app contains no verification code. | `npm run probe` sends a correctly signed and a badly signed request and reads Hookdeck's request records (`verified`, `rejection_cause`); `npm run simulate -- call_ended --bad-signature` is rejected |
 | **Deduplication.** A connection rule drops a repeat of the same `body.event` for the same `body.call.call_id`. | `npm run simulate -- call_ended --twice` |
 | **Retries.** Retell retries an event up to 3 times if it doesn't get a 2xx within 10 seconds. Hookdeck acknowledges immediately and retries delivery to your app with its own schedule. | The failure injection panel in the UI |
 | **Local development.** `hookdeck listen` gives Retell a public URL for an app on localhost. | `npm run listen` |
@@ -48,7 +48,7 @@ npm run listen    # terminal 1: forwards events to http://localhost:4000/webhook
 npm start         # terminal 2: the app on http://localhost:4000
 ```
 
-Open <http://localhost:4000>, submit the form, and answer your phone. The lead moves through **Calling**, **In call**, **Call ended** and **Analyzed**, with each event on its timeline. The summary and the extracted fields (budget, move-in timeline, whether a viewing was requested) appear when `call_analyzed` arrives, shortly after the call ends.
+Open <http://localhost:4000>, submit the form, and answer your phone. No phone needed? **Start call in the browser** talks to the same agent from your microphone (the app creates a web call with your API key and hands the page a short-lived token), and the same three webhooks follow. The lead moves through **Calling**, **In call**, **Call ended** and **Analyzed**, with each event on its timeline. The summary and the extracted fields (budget, move-in timeline, whether a viewing was requested) appear when `call_analyzed` arrives, shortly after the call ends.
 
 ### What `npm run setup` creates
 
@@ -90,7 +90,8 @@ retell/outbound-lead-calling/
 │   ├── setup.ts          # Hookdeck source/destination/connection + Retell LLM and agent
 │   ├── listen.ts         # hookdeck listen for the demo's sources
 │   ├── simulate.ts       # signed sample events, duplicates, bad signatures
-│   └── hookdeck-cli.ts   # runs the CLI against the API key's project
+│   ├── probe.ts          # signed + badly signed requests, checked against Hookdeck's request records
+│   └── hookdeck-cli.ts   # shared helper (_shared/hookdeck): runs the CLI against the API key's project
 ├── src/
 │   ├── server.ts         # form API, webhook endpoints, failure injection
 │   ├── retell.ts         # create-phone-call and update-live-call

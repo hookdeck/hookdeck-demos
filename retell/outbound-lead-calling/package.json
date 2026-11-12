@@ -8,7 +8,9 @@
     "setup": "ts-node scripts/setup.ts",
     "listen": "ts-node scripts/listen.ts",
     "simulate": "ts-node scripts/simulate.ts",
-    "test": "node --require ts-node/register --test test/*.test.ts"
+    "test": "node --require ts-node/register --test test/*.test.ts",
+    "probe": "ts-node scripts/probe.ts",
+    "typecheck": "tsc --noEmit"
   },
   "license": "ISC",
   "dependencies": {
@@ -21,5 +23,8 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

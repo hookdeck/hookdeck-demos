@@ -12,7 +12,8 @@
 import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { RUN_DIR, PROJECT_DIR, hookdeckJson, login, writePrivateFile } from './hookdeck-cli';
+import { cli } from './config';
+const PROJECT_DIR = cli.projectDir;
 import { RETELL_API_BASE } from '../src/config';
 
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
@@ -55,35 +56,23 @@ if (WITH_FUNCTION) {
   });
 }
 
-function setupFlow(flow: Flow): string {
-  // The signing secret goes in a private file, not in the command line
-  const config_file = path.join(RUN_DIR, `${flow.name}-source.json`);
-  writePrivateFile(config_file, JSON.stringify({ webhook_secret: RETELL_API_KEY }));
-  const rules_file = path.join(RUN_DIR, `${flow.name}-rules.json`);
-  writePrivateFile(rules_file, JSON.stringify(flow.rules));
-
-  try {
-    const source = hookdeckJson([
-      'gateway', 'source', 'upsert', flow.name,
-      '--type', 'RETELL',
-      '--config-file', config_file,
-    ]);
-    const destination = hookdeckJson([
-      'gateway', 'destination', 'upsert', `local-${flow.name}`,
-      '--type', 'CLI',
-      '--cli-path', flow.cliPath,
-    ]);
-    const connection = hookdeckJson([
-      'gateway', 'connection', 'upsert', flow.name,
-      '--source-id', source.id,
-      '--destination-id', destination.id,
-      '--rules-file', rules_file,
-    ]);
-    console.log(`✅ ${flow.name}: ${connection.source.url} -> local-${flow.name} (${flow.cliPath})`);
-    return connection.source.url;
-  } finally {
-    fs.rmSync(config_file, { force: true });
-  }
+async function setupFlow(flow: Flow): Promise<string> {
+  // Retell signs every webhook with the API key that carries the webhook badge. Signature
+  // settings live under the source's config.auth; upsertSource sets them through the API.
+  const source = await cli.upsertSource({
+    name: flow.name,
+    type: 'RETELL',
+    auth: { webhook_secret_key: RETELL_API_KEY },
+  });
+  const destination = cli.upsertCliDestination({ name: `local-${flow.name}`, path: flow.cliPath });
+  const connection = cli.upsertConnection({
+    name: flow.name,
+    sourceId: source.id,
+    destinationId: destination.id,
+    rules: flow.rules as Array<Record<string, unknown>>,
+  });
+  console.log(`✅ ${flow.name}: ${connection.source.url} -> local-${flow.name} (${flow.cliPath}), signature verification on`);
+  return connection.source.url;
 }
 
 // ------------------------------------------------------------------ Retell
@@ -200,9 +189,9 @@ async function main(): Promise<void> {
     fail('RETELL_API_KEY is not set. Add the Retell API key that has the webhook badge to .env (Retell dashboard: API Keys).');
   }
 
-  login();
+  cli.login();
   const urls: { [name: string]: string } = {};
-  for (const flow of FLOWS) urls[flow.name] = setupFlow(flow);
+  for (const flow of FLOWS) urls[flow.name] = await setupFlow(flow);
 
   const { agent_id, llm_id } = await setupRetell(urls['retell-call-events'], urls['retell-live-function']);
 

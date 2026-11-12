@@ -21,3 +21,11 @@ export function missingCallConfig(): string[] {
   if (!RETELL_AGENT_ID) missing.push('RETELL_AGENT_ID (run npm run setup)');
   return missing;
 }
+
+/** What the in-page "Start call" button needs (no phone numbers involved). */
+export function missingWebCallConfig(): string[] {
+  const missing: string[] = [];
+  if (!RETELL_API_KEY || RETELL_API_KEY.startsWith('your_')) missing.push('RETELL_API_KEY');
+  if (!RETELL_AGENT_ID) missing.push('RETELL_AGENT_ID (run npm run setup)');
+  return missing;
+}

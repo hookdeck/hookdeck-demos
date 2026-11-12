@@ -41,6 +41,10 @@
           <button class="button button--secondary" id="demoBtn" type="button">Add a lead without calling</button>
         </div>
       </form>
+      <div class="actions web-call">
+        <button class="button" id="webCallBtn" type="button" disabled>Start call in the browser</button>
+        <span id="webCallStatus" class="body-xs muted">Talks to the same agent from your microphone, no phone needed. The same webhooks follow.</span>
+      </div>
       <div id="message" class="message body-s"></div>
     </section>
 
@@ -67,5 +71,6 @@
     </section>
   </main>
   <script src="/app.js"></script>
+  <script type="module" src="/call.js"></script>
 </body>
 </html>

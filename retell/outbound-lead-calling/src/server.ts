@@ -1,9 +1,9 @@
 import express, { Request, Response } from 'express';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { ENABLE_LIVE_INJECTION, PORT, TEST_LEAD_PHONE_NUMBER, missingCallConfig } from './config';
+import { ENABLE_LIVE_INJECTION, PORT, TEST_LEAD_PHONE_NUMBER, missingCallConfig, missingWebCallConfig } from './config';
 import { applyRetellEvent, RetellWebhook } from './events';
-import { createPhoneCall, updateLiveCall } from './retell';
+import { createPhoneCall, createWebCall, updateLiveCall } from './retell';
 import { addLead, addTimeline, findLeadByCall, listLeads, updateLead } from './store';
 
 const app = express();
@@ -17,7 +17,7 @@ const mask = (phone: string) => `${phone.slice(0, 2)}${'•'.repeat(Math.max(pho
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 app.get('/api/config', (_req, res) => {
-  res.json({ missing: missingCallConfig(), live_injection: ENABLE_LIVE_INJECTION, chaos });
+  res.json({ missing: missingCallConfig(), web_missing: missingWebCallConfig(), live_injection: ENABLE_LIVE_INJECTION, chaos });
 });
 
 app.get('/api/leads', (_req, res) => {
@@ -60,6 +60,35 @@ app.post('/api/leads', async (req: Request, res: Response) => {
     updateLead(lead_id, { call_id, status: 'calling' });
     addTimeline(lead_id, { event: 'call created (API)' });
     res.status(201).json({ id: lead_id, call_id });
+  } catch (error: any) {
+    updateLead(lead_id, { status: 'failed', error: error.message });
+    res.status(502).json({ error: error.message });
+  }
+});
+
+// Start call: a lead plus a browser (web) call to the same agent. The API key stays on the server;
+// the page gets a short-lived access token for retell-client-js-sdk.
+app.post('/api/web-call', async (req: Request, res: Response) => {
+  const missing = missingWebCallConfig();
+  if (missing.length) return res.status(400).json({ error: `Missing configuration: ${missing.join(', ')}` });
+  const name = String(req.body.name || '').trim();
+  const property_interest = String(req.body.property_interest || '').trim();
+  if (!name || !property_interest) return res.status(400).json({ error: 'Name and property are required' });
+
+  const lead_id = randomUUID().replace(/-/g, '').slice(0, 12);
+  const notes = String(req.body.notes || '').trim();
+  addLead({
+    id: lead_id, name, property_interest, notes,
+    phone_masked: 'web call (browser)',
+    status: 'new',
+    created_at: new Date().toISOString(),
+    timeline: [],
+  });
+  try {
+    const call = await createWebCall({ lead_id, lead_name: name, property_interest, lead_notes: notes });
+    updateLead(lead_id, { call_id: call.call_id, status: 'calling' });
+    addTimeline(lead_id, { event: 'web call created (API)' });
+    res.status(201).json({ id: lead_id, ...call });
   } catch (error: any) {
     updateLead(lead_id, { status: 'failed', error: error.message });
     res.status(502).json({ error: error.message });

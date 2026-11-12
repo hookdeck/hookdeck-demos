@@ -85,3 +85,4 @@ footer { color: var(--neutral-fg-3); }
 .timeline li { color: var(--neutral-fg-2); display: flex; gap: var(--s2); flex-wrap: wrap; }
 .timeline .dup { color: var(--color-danger); }
 .summary { color: var(--neutral-fg-1); }
+.web-call { margin-top: var(--s3); }
