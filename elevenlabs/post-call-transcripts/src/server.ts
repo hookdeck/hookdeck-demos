@@ -52,6 +52,7 @@ app.get('/api/flow', async (_req, res) => {
     const [state, ignored] = await Promise.all([flow.state(), flow_extras.ignoredCounts()]);
     res.json({
       ...state,
+      team_id: flow_extras.teamId(),
       messages: state.messages.map((m) => ({ ...m, ignored_count: ignored.get(m.request_id) ?? 0, bytes: Number(m.detail) || null })),
     });
   } catch (error) {

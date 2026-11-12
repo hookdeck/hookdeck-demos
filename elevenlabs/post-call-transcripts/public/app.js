@@ -105,10 +105,7 @@ async function post(url, body) {
 
 $('failBtn').addEventListener('click', () => post('/api/fail-next', { count: Number($('failCount').value) || 1 }));
 $('clearFailBtn').addEventListener('click', () => post('/api/fail-next', { count: 0 }));
-$('flowBtn').addEventListener('click', () => document.getElementById('fd-handle')?.click());
 $('resetBtn').addEventListener('click', () => confirm('Delete all stored conversations and the delivery log?') && post('/api/reset'));
 
 refresh();
 setInterval(refresh, 3000);
-
-FlowDrawer.mount({ endpoint: '/api/flow', title: 'Data flow' });

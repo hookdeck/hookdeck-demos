@@ -4,7 +4,7 @@ Animated topology diagrams for Hookdeck demos, guides and social posts. One scen
 
 1. **A live view** for a demo page: packets move along the edges as real events arrive, nodes show status badges, Event Gateway's chips flash.
 2. **Scripted scenes with captions** (desktop 1920x1080 and a portrait phone layout, same steps and captions), embeddable in hookdeck.com guides through the website's `steppedDiagram` component.
-3. **GIF and MP4 captures** (landscape, and 1080x1080 for social), frame-exact because the capture script seeks the scene's GSAP timeline.
+3. **MP4 captures** (landscape, and 1080x1080 for social; social platforms take MP4 and convert GIFs themselves, and guides use the interactive diagrams), frame-exact because the capture script seeks the scene's GSAP timeline.
 
 Built from the `hookdeck-presentations` skill's scene kit (TypeScript, SVG, GSAP, one paused timeline per scene), with a live driver and design-system theming added. This folder is the source of truth: `node scripts/sync-shared.mjs` copies it into each demo that lists it in `_shared/manifest.json` (here `scenes/kit/`).
 
@@ -20,7 +20,7 @@ Built from the `hookdeck-presentations` skill's scene kit (TypeScript, SVG, GSAP
 | `tokens.ts`, `svg.ts` | Colors as design-system CSS variables (light and dark follow the host), Material Symbols icons plus the Hookdeck mark |
 | `scenes.css` | Text styles and the two variables the design system lacks |
 | `host/flow-feed.ts` | Demo-page host (not for the website): turns `/api/flow` and the app's own delivery feed into live-driver calls |
-| `capture/` | `page.html` and `capture.ts`: the GIF and MP4 export |
+| `capture/` | `page.html` and `capture.ts`: the MP4 export |
 
 ## Rules that keep scenes reusable
 

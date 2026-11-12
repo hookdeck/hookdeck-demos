@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/ds/styles.css">
   <link rel="stylesheet" href="/demo.css">
   <link rel="stylesheet" href="/scenes/scenes.css">
-  <link rel="stylesheet" href="/flow-drawer/flow-drawer.css">
+  <link rel="stylesheet" href="/topology-pane/topology-pane.css">
   <script src="/theme.js"></script>
 </head>
 <body>
@@ -18,10 +18,8 @@
         <span class="eyebrow mono-xs">{ Hookdeck + ElevenLabs }</span>
         <h1 class="title-2xl">Post-call transcripts, <em>delivered once</em></h1>
         <p class="body-m">
-          ElevenLabs sends a webhook when a conversation with your voice agent ends. Hookdeck verifies the
-          <code>ElevenLabs-Signature</code>, drops duplicates, retries failures, and delivers each event to this
-          app, which stores the conversation. Open <strong>Data flow</strong> at the bottom of the page to watch each
-          webhook move through Event Gateway.
+          ElevenLabs sends a webhook when a conversation ends. Hookdeck verifies the <code>ElevenLabs-Signature</code>,
+          drops duplicates, retries failures and delivers each event to this app. Watch it happen in the <strong>Data flow</strong> pane below.
         </p>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
@@ -30,28 +28,6 @@
       <span class="lined__dots lined__dots--bottom_right"></span>
     </section>
 
-
-    <section class="card topology" id="topology">
-      <div class="section-head">
-        <div>
-          <h2 class="title-l">Live topology</h2>
-          <p class="body-xs topo-hint" id="topoHint">Packets move as real webhooks arrive. Click a node or a packet to open it in Data flow.</p>
-        </div>
-        <div class="section-tools">
-          <div class="tabs" id="topoTabs" role="tablist" aria-label="Topology view"></div>
-        </div>
-      </div>
-      <div id="topoCanvas" class="topo-canvas" aria-hidden="true"></div>
-      <div class="topo-footer">
-        <p class="body-s topo-caption" id="topoCaption" aria-live="polite"></p>
-        <div class="actions topo-controls">
-          <span class="body-xs" id="topoCount"></span>
-          <button id="topoPrev" class="button button--secondary button--small" hidden>Back</button>
-          <button id="topoNext" class="button button--secondary button--small" hidden>Next</button>
-          <button id="topoReplay" class="button button--secondary button--small">Replay latest</button>
-        </div>
-      </div>
-    </section>
 
     <section class="card">
       <h2 class="title-l">Talk to the agent</h2>
@@ -87,7 +63,6 @@
         <h2 class="title-l">Conversations</h2>
         <div class="section-tools">
           <span id="count" class="body-xs"></span>
-          <button id="flowBtn" class="button button--secondary button--small">Open data flow</button>
           <button id="resetBtn" class="button button--secondary button--small">Clear stored data</button>
         </div>
       </div>
@@ -101,7 +76,7 @@
           <span id="deliverySummary" class="body-xs"></span>
           <span id="sdkBadge"></span>
         </summary>
-        <p class="body-xs">The latest requests this app received, including failures and retries. The <strong>Data flow</strong> drawer at the bottom shows the full path of each one.</p>
+        <p class="body-xs">The latest requests this app received, including failures and retries. Click a packet or node in the <strong>Data flow</strong> pane for the full path of each one.</p>
         <div id="deliveries" class="delivery-list body-xs"></div>
       </details>
     </section>
@@ -111,8 +86,8 @@
       <a href="https://hookdeck.com" target="_blank" rel="noopener">Hookdeck</a>
     </footer>
   </main>
-  <script src="/flow-drawer/flow-drawer.js"></script>
   <script src="/scenes/scenes.js"></script>
+  <script src="/topology-pane/topology-pane.js"></script>
   <script src="/topology.js"></script>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>

@@ -85,9 +85,7 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 
 ## What you'll see
 
-- **Live topology** (the top of the page): ElevenLabs agent, Event Gateway (with its verify, store, dedup and retry capabilities), `hookdeck listen` and this app, with a packet moving along each edge as a real webhook arrives, and status badges (`answering 500`, `handled · attempt 2`, `duplicate · dropped`). The 3.5 MB audio webhook is drawn thicker and slower than the transcript. Click a node or a packet to open that message in the Data flow drawer. The other tabs play four scripted scenes of the same topology with captions: delivery, a duplicate dropped, a bad signature, and the app down with a retry that succeeds.
-- **Conversations**: each stored conversation with its summary, outcome badge (`call_successful`), transcript, data collection results and evaluation criteria. If the audio event is enabled, an audio player appears when it arrives.
-- **Data flow** (the drawer at the bottom of the page): each webhook moving from ElevenLabs through Event Gateway (request, verification, event) to this app, with every delivery attempt, including failed ones and their retries, and what the app answered. It reads Event Gateway with `HOOKDECK_API_KEY` on the server.
+- **Data flow pane** (bottom of the page, open by default; the header collapses it): the live topology of ElevenLabs agent, Event Gateway (with its verify, store, dedup and retry capabilities), `hookdeck listen` and this app, with a packet moving along each edge as a real webhook arrives, and status badges (`answering 500`, `handled · attempt 2`, `duplicate · dropped`). The 3.5 MB audio webhook is drawn thicker and slower than the transcript. Click a node or a packet to fill the detail strip with that webhook: verified or rejected and what ElevenLabs got back, each delivery attempt's status, latency and retry gap, what the app answered, and a **View in Hookdeck** link to the request or event in the dashboard. The other tabs play four scripted scenes of the same topology with captions (Back, Next, Replay): delivery, a duplicate dropped, a bad signature, and the app down with a retry that succeeds. On a phone the pane opens at 60% of the screen height with the portrait layout, and the page keeps that much padding at the bottom so the buttons above stay reachable. It reads Event Gateway with `HOOKDECK_API_KEY` on the server.
 - **Deliveries received** (collapsed): the latest requests the app received, with body size and result, and the result of the ElevenLabs SDK's `constructEvent` on the forwarded requests.
 
 Data collection results and evaluation criteria are configured per agent (agent -> **Analysis**). Setup gives the demo agent `caller_name`, `requested_service` and `requested_time` as data collection items and `booking_made` as an evaluation criterion; they show up in the conversation detail.
@@ -131,18 +129,18 @@ Hookdeck verifies `ElevenLabs-Signature` at the source URL, so the app does not 
 
 The SDK rejects a timestamp older than 30 minutes, so a replay of an old event shows a tolerance error in that column while the event is still stored.
 
-## Topology scenes, and GIFs and videos of them
+## Topology scenes, and MP4s of them
 
-The topology is a scene from the shared scene kit (`_shared/scenes/` in the repo, synced into `scenes/kit/`; this demo's scenes are `scenes/post-call.ts`). One scene definition gives three outputs: the live view above, the four scripted scenes (a 1920x1080 layout and a portrait layout for phones, with the same steps and captions, which the hookdeck.com `steppedDiagram` component can embed), and captures.
+The topology is a scene from the shared scene kit (`_shared/scenes/` in the repo, synced into `scenes/kit/`; this demo's scenes are `scenes/post-call.ts`). One scene definition gives three outputs: the live view in the Data flow pane at the bottom of the page, the four scripted scenes (a 1920x1080 layout and a portrait layout for phones, with the same steps and captions, which the hookdeck.com `steppedDiagram` component can embed), and captures.
 
 ```bash
 npm run build:scenes                       # bundle the kit and scenes into public/scenes (npm start does this)
-npm run capture                            # GIF + MP4 of each scripted scene, 1920x1080, into scenes/captures
+npm run capture                            # MP4 of each scripted scene, 1920x1080, into scenes/captures
 ASPECT=square npm run capture              # 1080x1080 for social: phone layout and a large numbered caption
-THEME=dark FORMAT=mp4 npm run capture -- delivery
+THEME=dark npm run capture -- delivery
 ```
 
-The capture script seeks each scene's timeline frame by frame in headless Chromium, so frames are exact. It needs `ffmpeg`, and Playwright's Chromium (`npx playwright install chromium`) or Google Chrome. The kit's README (`_shared/scenes/README.md`) explains how to write a scene for another demo.
+The capture script seeks each scene's timeline frame by frame in headless Chromium, so frames are exact. The output is MP4 only: social platforms take MP4 and convert GIFs themselves, and guides use the interactive diagrams. It needs `ffmpeg`, and Playwright's Chromium (`npx playwright install chromium`) or Google Chrome. The kit's README (`_shared/scenes/README.md`) explains how to write a scene for another demo.
 
 ## Tests
 
@@ -168,7 +166,7 @@ elevenlabs/post-call-transcripts/
 │   ├── post-call.ts      # the topology scene: live, and four scripted scenarios (desktop + phone)
 │   ├── entry.ts          # what the page's bundle exposes
 │   ├── kit/              # shared scene kit, synced from _shared/scenes (don't edit)
-│   └── captures/         # GIFs from npm run capture
+│   └── captures/         # MP4s from npm run capture (landscape + square, light)
 ├── src/
 │   ├── server.ts         # Express app and API
 │   ├── webhook.ts        # POST /webhooks/elevenlabs
