@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Store } from './store';
 import { createFlowState, AppFlowEntry } from './flow-drawer-server';
+import { createFlowExtras } from './flow-extras';
 import { SOURCE_NAME } from './source-name';
 import { FailureMode, webhookRouter } from './webhook';
 
@@ -37,12 +38,26 @@ const flow = createFlowState({
   rejectedStatus: 200,
   sources: [{ name: SOURCE_NAME, label: 'ElevenLabs agent' }],
   appEntries: () => flow_entries,
-  describeRequest: ({ body }) => ({
+  describeRequest: ({ body, headers }) => ({
     label: body?.type ?? 'not an ElevenLabs event',
     group: body?.data?.conversation_id,
+    // The request's size, for the topology view's packets (the drawer doesn't show `detail`).
+    detail: headers['content-length'],
   }),
 });
-app.get('/api/flow', (req, res) => void flow.handler(req, res));
+// The topology view reads the same state plus ignored duplicates and request sizes.
+const flow_extras = createFlowExtras(process.env.HOOKDECK_API_KEY || '', SOURCE_NAME);
+app.get('/api/flow', async (_req, res) => {
+  try {
+    const [state, ignored] = await Promise.all([flow.state(), flow_extras.ignoredCounts()]);
+    res.json({
+      ...state,
+      messages: state.messages.map((m) => ({ ...m, ignored_count: ignored.get(m.request_id) ?? 0, bytes: Number(m.detail) || null })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
 
 // Start call button: the browser asks for a signed URL; the API key stays on the server.
 app.get('/api/config', (_req, res) =>

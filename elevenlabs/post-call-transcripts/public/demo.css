@@ -104,3 +104,19 @@ footer { color: var(--neutral-fg-3); }
 .delivery code { color: var(--neutral-fg-1); }
 .delivery-list .more, .delivery-list .empty { color: var(--neutral-fg-3); }
 #conversations { max-height: 560px; overflow-y: auto; }
+
+/* Live topology: the hero view. The page is wider than the other cards so the diagram stays legible. */
+main { max-width: 1120px; }
+main > section:not(.topology) { max-width: 880px; width: 100%; justify-self: center; box-sizing: border-box; }
+.topo-hint { color: var(--neutral-fg-3); margin: var(--s1) 0 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.topology [hidden] { display: none !important; }
+.tabs button { box-shadow: none; font-family: var(--font-sans); font-size: 13px; line-height: 18px; padding: 5px 10px; border-radius: var(--radius); border: 1px solid var(--neutral-outline-2); background: var(--bg-0); color: var(--neutral-fg-2); cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--primary-badge-fg); background: var(--blue-badge-bg); border-color: var(--primary-badge-outline); }
+.topo-canvas { border: 1px dashed var(--neutral-outline-3); border-radius: var(--radius); background: var(--bg-1); padding: var(--s3); }
+.topo-canvas[data-layout="phone"] svg { max-height: 78vh; margin: 0 auto; max-width: 420px; }
+.topo-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; min-height: 44px; }
+.topo-caption { margin: 0; flex: 1; min-width: 240px; color: var(--neutral-fg-1); }
+.topo-caption code { font-family: var(--font-mono); font-size: .9em; padding: 0 4px; border-radius: 4px; background: var(--bg-3); }
+.topo-controls { flex-shrink: 0; }
+.fd-msg.fd-focus { outline: 2px solid var(--primary-fg); outline-offset: 2px; }

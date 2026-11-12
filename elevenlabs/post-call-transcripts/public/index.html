@@ -7,6 +7,7 @@
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
   <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/scenes/scenes.css">
   <link rel="stylesheet" href="/flow-drawer/flow-drawer.css">
   <script src="/theme.js"></script>
 </head>
@@ -27,6 +28,29 @@
       <span class="lined__dots lined__dots--top_right"></span>
       <span class="lined__dots"></span>
       <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+
+    <section class="card topology" id="topology">
+      <div class="section-head">
+        <div>
+          <h2 class="title-l">Live topology</h2>
+          <p class="body-xs topo-hint" id="topoHint">Packets move as real webhooks arrive. Click a node or a packet to open it in Data flow.</p>
+        </div>
+        <div class="section-tools">
+          <div class="tabs" id="topoTabs" role="tablist" aria-label="Topology view"></div>
+        </div>
+      </div>
+      <div id="topoCanvas" class="topo-canvas" aria-hidden="true"></div>
+      <div class="topo-footer">
+        <p class="body-s topo-caption" id="topoCaption" aria-live="polite"></p>
+        <div class="actions topo-controls">
+          <span class="body-xs" id="topoCount"></span>
+          <button id="topoPrev" class="button button--secondary button--small" hidden>Back</button>
+          <button id="topoNext" class="button button--secondary button--small" hidden>Next</button>
+          <button id="topoReplay" class="button button--secondary button--small">Replay latest</button>
+        </div>
+      </div>
     </section>
 
     <section class="card">
@@ -88,6 +112,8 @@
     </footer>
   </main>
   <script src="/flow-drawer/flow-drawer.js"></script>
+  <script src="/scenes/scenes.js"></script>
+  <script src="/topology.js"></script>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>
 </body>
