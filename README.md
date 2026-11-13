@@ -39,7 +39,7 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 | [demo-scripts](hookdeck/demo-scripts/) | Scripts for automating demo setup and event triggering |
 | [general](hookdeck/general/) | Next.js app for receiving and verifying webhooks from multiple providers |
 | [mcp-events-forward-proxy](hookdeck/mcp-events-forward-proxy/) | Receive MCP Events through Event Gateway acting as the agent's forward proxy: challenge, verification, dedup and retries, locally with `hookdeck listen` or deployed over HTTP |
-| [mcp-events-outpost](hookdeck/mcp-events-outpost/) | Send MCP Events from an MCP server with Hookdeck Outpost (links to [hookdeck/mcp-events-outpost-demo](https://github.com/hookdeck/mcp-events-outpost-demo)) |
+| [mcp-events-outpost](hookdeck/mcp-events-outpost/) | Send MCP Events from an MCP server with Hookdeck Outpost's native MCP Events support, which runs the subscriptions and delivers each event (links to [hookdeck/mcp-events-outpost-demo](https://github.com/hookdeck/mcp-events-outpost-demo)) |
 | [session-filters](hookdeck/session-filters/) | CLI session filters demo |
 | [transformations](hookdeck/transformations/) | Transformations that import Node.js built-ins (`node:zlib`, `node:crypto`, `node:buffer`) to turn JSON events into a PNG, WAV, PDF or SVG, sign requests, and decompress binary payloads, with a UI that follows each event from source to result |
 | [transformation-reordering](hookdeck/transformation-reordering/) | Transformation and filter rule reordering |
