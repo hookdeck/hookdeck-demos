@@ -207,3 +207,33 @@ export function onSceneStart(s: TurnState, index: number) {
   s.inputs = 0;
   s.input_since_call = false;
 }
+
+// ---- A watchdog for a model request that never answers ----
+
+/**
+ * Armed when a player has finished and Bram owes a reply. Anything that shows progress (he starts speaking) clears it. If
+ * nothing happens for `ms` the stall callback runs once, so the player is not left waiting on a hung request.
+ */
+export function createLlmWatchdog(on_stall: () => void, ms = 20000, timers = { set: setTimeout, clear: clearTimeout }) {
+  let handle: ReturnType<typeof setTimeout> | undefined;
+  return {
+    arm() {
+      timers.clear(handle);
+      handle = timers.set(() => { handle = undefined; on_stall(); }, ms);
+    },
+    progress() {
+      timers.clear(handle);
+      handle = undefined;
+    },
+    get armed() { return handle !== undefined; },
+  };
+}
+
+/** One short in-character line for when the storyteller lost the thread, spoken straight through text-to-speech. */
+export function stallLine(player_name: string | undefined, variant = 0): string {
+  const who = player_name ?? 'friend';
+  return [
+    `Ah, the tide took my words for a moment. Say that again for me, ${who}.`,
+    `Forgive an old keeper, ${who}, I lost the thread there. What was it you said?`,
+  ][variant % 2];
+}

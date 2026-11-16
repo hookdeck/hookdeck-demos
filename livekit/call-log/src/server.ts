@@ -51,7 +51,7 @@ app.post('/api/test-participant', express.json(), async (req: Request, res: Resp
   const log_fd = fs.openSync(path.join(__dirname, '../data/pixel.log'), 'a');
   const child = spawn(process.execPath, [script], {
     stdio: ['ignore', log_fd, log_fd],
-    env: { PATH: process.env.PATH, PIXEL_URL: process.env.LIVEKIT_URL, PIXEL_TOKEN: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, 'bot-pixel', 'Pixel') },
+    env: { PATH: process.env.PATH, PIXEL_URL: process.env.LIVEKIT_URL, PIXEL_TOKEN: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, 'bot-pixel', 'Pixel', { dispatch: false }) },
   });
   test_participants.set(room, child);
   child.on('exit', () => { test_participants.delete(room); });

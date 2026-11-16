@@ -97,3 +97,12 @@ test('a token carries the typed name, and no name when none was typed', async ()
   assert.equal(named.name, 'Priya');
   assert.equal(unnamed.name, undefined);
 });
+
+test('Pixel\'s token carries no agent dispatch, a player\'s does', async () => {
+  const { TokenVerifier } = await import('livekit-server-sdk');
+  const { mintToken } = await import('../src/token');
+  const key = 'APItest', secret = 'a-test-secret-that-is-long-enough-for-hs256';
+  const verify = (jwt: string) => new TokenVerifier(key, secret).verify(jwt);
+  assert.equal(((await verify(await mintToken(key, secret, 'r', 'web-abc', 'Priya'))) as any).roomConfig?.agents?.[0]?.agentName, 'story-gm');
+  assert.equal(((await verify(await mintToken(key, secret, 'r', 'bot-pixel', 'Pixel', { dispatch: false }))) as any).roomConfig, undefined);
+});

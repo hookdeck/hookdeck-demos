@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
-import { SCENES, createEndWatcher, guidanceFor, moveOnVerdict, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter } from './story.ts';
+import { SCENES, createEndWatcher, guidanceFor, moveOnVerdict, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -56,8 +56,10 @@ interface StoryData {
   short_mode: boolean;
   /** Finishes the story once the last speech has played out and a short pause has passed. */
   end_watcher: ReturnType<typeof createEndWatcher> | undefined;
-  /** The storyteller agent, so its instructions can follow the scene and how long it has run. */
+  /** The storyteller agent. */
   bram: Bram | undefined;
+  /** Fires if Bram owes a reply and nothing happens for 20 seconds (a hung model request). */
+  watchdog: ReturnType<typeof createLlmWatchdog> | undefined;
   ending: boolean;
   /** Everyone is in the ledger: once Hester has finished speaking, she fetches Bram. */
   handoff_pending: boolean;
@@ -226,6 +228,7 @@ class Bram extends voice.Agent<StoryData> {
     const data = this.session.userData;
     if (!data.handed_off || data.ending || !new_message.textContent?.trim()) return;
     onPlayerInput(data);
+    data.watchdog?.arm();
     console.log(`player input counted: inputs=${data.inputs}`);
     chat_ctx.addMessage({ role: 'system', content: sceneHint(data.scene_index, data.inputs, data.ending) });
   }
@@ -303,7 +306,7 @@ export default defineAgent({
       // Bram has two tools and a model that chains tool calls gets cut off: allow one step, and filter tool names from speech as a backstop
       maxToolSteps: 2,
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {
@@ -315,6 +318,22 @@ export default defineAgent({
         .finally(() => setTimeout(() => job_ctx.shutdown('the story is over'), 3000));
     });
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => session.userData.end_watcher?.onAgentState(e.oldState, e.newState));
+    // If a model request hangs, Bram says one short line and the turn goes back to the player, rather than leaving them waiting
+    session.userData.watchdog = createLlmWatchdog(() => {
+      const data = session.userData;
+      if (data.ending) return;
+      const player = data.players[data.rotation] ?? data.players.find((p) => !p.bot);
+      console.log(`watchdog: no reply for 20 s, giving the turn back to ${player?.name ?? 'the player'}`);
+      session.interrupt();
+      session.say(stallLine(player?.name), { allowInterruptions: false });
+      if (player) {
+        switchListener(session, player.identity);
+        publish(data.ctx, { 'story.turn': player.identity, 'story.turn_name': player.name, 'story.turn_seq': String(data.inputs + data.scene_index * 100 + data.rotation + 50) });
+      }
+    });
+    // Progress: Bram started speaking, so the request is not hung. A tool that ran owes a follow-up reply, so the watchdog starts again
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => { if (e.newState === 'speaking') session.userData.watchdog?.progress(); });
+    session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => session.userData.watchdog?.arm());
     // Once Hester has finished the sentence that follows the last name in the ledger, she fetches Old Bram
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => {
       const data = session.userData;
@@ -361,6 +380,7 @@ export default defineAgent({
           const data = session.userData;
           if (data.handed_off && !data.ending) {
             onPlayerInput(data);
+            data.watchdog?.arm();
             console.log(`player gesture counted: inputs=${data.inputs}`);
           }
           sess.interrupt();

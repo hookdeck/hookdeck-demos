@@ -141,3 +141,44 @@ test('simulation: no turn is given before the first scene or while the story is 
   s.scene_index = 1; s.ending = true;
   assert.equal(onPlayout(s, crew), undefined);
 });
+
+import { createLlmWatchdog, stallLine } from '../src/story.ts';
+
+test('the watchdog fires once after 20 seconds of silence, and progress cancels it', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    let stalls = 0;
+    const w = createLlmWatchdog(() => { stalls += 1; }, 20000, { set: setTimeout, clear: clearTimeout });
+    w.arm();
+    assert.equal(w.armed, true);
+    mock.timers.tick(19999);
+    assert.equal(stalls, 0);
+    mock.timers.tick(2);
+    assert.equal(stalls, 1);
+    assert.equal(w.armed, false);
+    mock.timers.tick(60000);
+    assert.equal(stalls, 1); // once
+
+    w.arm();
+    mock.timers.tick(10000);
+    w.progress(); // Bram started speaking
+    mock.timers.tick(60000);
+    assert.equal(stalls, 1);
+
+    w.arm(); // a new player input re-arms from zero
+    mock.timers.tick(15000);
+    w.arm();
+    mock.timers.tick(15000);
+    assert.equal(stalls, 1);
+    mock.timers.tick(5001);
+    assert.equal(stalls, 2);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('the stall line is short, in character and names the player', () => {
+  assert.match(stallLine('Priya'), /Priya/);
+  assert.ok(stallLine(undefined, 1).length < 90);
+  assert.notEqual(stallLine('Sam', 0), stallLine('Sam', 1));
+});
