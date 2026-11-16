@@ -177,12 +177,8 @@ Travellers who come in out of the storm must sign your ledger. A traveller who a
   }
 }
 
-/**
- * Bram's instructions, rebuilt as the story moves: they carry the current scene and how many real player inputs it has had,
- * so what he offers follows what the players have actually done.
- */
-function bramInstructions(players: Player[], scene_index: number, inputs: number, ending: boolean): string {
-  const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak: what ${p.name} does arrives as a message in asterisks, like "*Pixel taps the map.*")` : p.name)).join(', ');
+/** What is true of the scene right now, given to Bram as a system message before each reply to a player. */
+function sceneHint(scene_index: number, inputs: number, ending: boolean): string {
   const scene = scene_index > 0 ? SCENES[Math.min(scene_index, SCENES.length) - 1] : undefined;
   const finale = scene_index >= SCENES.length;
   const guidance = guidanceFor(inputs);
@@ -193,19 +189,24 @@ function bramInstructions(players: Player[], scene_index: number, inputs: number
     ? 'The story is ending: speak your closing only.'
     : finale
       ? inputs >= 2
-        ? 'This is the finale and each player has acted. Call end_story, and after it answers speak your closing.'
-        : 'This is the finale: let the players act, then close.'
+        ? 'This is the finale and the players have acted. Call end_story, and after it answers speak your closing.'
+        : 'This is the finale: let the players act, then close. Do not call end_story yet.'
       : guidance === 'open'
-        ? 'The players have only just arrived in this scene. Do not offer to move on yet: let them explore, and react to what they do.'
+        ? `The players have made ${inputs} move${inputs === 1 ? '' : 's'} in this scene. Do not offer to move on yet and do not call next_scene: react to what they did and let them explore.`
         : guidance === 'offer_choice'
-          ? `The players have explored enough. In this reply, offer one clear choice to move on that names the concrete options (${scene?.onward}). Call next_scene only in the reply that answers a player who has chosen to move on.`
-          : `The scene has gone on long enough. Say in one plain sentence that it is time to move on and offer the choice (${scene?.onward}); when a player picks, call next_scene.`;
-  return `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell: warm, gravelly and kind. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers: ${roster}. ${BREVITY}
+          ? `The players have explored enough (${inputs} moves). In THIS reply, offer one clear choice to move on that names the concrete options (${scene?.onward}). Call next_scene only in a later reply, when a player has chosen to move on.`
+          : `The scene has gone on long enough (${inputs} moves). Say in one plain sentence that it is time to move on and offer the choice (${scene?.onward}); when a player picks, call next_scene.`;
+  return `${where} ${phase}`;
+}
+
+/** Bram's standing instructions: who he is, how he speaks, how he ends a reply. */
+function bramInstructions(players: Player[]): string {
+  const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak: what ${p.name} does arrives as a message in asterisks, like "*${p.name} taps the map.*")` : p.name)).join(', ');
+  const mute = players.some((p) => p.bot) ? ' A mute traveller never decides anything: its gestures can hint at the way forward, but only a spoken choice from a player moves the group on.' : '';
+  return `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell: warm, gravelly and kind. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers and only these: ${roster}. ${BREVITY}
 Speak plainly. Describe in simple words what the players see, hear and can do. Use at most one sea-worn phrase per reply, and none is fine. No riddles, no vague hints and no spooky foreshadowing unless a player asks for a clue. Every reply makes it obvious what just happened and what the players can do next. Every choice you offer names concrete options a player can act on, such as "the north door or the rope bridge".
-END EVERY REPLY BY NAMING THE ONE PLAYER WHO ANSWERS NEXT, and then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players. A mute traveller such as Pixel never decides anything: its gestures can hint at the way forward, but only a spoken choice from a player moves the group on. Never ask two questions in one reply, and never use the same words to hand a turn over twice in a row.
-${where}
-${phase}
-The players decide when a scene ends: call next_scene only in the reply that answers a player who chose to move on, and never twice in a row. You have only two tools, next_scene and end_story. Call a tool only when you must, and never write or say a tool name or function call in your speech.`;
+End every reply by naming the one player who answers next, then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players.${mute} Never ask two questions in one reply, and never use the same words to hand a turn over twice in a row.
+Each reply to a player is preceded by a system note about the current scene: follow it. You have only two tools, next_scene and end_story. Call a tool only when the note says to, and never write or say a tool name or function call in your speech.`;
 }
 
 class Bram extends voice.Agent<StoryData> {
@@ -213,19 +214,25 @@ class Bram extends voice.Agent<StoryData> {
     publish(this.session.userData.ctx, { 'story.character': 'Old Bram Tallow, storyteller' });
     this.session.userData.bram = this;
     this.session.generateReply({
-      instructions: 'You have just come in from the fire at Hester\'s call. Introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, and greet the travellers by name. Then call next_scene.',
+      instructions: 'You have just come in from the fire at Hester\'s call. Call next_scene now, before you say anything. When it answers, introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name, then describe the first scene as the tool says and end by naming the player who answers first.',
     });
   }
 
-  /** Rebuilds the instructions for the story's current state. */
-  refresh() {
+  /**
+   * Runs when a player has finished speaking, before Bram replies. The input is counted here (a real player input), and a system
+   * note says where the scene stands, so the reply follows the story's pacing.
+   */
+  async onUserTurnCompleted(chat_ctx: llm.ChatContext, new_message: llm.ChatMessage): Promise<void> {
     const data = this.session.userData;
-    this.updateInstructions(bramInstructions(data.players, data.scene_index, data.inputs, data.ending));
+    if (!data.handed_off || data.ending || !new_message.textContent?.trim()) return;
+    onPlayerInput(data);
+    console.log(`player input counted: inputs=${data.inputs}`);
+    chat_ctx.addMessage({ role: 'system', content: sceneHint(data.scene_index, data.inputs, data.ending) });
   }
 
   static build(players: Player[]) {
     return new Bram({
-      instructions: bramInstructions(players, 0, 0, false),
+      instructions: bramInstructions(players),
       tts: new inference.TTS({ model: BRAM_VOICE as any }),
       allowInterruptions: false,
       tools: {
@@ -236,12 +243,16 @@ class Bram extends voice.Agent<StoryData> {
             const data = ctx.userData;
             // Not chained after another call, and not before the scene has had its real player inputs. A refusal returns nothing, so Bram does not speak again.
             const verdict = data.scene_index === 0 ? 'ok' : moveOnVerdict(data.inputs, data.input_since_call, data.short_mode);
-            if (verdict !== 'ok' || data.scene_index >= SCENES.length) { console.log(`next_scene refused (${verdict === 'ok' ? 'story over' : verdict}), inputs=${data.inputs}`); return undefined; }
+            if (verdict !== 'ok' || data.scene_index >= SCENES.length) {
+              console.log(`next_scene refused (${verdict === 'ok' ? 'story over' : verdict}), inputs=${data.inputs}`);
+              // Nothing is returned, so the model gets no follow-up of its own. The player still gets an answer: one reply, with no tools.
+              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.inputs, data.ending)} React to what the player just said in one or two plain sentences that keep the scene going, and end by naming the player who answers next. Do not call a tool.`, toolChoice: 'none' });
+              return undefined;
+            }
             const index = nextSceneIndex(data.scene_index, data.short_mode);
             onSceneStart(data, index);
             const { scene, place, sights, onward } = SCENES[index];
             data.last_scene_at = Date.now();
-            data.bram?.refresh();
             publish(data.ctx, { 'story.scene': scene, 'story.turn': '', 'story.turn_name': '' });
             let music = 'with its soundtrack';
             try {
@@ -266,10 +277,13 @@ class Bram extends voice.Agent<StoryData> {
           execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
             const data = ctx.userData;
             const verdict = moveOnVerdict(data.inputs, data.input_since_call, data.short_mode);
-            if (data.scene_index < SCENES.length || verdict !== 'ok') { console.log(`end_story refused (${verdict}), scene ${data.scene_index}, inputs=${data.inputs}`); return undefined; }
+            if (data.scene_index < SCENES.length || verdict !== 'ok') {
+              console.log(`end_story refused (${verdict}), scene ${data.scene_index}, inputs=${data.inputs}`);
+              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.inputs, data.ending)} React to what the player just said in one or two plain sentences that keep the scene going, and end by naming the player who answers next. Do not call a tool.`, toolChoice: 'none' });
+              return undefined;
+            }
             data.ending = true;
             data.input_since_call = false;
-            data.bram?.refresh();
             // The story is marked ended, and the agent leaves, only after the closing has played out in full and a short pause
             data.end_watcher?.arm();
             console.log(`end_story accepted at ${new Date().toISOString()}`);
@@ -313,12 +327,8 @@ export default defineAgent({
       console.log(`${item.role}: ${item.textContent}`);
       const data = session.userData;
       if (!data.handed_off || data.ending) return;
-      if (item.role === 'user') {
-        // A real player input (a final transcript from the linked player): the only thing that counts as an exchange
-        onPlayerInput(data);
-        data.bram?.refresh();
-        console.log(`player input counted: inputs=${data.inputs}`);
-      } else if (item.role === 'assistant') onBramReply(data, item.textContent);
+      // Player inputs are counted in Bram's onUserTurnCompleted. Here only Bram's own reply is kept, to see who he named.
+      if (item.role === 'assistant') onBramReply(data, item.textContent);
     });
     // When Bram has finished speaking, code (not a model tool) gives the next turn: the player he named, or the next in rotation
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => {
@@ -351,11 +361,10 @@ export default defineAgent({
           const data = session.userData;
           if (data.handed_off && !data.ending) {
             onPlayerInput(data);
-            data.bram?.refresh();
             console.log(`player gesture counted: inputs=${data.inputs}`);
           }
           sess.interrupt();
-          sess.generateReply({ userInput: ev.text });
+          sess.generateReply({ userInput: ev.text, instructions: data.handed_off && !data.ending ? sceneHint(data.scene_index, data.inputs, data.ending) : undefined });
         },
       },
     });
