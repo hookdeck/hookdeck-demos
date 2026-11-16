@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
+import * as fs from 'fs';
 import * as path from 'path';
 import { IngressClient, IngressInput, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
 import { spawn, ChildProcess } from 'child_process';
@@ -45,8 +46,11 @@ app.post('/api/test-participant', express.json(), async (req: Request, res: Resp
   if (!room) return res.status(400).json({ error: 'Join a call first.' });
   if (test_participants.has(room)) return res.json({ ok: true, already: true });
   const script = path.join(__dirname, '../agent/src/pixel.ts');
+  // Pixel logs to data/pixel.log, which shows what it saw and sent if a gesture doesn't arrive
+  fs.mkdirSync(path.join(__dirname, '../data'), { recursive: true });
+  const log_fd = fs.openSync(path.join(__dirname, '../data/pixel.log'), 'a');
   const child = spawn(process.execPath, [script], {
-    stdio: 'ignore',
+    stdio: ['ignore', log_fd, log_fd],
     env: { PATH: process.env.PATH, PIXEL_URL: process.env.LIVEKIT_URL, PIXEL_TOKEN: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, 'bot-pixel', 'Pixel') },
   });
   test_participants.set(room, child);

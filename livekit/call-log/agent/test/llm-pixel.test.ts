@@ -30,12 +30,11 @@ test('the gesture delay is one to three seconds', () => {
   assert.equal(gestureDelayMs(() => 0.999), 2998);
 });
 
-test('Pixel answers its own turn once, and only when the storyteller is listening', () => {
-  const turn = { turn: 'bot-pixel', turn_seq: '3', scene: 'cave', agent_state: 'listening' };
+test('Pixel answers its own turn once, and only its own turn', () => {
+  const turn = { turn: 'bot-pixel', turn_seq: '3', scene: 'cave', agent_state: 'speaking' };
   assert.equal(shouldGesture(turn, undefined), 'gesture');
-  assert.equal(shouldGesture({ ...turn, agent_state: 'speaking' }, undefined), 'wait');
   assert.equal(shouldGesture(turn, '3'), 'idle');
   assert.equal(shouldGesture({ ...turn, turn_seq: '4' }, '3'), 'gesture');
   assert.equal(shouldGesture({ ...turn, turn: 'web-1a2b3c' }, undefined), 'idle');
-  assert.equal(shouldGesture({ turn: '', agent_state: 'listening' }, undefined), 'idle');
+  assert.equal(shouldGesture({ turn: '' }, undefined), 'idle');
 });

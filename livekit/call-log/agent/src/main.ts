@@ -48,6 +48,8 @@ interface StoryData {
   turns: number;
   /** Players who have had their turn in the current scene: each gets exactly one. */
   turn_taken: Set<string>;
+  /** A mute player's gesture (a chat message) that `give_turn` is waiting for, by the player's identity. */
+  gesture_waiters: Map<string, (text: string) => void>;
 }
 
 const is_bot = (p: RemoteParticipant) => p.identity.startsWith('bot-');
@@ -132,7 +134,7 @@ class Hester extends voice.Agent<StoryData> {
   static build() {
     return new Hester({
       instructions: `You are Hester Pennywhistle, innkeeper of the Drowned Bell, a crooked old inn on the shore of the Hollow Mere. You are brisk, warm and a little nosy, with a dry sense of humour, and you call everyone "love" or "dear". You are a fictional character in a spoken adventure. ${BREVITY}
-Travellers who come in out of the storm must sign your ledger. A traveller who already gave their name at the door is written in for you: greet them by name and never ask for it again. You can hear only one traveller at a time. Ask the one you can hear for their first name, then call write_in_ledger with it, and greet them by name. When the ledger tells you everyone is written in, say aloud, in one sentence and in your own words, that you will fetch Old Bram, who has been waiting all evening for a crowd to tell his tale to, and in that same reply call fetch_bram, so that the sentence and the call come together.`,
+Travellers who come in out of the storm must sign your ledger. A traveller who already gave their name at the door is written in for you: greet them by name, never ask for it again and never call write_in_ledger for them. Call write_in_ledger only for a name you have just heard a traveller say. You can hear only one traveller at a time. Ask the one you can hear for their first name, then call write_in_ledger with it, and greet them by name. When the ledger tells you everyone is written in, say aloud, in one sentence and in your own words, that you will fetch Old Bram, who has been waiting all evening for a crowd to tell his tale to, and in that same reply call fetch_bram, so that the sentence and the call come together.`,
       tts: new inference.TTS({ model: HESTER_VOICE as any }),
       // A player talking over her must not cancel the handoff
       allowInterruptions: false,
@@ -238,9 +240,20 @@ The finale is the last scene: give every player a turn, then speak a closing of 
             data.turn_taken.add(match.identity);
             const how = HANDOVERS[data.turns++ % HANDOVERS.length];
             publish(data.ctx, { 'story.turn': match.identity, 'story.turn_name': match.name, 'story.turn_seq': String(data.turns) });
-            // Text input is accepted only from the participant being listened to: a mute player's gesture arrives as chat
+            if (match.bot) {
+              // A mute player answers with a gesture, sent as a chat message. Wait for it here, so it comes back as this
+              // tool's result and Bram weaves it into his reaction in the same reply: no extra model call.
+              const gesture = await new Promise<string | undefined>((resolve) => {
+                data.gesture_waiters.set(match.identity, resolve);
+                setTimeout(() => { if (data.gesture_waiters.get(match.identity) === resolve) { data.gesture_waiters.delete(match.identity); resolve(undefined); } }, 12000);
+                // Text input is accepted only from the participant being listened to
+                switchListener(ctx.session as voice.AgentSession<StoryData>, match.identity);
+              });
+              return gesture
+                ? `${match.name} is mute and answers with a gesture: ${gesture} Hand-over done: now react to it in one or two sentences, weaving it into the story, then go straight on to the next player or the next scene. Do not ask ${match.name} anything.`
+                : `${match.name} is mute and does nothing you can see this turn: describe one small silent gesture of ${match.name}'s yourself in one sentence, then go on to the next player or the next scene.`;
+            }
             switchListener(ctx.session as voice.AgentSession<StoryData>, match.identity);
-            if (match.bot) return `${match.name} is a mute traveller and cannot speak: hand ${match.name} the moment in one short sentence with no question, then stop and wait. ${match.name} will answer with a gesture, which you then weave into the story in your reaction.`;
             return `You can hear ${match.name} now. Hand the turn to ${match.name}: ${how}. Once, in this reply only.`;
           },
         }),
@@ -269,7 +282,7 @@ export default defineAgent({
     const session = new voice.AgentSession<StoryData>({
       stt: new inference.STT({ model: 'deepgram/nova-3', language: 'en' }),
       llm: makeLlm(),
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set() },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set(), gesture_waiters: new Map() },
     });
     session.on(voice.AgentSessionEventTypes.Error, (e: any) => console.log('agent error:', e.error?.message ?? e));
     session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (e: any) => {
@@ -288,7 +301,21 @@ export default defineAgent({
     await session.start({
       agent: hester,
       room: ctx.room,
-      inputOptions: { closeOnDisconnect: false },
+      inputOptions: {
+        closeOnDisconnect: false,
+        // Chat text from the player being listened to. A mute player's gesture goes to the give_turn call that is
+        // waiting for it; anything else is a typed message and gets a reply, as usual.
+        textInputCallback: (sess, ev) => {
+          const waiting = session.userData.gesture_waiters.get(ev.participantIdentity ?? '');
+          if (waiting) {
+            session.userData.gesture_waiters.delete(ev.participantIdentity ?? '');
+            waiting(ev.text);
+            return;
+          }
+          sess.interrupt();
+          sess.generateReply({ userInput: ev.text });
+        },
+      },
     });
     await ctx.connect();
     // onEnter ran before the room connected, so publish Hester's attributes again now

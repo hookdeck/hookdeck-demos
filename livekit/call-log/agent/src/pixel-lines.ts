@@ -78,13 +78,12 @@ export const readAttributes = (a: Record<string, string>): StoryAttributes => ({
 
 /**
  * Pixel's turn trigger. A turn is new when `story.turn` is Pixel's identity and `story.turn_seq` (counted by the
- * storyteller on every give_turn) has changed since Pixel last answered. Pixel then waits until the agent is
- * `listening`, so its message cannot cut the storyteller off mid-sentence.
+ * storyteller on every give_turn) has changed since Pixel last answered. The storyteller's give_turn tool is
+ * waiting for the gesture, so Pixel answers after its short delay whatever state the agent is in.
  */
-export function shouldGesture(attrs: StoryAttributes, last_answered_seq: string | undefined): 'wait' | 'gesture' | 'idle' {
+export function shouldGesture(attrs: StoryAttributes, last_answered_seq: string | undefined): 'gesture' | 'idle' {
   if (attrs.turn !== PIXEL_IDENTITY) return 'idle';
-  if (attrs.turn_seq === last_answered_seq) return 'idle';
-  return attrs.agent_state === 'listening' ? 'gesture' : 'wait';
+  return attrs.turn_seq === last_answered_seq ? 'idle' : 'gesture';
 }
 
 /** Pixel waits one to three seconds before it gestures. */

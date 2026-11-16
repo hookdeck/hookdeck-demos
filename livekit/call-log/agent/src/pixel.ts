@@ -22,6 +22,7 @@ const used = new Set<string>();
 let last_answered_seq: string | undefined;
 let busy = false;
 
+process.on('unhandledRejection', (error) => console.error('Pixel error:', error));
 room.on(RoomEvent.Disconnected, () => process.exit(0));
 process.on('SIGTERM', () => room.disconnect().finally(() => process.exit(0)));
 
@@ -42,6 +43,7 @@ setInterval(async () => {
     return;
   }
   if (busy || shouldGesture(attrs, last_answered_seq) !== 'gesture') return;
+  console.log('Pixel: its turn (seq', attrs.turn_seq + ')');
   busy = true;
   last_answered_seq = attrs.turn_seq;
   setTimeout(async () => {
