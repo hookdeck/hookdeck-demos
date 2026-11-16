@@ -111,7 +111,7 @@ livekit/call-log/
 TODO(hookdeck/core#6254): publish this section when the LiveKit source type ships, then
 delete the comment markers. Also add LIVEKIT_SOURCE_TYPE to .env.example.
 
-## Verify at the edge with the LiveKit source type
+## Verify in Event Gateway with the LiveKit source type
 
 The setup above uses a generic source and the app verifies each delivery. With the LiveKit source type, Hookdeck verifies the signature at the source using your API key and secret, so a request that fails verification never reaches your app. This is a one-step change:
 
