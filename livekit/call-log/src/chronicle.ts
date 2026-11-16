@@ -159,7 +159,7 @@ export function viewChronicle(chronicle: Chronicle): ChronicleView[] {
       if (s.started_at) lines.push({ at: s.started_at, kind: 'room', text: 'The room opened' });
       for (const p of Object.values(s.people)) {
         if (p.role === 'soundtrack' || p.role === 'other') continue;
-        const who = p.role === 'gm' ? 'The game master' : label(p);
+        const who = p.role === 'gm' ? 'The story agent' : label(p);
         const kind = p.role === 'gm' ? 'gm' : 'player';
         if (p.joined_at) lines.push({ at: p.joined_at, kind, text: `${who} joined` });
         if (p.left_at) lines.push(p.dropped

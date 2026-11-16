@@ -34,11 +34,11 @@ const build = (order: LiveKitEvent[]) => {
   return viewChronicle(c);
 };
 
-test('tells players, the game master and soundtracks apart from the payload kind', () => {
+test('tells players, the story agent and soundtracks apart from the payload kind', () => {
   const [view] = build(events);
   assert.deepEqual(view.players.sort(), ['Priya', 'Sam']);
   const text = view.lines.map((l) => l.text);
-  assert.ok(text.includes('The game master joined'));
+  assert.ok(text.includes('The story agent joined'));
   assert.ok(text.includes('Priya joined'));
   // the soundtrack is a scene, not a person
   assert.ok(!text.some((t) => /Soundtrack: tavern joined/.test(t)));

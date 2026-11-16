@@ -4,7 +4,7 @@
 // Webhooks come from the shared feed: the app's /api/answered (fast: the app's own record of what
 // it answered) and /api/flow (Event Gateway's requests, events and attempts, for duplicates and
 // anything the app never saw). The one outbound edge, `start`, is the app asking LiveKit's Ingress API to
-// pull a scene's soundtrack into the room (the game master triggers it); it comes from the app's /api/outbound.
+// pull a scene's soundtrack into the room (the storyteller triggers it); it comes from the app's /api/outbound.
 (function () {
   let last_fail = 0;
   let state_timer = null;

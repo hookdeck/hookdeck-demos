@@ -44,7 +44,7 @@ export interface ParticipantEntry {
   joined_at?: number; // ms
   left_at?: number; // ms
   disconnect_reason?: string;
-  /** AGENT for the game master, INGRESS for a soundtrack; absent for a player */
+  /** AGENT for the story agent, INGRESS for a soundtrack; absent for a player */
   kind?: string;
 }
 

@@ -16,7 +16,7 @@ function callCard(c) {
       <span>Started ${time(c.started_at)}</span><span>Ended ${time(c.ended_at)}</span><span>Duration ${dur(c.duration_s)}</span>
       <span>Room <code>${esc(c.room_sid || 'unknown')}</code></span>
     </div>
-    <ul class="people body-s">${people.map((p) => `<li>${esc(p.name || p.identity)}${p.kind === 'AGENT' ? ' <span class="badge">game master</span>' : p.kind === 'INGRESS' ? ' <span class="badge">soundtrack</span>' : ''} <span class="request-meta">joined ${time(p.joined_at)}${p.left_at ? `, left ${time(p.left_at)}` : ''}${p.disconnect_reason ? ` (${esc(p.disconnect_reason)})` : ''}</span></li>`).join('') || '<li>No participants seen yet</li>'}</ul>
+    <ul class="people body-s">${people.map((p) => `<li>${esc(p.name || p.identity)}${p.kind === 'AGENT' ? ' <span class="badge">story agent</span>' : p.kind === 'INGRESS' ? ' <span class="badge">soundtrack</span>' : ''} <span class="request-meta">joined ${time(p.joined_at)}${p.left_at ? `, left ${time(p.left_at)}` : ''}${p.disconnect_reason ? ` (${esc(p.disconnect_reason)})` : ''}</span></li>`).join('') || '<li>No participants seen yet</li>'}</ul>
     ${recs.length ? `<ul class="recs body-s">${recs.map((r) => `<li>Recording ${esc(r.egress_id)}: ${esc((r.status || '').replace('EGRESS_', '').toLowerCase())}${r.links.map((l) => ` - ${link(l)}`).join('')}${r.error ? ` <span class="error">${esc(r.error)}</span>` : ''}</li>`).join('')}</ul>` : ''}
   </div>`;
 }

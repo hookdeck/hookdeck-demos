@@ -9,7 +9,7 @@ const fail = (text) => { const m = $('callMessage'); m.hidden = !text; m.textCon
 let room = null;
 let room_name = null;
 
-// Remote audio (the game master, other players, the scene soundtrack) plays through hidden <audio> elements.
+// Remote audio (the innkeeper, the storyteller, other players, the scene soundtrack) plays through hidden <audio> elements.
 const audio_box = document.createElement('div');
 audio_box.hidden = true;
 document.body.append(audio_box);
@@ -26,13 +26,53 @@ function peopleList() {
   return list;
 }
 
+const agent_of = () => room && [...room.remoteParticipants.values()].find((p) => p.isAgent);
+const character = (p) => (p?.attributes?.['story.character'] || '').split(',')[0];
+let story_ended = false;
+
+// What is happening in the story: the soundtrack that is playing, whose turn it is, or that it has ended.
+function renderBanner() {
+  const box = $('storyBanner');
+  const agent = agent_of();
+  if (agent?.attributes?.['story.state'] === 'ended') story_ended = true;
+  if (!room && !story_ended) { box.hidden = true; return; }
+  const parts = [];
+  if (story_ended) {
+    box.hidden = false;
+    box.className = 'story-banner ended';
+    box.innerHTML = '<strong>The story has ended.</strong> <button class="button button--secondary" id="newStoryBtn" type="button">Start a new story</button>';
+    $('newStoryBtn').addEventListener('click', async () => {
+      story_ended = false;
+      room?.disconnect();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      $('joinBtn').click();
+    });
+    return;
+  }
+  const attrs = agent?.attributes || {};
+  const turn = attrs['story.turn'];
+  if (turn && room) {
+    parts.push(turn === room.localParticipant.identity
+      ? '<strong class="your-turn">Your turn</strong>'
+      : `<strong>${esc(attrs['story.turn_name'] || 'Another player')}'s turn</strong>`);
+  } else if (agent) parts.push('Listening to the story');
+  const sound = [...(room?.remoteParticipants.values() || [])].find((p) => p.identity.startsWith('soundtrack-'));
+  if (sound) parts.push(`Now playing: ${esc(sound.identity.slice('soundtrack-'.length))} soundtrack`);
+  box.hidden = !parts.length;
+  box.className = 'story-banner';
+  box.innerHTML = parts.join(' · ');
+}
+
 // Who is in the call, what each one is, and who is speaking right now.
 function renderPeople() {
+  // Drop audio elements whose track has ended (a scene's soundtrack that has finished)
+  audio_box.querySelectorAll('audio').forEach((a) => { if (!a.srcObject || a.srcObject.getTracks().every((t) => t.readyState === 'ended')) a.remove(); });
+  renderBanner();
   if (!room) { peopleList().innerHTML = ''; return; }
   const speaking = new Set(room.activeSpeakers.map((p) => p.identity));
   const everyone = [room.localParticipant, ...room.remoteParticipants.values()];
   peopleList().innerHTML = everyone.map((p) => {
-    const name = p === room.localParticipant ? `${p.name || p.identity} (you)` : p.isAgent ? 'Story agent' : (p.name || p.identity);
+    const name = p === room.localParticipant ? `${p.name || p.identity} (you)` : p.isAgent ? (character(p) || 'Story agent') : (p.name || p.identity);
     const role = p.isAgent
       ? (p.attributes['lk.agent.state'] || 'joining')
       : p.identity.startsWith('soundtrack-') ? 'scene soundtrack' : 'player';
@@ -40,7 +80,60 @@ function renderPeople() {
   }).join('');
 }
 
+// What is said, as subtitles. The agent publishes each spoken line, and each player's recognized speech,
+// as a text stream on the `lk.transcription` topic. The agent's lines arrive in pieces as it speaks; a
+// player's arrive as the recognizer updates them.
+const lines = new Map();
+function showLine(id, who, text, final) {
+  const box = $('transcript');
+  let li = lines.get(id);
+  if (!li) {
+    li = document.createElement('li');
+    lines.set(id, li);
+    box.append(li);
+    while (box.children.length > 80) box.firstChild.remove();
+  }
+  li.className = final ? '' : 'interim';
+  li.innerHTML = `<strong>${esc(who)}</strong> ${esc(text)}`;
+  box.scrollTop = box.scrollHeight;
+}
+
+function speakerName(identity) {
+  const p = identity === room.localParticipant.identity ? room.localParticipant : room.remoteParticipants.get(identity);
+  if (!p) return identity;
+  if (p.isAgent) return character(p) || 'Story agent';
+  return p === room.localParticipant ? `${p.name || p.identity} (you)` : (p.name || p.identity);
+}
+
+let agent_line = null;
+let agent_lines = 0;
+
+function watchTranscription(r) {
+  r.registerTextStreamHandler('lk.transcription', async (reader, participant) => {
+    const attrs = reader.info.attributes || {};
+    const who = speakerName(participant.identity);
+    const from_agent = room.remoteParticipants.get(participant.identity)?.isAgent;
+    let text = '';
+    for await (const chunk of reader) text += chunk;
+    const final = attrs['lk.transcription_final'] === 'true';
+    if (!from_agent) {
+      // A player's speech: the recognizer sends the whole phrase again as it improves, under one segment id
+      showLine(attrs['lk.segment_id'] || reader.info.id, who, text, final);
+      return;
+    }
+    // The agent's speech arrives a few words at a time, each piece as its own stream: join pieces into one line
+    // until the line is final or the agent pauses for more than a couple of seconds
+    const now = Date.now();
+    if (!agent_line || agent_line.final || agent_line.who !== who || now - agent_line.at > 2500) agent_line = { id: `agent-${agent_lines++}`, who, text: '', at: now, final: false };
+    agent_line.text = `${agent_line.text} ${text.trim()}`.trim();
+    agent_line.at = now;
+    agent_line.final = final;
+    showLine(agent_line.id, who, agent_line.text, final);
+  });
+}
+
 function watchRoom(r) {
+  watchTranscription(r);
   r.on(RoomEvent.TrackSubscribed, (track) => {
     if (track.kind === Track.Kind.Audio) audio_box.append(track.attach());
     renderPeople();
@@ -70,6 +163,10 @@ $('joinBtn').addEventListener('click', async () => {
   try {
     const { url, token, room: name, identity } = await (await fetch('/api/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: $('playerName').value }) })).json();
     room = new Room();
+    story_ended = false;
+    lines.clear();
+    agent_line = null;
+    $('transcript').replaceChildren();
     watchRoom(room);
     room.on(RoomEvent.Disconnected, () => { audio_box.replaceChildren(); room = null; renderPeople(); say('Left the call. The session ends, and the chronicle closes, about a minute after the last person leaves.'); set_state(false); room = null; });
     await room.connect(url, token);

@@ -1,9 +1,9 @@
 # LiveKit story night with Hookdeck
 
-A short spoken adventure for one or more players, told by an AI game master, with everything that happens in the room reported back as webhooks. Players join a LiveKit room from the page. A host agent asks each player's name, then hands over to a game master that runs a four-scene story. At each scene the app pulls a soundtrack into the room with LiveKit's Ingress API. LiveKit Cloud sends the room, participant, track and ingress events to a Hookdeck source, Hookdeck delivers them to this app, and the app builds a call log and a session chronicle from them.
+A short spoken adventure for one or more players, told by AI characters, with everything that happens in the room reported back as webhooks. Players join a LiveKit room from the page. Hester Pennywhistle, the innkeeper of the Drowned Bell, asks each player's name and writes it in her ledger, then fetches Old Bram Tallow, a retired lighthouse keeper who tells a four-scene story. Both characters are fictional. At each scene the app pulls a soundtrack into the room with LiveKit's Ingress API. LiveKit Cloud sends the room, participant, track and ingress events to a Hookdeck source, Hookdeck delivers them to this app, and the app builds a call log and a session chronicle from them.
 
 ```
-players ──► LiveKit room ◄── agent (intro, then game master) ──► this app: POST /api/scene
+players ──► LiveKit room ◄── agent (Hester, then Old Bram) ──► this app: POST /api/scene
                │                                                      │ Ingress API: soundtrack
                └──webhooks──► Hookdeck source ──► hookdeck listen ──► this app (:4000)
 ```
@@ -15,9 +15,9 @@ The demo has three parts: this app (and its agent), LiveKit Cloud and Hookdeck E
 - **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
 - **Idempotent call log.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
 - **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
-- **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get a game master.
-- **A soundtrack per scene.** At each new scene the game master calls a function tool. The tool posts to the app (`POST /api/scene`, local only), and the app asks LiveKit's Ingress API to pull that scene's soundtrack from a URL into the room. LiveKit reports `ingress_started`, `ingress_ended` and the track events back through Event Gateway.
-- **A session chronicle.** The page builds a timeline of the session from the webhooks it receives: who joined and when, who dropped (`participant_connection_aborted`), each scene's soundtrack starting and ending, and the session length. It tells players, the game master and soundtracks apart with `participant.kind` in the payload (`AGENT` for the agent, `INGRESS` for a soundtrack, absent for a player). See [`src/chronicle.ts`](src/chronicle.ts).
+- **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get the story agent.
+- **A soundtrack per scene.** At each new scene Old Bram calls a function tool. The tool posts to the app (`POST /api/scene`, local only), and the app asks LiveKit's Ingress API to pull that scene's soundtrack from a URL into the room. LiveKit reports `ingress_started`, `ingress_ended` and the track events back through Event Gateway.
+- **A session chronicle.** The page builds a timeline of the session from the webhooks it receives: who joined and when, who dropped (`participant_connection_aborted`), each scene's soundtrack starting and ending, and the session length. It tells players, the story agent and soundtracks apart with `participant.kind` in the payload (`AGENT` for the agent, `INGRESS` for a soundtrack, absent for a player). See [`src/chronicle.ts`](src/chronicle.ts).
 - **Event Gateway rules.** The connection deduplicates on the LiveKit event id (`body.id`, 10 minutes) and retries failed deliveries with exponential backoff (8 attempts from 30 seconds).
 - **A data flow pane.** The page's bottom pane shows each webhook travelling from LiveKit Cloud through Event Gateway and `hookdeck listen` to the app, with scripted scenes for a call's lifecycle, a duplicate, a bad signature and an app that is down.
 
@@ -28,14 +28,14 @@ After [setup](#setup) (about five minutes, once), run three things in three term
 ```bash
 npm run listen   # Hookdeck forwards the webhooks to the app
 npm start        # the app
-npm run agent    # the game master (installs agent/ on first run)
+npm run agent    # Hester and Old Bram (installs agent/ on first run)
 ```
 
 1. Open <http://localhost:4000> (or the `PORT` in `.env`).
-2. Enter a name if you like, select **Join a call** and allow the microphone. Marla, the host, greets you and asks your first name, then the game master takes over.
-3. To play with friends, open the page in a second tab or on another machine and select **Join a call** there. To play alone with company, select **Add a bot player**: Pixel is a silent bot, and the game master voices its turns.
-4. Play: the game master sets four scenes and gives each player a turn. The agent hears one player at a time, so wait for your turn.
-5. Select **Leave** when you're done. The **Session chronicle**, the call log and the **Data flow** pane fill in as the webhooks arrive. A session ends, and its chronicle closes, about a minute after the last person leaves, because LiveKit closes an empty room after its departure timeout.
+2. Enter a name if you like, select **Join a call** and allow the microphone. Hester greets you and asks your first name, then says she will fetch Old Bram, who tells the story.
+3. To play with friends, open the page in a second tab or on another machine and select **Join a call** there. To play alone with company, select **Add a bot player**: Pixel is a silent bot, and Old Bram voices its turns.
+4. Play: Old Bram sets four scenes and gives each player a turn. The agent hears one player at a time, so wait until the page says **Your turn**. The page shows the **Transcript** (what the characters and players say), who the turn belongs to, and which soundtrack is playing.
+5. When Old Bram closes the story, the page says **The story has ended** and offers **Start a new story**. Select **Leave** any time to stop earlier. The **Session chronicle**, the call log and the **Data flow** pane fill in as the webhooks arrive. A session ends, and its chronicle closes, about a minute after the last person leaves, because LiveKit closes an empty room after its departure timeout.
 
 ## Setup
 
@@ -92,21 +92,24 @@ Open <http://localhost:4000>.
 
 `npm run agent` starts a worker (`agent/src/main.ts`, built with [`@livekit/agents`](https://docs.livekit.io/agents/) for Node.js) that registers with your LiveKit project as `story-gm`. It needs Node.js 22.18 or later. The page's token dispatches it when the first player joins, so there is nothing to configure in the LiveKit dashboard.
 
-1. **Marla**, the intro agent, asks each player's first name and calls `register_player`. It switches which player it listens to after each name.
-2. The game master takes over through `llm.handoff`. It runs four scenes (a tavern, a forest, a cave and a finale), calls `next_scene` at each one to start the soundtrack, and calls `give_turn` to listen to one player at a time. It keeps each turn to a couple of short sentences.
-3. After the finale it calls `end_story` and leaves the room.
+| Character | Role | Manner | Voice (LiveKit Inference) |
+|---|---|---|---|
+| **Hester Pennywhistle** | Innkeeper of the Drowned Bell. Greets travellers, writes each first name in the ledger (`write_in_ledger`), then announces that she is fetching Old Bram and hands over (`fetch_bram`, an `llm.handoff`). | Brisk, warm, a little nosy, dry humour, calls everyone "love" or "dear". | Cartesia Sonic 3, voice `f31cc6a7-c1e8-4764-980c-60a361443dd1` (Robyn, an Australian, mature voice from LiveKit's documented list) |
+| **Old Bram Tallow** | Retired lighthouse keeper who tells "The Lantern of Hollow Mere". Calls `next_scene` to start each scene's soundtrack, `give_turn` to listen to one player at a time, and `end_story` after his closing. | Slow, gravelly, kind, sea-worn turns of phrase, loves a pause. | Deepgram Aura 2, voice `draco` (a British male voice) |
 
-Speech-to-text (Deepgram Nova 3), the language model (OpenAI GPT-4.1 mini) and text-to-speech (Cartesia Sonic 3) all run on [LiveKit Inference](https://docs.livekit.io/agents/models/), billed to your LiveKit project, so there are no other keys. The agent calls the app at `http://localhost:4000` (set `STORY_APP_URL` if the app runs elsewhere).
+Hester and Bram are one agent participant in the room. The agent publishes what the page shows as participant attributes on itself: `story.character`, `story.turn` and `story.turn_name` (whose turn it is), `story.scene` and `story.state` (`ended` when the story is over). Bram's `give_turn` tool rotates through different ways to hand a turn over (an open question, two choices, a vivid detail with no question, an invitation to speak, a short challenge) so he does not end every reply the same way.
+
+Speech-to-text (Deepgram Nova 3), the language model (OpenAI GPT-4.1 mini) and text-to-speech all run on [LiveKit Inference](https://docs.livekit.io/agents/models/), billed to your LiveKit project, so there are no other keys. The agent calls the app at `http://localhost:4000` (set `STORY_APP_URL` if the app runs elsewhere). The story runs about six minutes, and the page's **Transcript** shows what is said, from the `lk.transcription` text streams the agent publishes.
 
 ## Soundtracks
 
-The four 14 second soundtracks in `public/soundtracks/` (`tavern.ogg`, `forest.ogg`, `cave.ogg`, `finale.ogg`) are generated by [`scripts/make-soundtracks.sh`](scripts/make-soundtracks.sh) with ffmpeg from synthesized tones and filtered noise, kept quiet so the game master stays audible. They contain no one else's audio, so there is nothing to license. Run the script to change them.
+The four 3 minute soundtracks in `public/soundtracks/` (`tavern.ogg`, `forest.ogg`, `cave.ogg`, `finale.ogg`) are generated by [`scripts/make-soundtracks.sh`](scripts/make-soundtracks.sh) with ffmpeg from synthesized tones and filtered noise, kept quiet so the storyteller stays audible. A soundtrack plays until the next scene replaces it, so each is longer than a scene usually runs. The page shows **Now playing** while one is in the room. They contain no one else's audio, so there is nothing to license. Run the script to change them.
 
 LiveKit Cloud fetches the file itself, so the URL must be public: `localhost` doesn't work. By default the app points at this folder in the repository (`raw.githubusercontent.com/hookdeck/hookdeck-demos/main/livekit/call-log/public/soundtracks/<scene>.ogg`). To host the files yourself, set `SOUNDTRACK_BASE_URL` in `.env`, or `SOUNDTRACK_URL_TAVERN` (and `_FOREST`, `_CAVE`, `_FINALE`) for one scene. If a soundtrack can't be fetched, the story carries on without music.
 
 ## The data flow pane
 
-The page has a **Data flow** pane at the bottom, open by default. **Live** shows the demo as it runs: each webhook travels from LiveKit Cloud through Event Gateway (receive, store, dedup, retry) and `hookdeck listen` to the app. Click a node or a packet for that webhook's details below the diagram: each delivery attempt, what the app answered and a **View in Hookdeck** link. When the game master starts a scene, a packet travels from the app to LiveKit's Ingress API along the outbound **INGRESS** edge, and the ingress webhooks come back through Event Gateway. The other tabs play scripted scenes with captions: **Call lifecycle**, **Duplicate dropped**, **Bad signature** and **App down, retry succeeds**.
+The page has a **Data flow** pane at the bottom, open by default. **Live** shows the demo as it runs: each webhook travels from LiveKit Cloud through Event Gateway (receive, store, dedup, retry) and `hookdeck listen` to the app. Click a node or a packet for that webhook's details below the diagram: each delivery attempt, what the app answered and a **View in Hookdeck** link. When Old Bram starts a scene, a packet travels from the app to LiveKit's Ingress API along the outbound **INGRESS** edge, and the ingress webhooks come back through Event Gateway. The other tabs play scripted scenes with captions: **Call lifecycle**, **Duplicate dropped**, **Bad signature** and **App down, retry succeeds**.
 
 The scenes live in `scenes/livekit-calls.ts` (the kit in `scenes/kit/` is synced from `_shared/scenes`). MP4 captures of the four scenes, landscape and square, are in `scenes/captures/`. To render them again: `npm run capture -- livekit-call-lifecycle`.
 
@@ -160,7 +163,7 @@ Every request the app receives is appended to `data/deliveries.jsonl` with its h
 livekit/call-log/
 ├── .env.example
 ├── package.json
-├── agent/                   # `npm run agent`: the intro agent and the game master
+├── agent/                   # `npm run agent`: Hester and Old Bram
 ├── scenes/
 │   ├── livekit-calls.ts     # The topology: live scene and four scripted scenes
 │   ├── entry.ts             # What the page's bundle exposes

@@ -18,7 +18,7 @@
         <span class="eyebrow mono-xs">{ LiveKit call log }</span>
         <h1 class="title-2xl">A spoken adventure, told by <em>room webhooks</em></h1>
         <p class="body-m">
-          Join a call and an AI game master runs a short story for you and any friends. At each new scene this server pulls a
+          Join a call, and an AI innkeeper and storyteller run a short adventure for you and any friends. At each new scene this server pulls a
           soundtrack into the room with LiveKit's Ingress API. LiveKit reports everything that happens (people joining, dropping,
           soundtracks starting and ending) as webhooks to a Hookdeck source, and Hookdeck delivers them to this server, which builds a
           call log and a session chronicle from them.
@@ -34,9 +34,8 @@
     <section class="card">
       <h2 class="title-l">Join a call</h2>
       <p class="body-s muted">
-        Joins a LiveKit room from this browser with your microphone. A host (Marla) asks for your name, then hands over to the
-        game master. Open this page in a second tab to play with two voices, or add a silent bot player. Only one player is heard at a
-        time: the game master gives each a turn. Allow the microphone when the browser asks, and start the agent with <code>npm run agent</code>.
+        Joins a LiveKit room from this browser with your microphone. Hester, the innkeeper, asks for your name, then fetches Old Bram, who tells the story. Open this page in a second tab to play with two voices, or add a silent bot player. Only one player is heard at a
+        time: the storyteller gives each a turn. Allow the microphone when the browser asks, and start the agent with <code>npm run agent</code>.
       </p>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Your name</span><input class="input" id="playerName" maxlength="24" placeholder="optional" style="width:140px"></label>
@@ -46,11 +45,18 @@
         <span class="body-xs muted" id="callStatus">Allow the microphone when the browser asks.</span>
       </div>
       <div id="callMessage" class="message body-s" hidden></div>
+      <div id="storyBanner" class="story-banner body-m" hidden></div>
+    </section>
+
+    <section class="card">
+      <h2 class="title-l">Transcript</h2>
+      <p class="body-s muted">What the innkeeper, the storyteller and the players say, as the agents' speech-to-text hears it.</p>
+      <ul id="transcript" class="transcript body-s"></ul>
     </section>
 
     <section class="card">
       <h2 class="title-l">Session chronicle</h2>
-      <p class="body-s muted">Built only from the webhooks this server receives. Players, the game master and soundtracks are told apart by the participant <code>kind</code> in each payload.</p>
+      <p class="body-s muted">Built only from the webhooks this server receives. Players, the story agent and soundtracks are told apart by the participant <code>kind</code> in each payload.</p>
       <div id="chronicle" class="requests"></div>
     </section>
 

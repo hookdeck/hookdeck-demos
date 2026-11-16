@@ -60,7 +60,7 @@ app.post('/api/test-participant/stop', express.json(), (req: Request, res: Respo
   res.json({ ok: true });
 });
 
-// The game master agent (`npm run agent`) calls this at each new scene. The app pulls that scene's
+// The storyteller agent (`npm run agent`) calls this at each new scene. The app pulls that scene's
 // soundtrack into the room with LiveKit's Ingress API (a URL input), which produces ingress_started
 // and ingress_ended webhooks that come back through Event Gateway like every other event.
 const ingress_client = new IngressClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
