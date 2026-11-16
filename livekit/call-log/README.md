@@ -43,7 +43,16 @@ This creates a `livekit-call-log` source, a CLI destination that forwards to `/w
 
 ### 4. Add the webhook in LiveKit Cloud
 
-In the LiveKit Cloud dashboard open **Settings, Webhooks** and select **Create new webhook**. Enter a name, paste the `LIVEKIT_WEBHOOK_URL` value as the URL, choose your API key as the **Signing API key**, and select **Create**. Use **Actions, Send a test event** to check the path.
+`npm run setup` creates the webhook for you when you are signed in to LiveKit Cloud with the LiveKit CLI. It uses LiveKit Cloud's management API (on LiveKit's `beta-api` host), which takes your user sign-in rather than an API key and secret:
+
+```bash
+lk cloud auth --user-auth   # opens a browser sign-in once
+npm run setup               # also creates (or updates) the "Hookdeck: livekit-call-log" webhook
+```
+
+Setup finds your project by matching `LIVEKIT_URL` (set `LIVEKIT_PROJECT_ID` to choose one), signs the webhook with `LIVEKIT_API_KEY`, and updates the webhook instead of duplicating it when you run it again. To use a session token yourself, set `LIVEKIT_SESSION_TOKEN`.
+
+If you are not signed in, setup still creates the Hookdeck connection and prints these steps. In the LiveKit Cloud dashboard open **Settings, Webhooks** and select **Create new webhook**. Enter a name, paste the `LIVEKIT_WEBHOOK_URL` value as the URL, choose your API key as the **Signing API key**, and select **Create**. Use **Actions, Send a test event** to check the path.
 
 See LiveKit's [webhooks documentation](https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/) for the events and payloads.
 
@@ -122,6 +131,7 @@ livekit/call-log/
 ├── scripts/
 │   ├── activity.sh          # Creates a room and joins test participants with the lk CLI
 │   ├── simulate.ts          # Sends signed events (or a bad signature, or a duplicate) to the source
+│   ├── livekit-cloud.ts     # Creates the LiveKit Cloud webhook through the management API
 │   ├── hookdeck-cli.ts      # Synced from _shared: runs the Hookdeck CLI against the API key's project
 │   ├── listen.ts            # npm run listen
 │   └── setup-hookdeck.ts    # npm run setup

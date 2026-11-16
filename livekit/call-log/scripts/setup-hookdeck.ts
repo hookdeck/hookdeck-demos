@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { SOURCE, cli } from './config';
+import { CLI_CONFIG_PATH, ensureWebhook, readCliConfig, resolveSession } from './livekit-cloud';
 
 const PROJECT_DIR = cli.projectDir;
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
@@ -80,10 +81,33 @@ async function main(): Promise<void> {
   writeEnv({ LIVEKIT_WEBHOOK_URL: connection.source.url });
 
   console.log('');
+  const registered = await registerLiveKitWebhook(connection.source.url);
+  console.log('');
   console.log('Next:');
-  console.log(`  1. Paste ${connection.source.url} into LiveKit Cloud -> Settings -> Webhooks`);
-  console.log('  2. npm run listen');
-  console.log('  3. npm start');
+  if (!registered) {
+    console.log(`  1. In LiveKit Cloud open Settings -> Webhooks -> Create new webhook, paste ${connection.source.url} as the URL,`);
+    console.log(`     and choose the API key ${process.env.LIVEKIT_API_KEY} as the Signing API key.`);
+    console.log('     (Or run `lk cloud auth --user-auth` and then `npm run setup` again to create it automatically.)');
+  }
+  console.log('  - npm run listen');
+  console.log('  - npm start');
+}
+
+/** Creates the LiveKit Cloud webhook with the management API. Never fails setup: returns false when the dashboard step is needed. */
+async function registerLiveKitWebhook(url: string): Promise<boolean> {
+  const session = resolveSession(process.env, readCliConfig());
+  if (!session) {
+    console.log(`No LiveKit Cloud sign-in found (looked for LIVEKIT_SESSION_TOKEN and an unexpired session in ${CLI_CONFIG_PATH}).`);
+    return false;
+  }
+  try {
+    const result = await ensureWebhook(session, process.env, url, process.env.LIVEKIT_API_KEY || '');
+    console.log(`LiveKit Cloud webhook ${result.action} (project ${result.project_id}, webhook ${result.webhook_id}).`);
+    return true;
+  } catch (error: any) {
+    console.log(`Could not create the LiveKit Cloud webhook: ${error.message}`);
+    return false;
+  }
 }
 
 main().catch((error: any) => {
