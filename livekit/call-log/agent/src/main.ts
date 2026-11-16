@@ -18,7 +18,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describeLlm, makeLlm } from './llm.ts';
-import { planLedger } from './names.ts';
+import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -48,6 +48,10 @@ interface StoryData {
   turns: number;
   /** Players who have had their turn in the current scene: each gets exactly one. */
   turn_taken: Set<string>;
+  /** Everyone is in the ledger: once Hester has finished speaking, she fetches Bram. */
+  handoff_pending: boolean;
+  pending_bots: string[];
+  handed_off: boolean;
   /** A mute player's gesture (a chat message) that `give_turn` is waiting for, by the player's identity. */
   gesture_waiters: Map<string, (text: string) => void>;
 }
@@ -76,15 +80,12 @@ function registerKnown(data: StoryData): { greet: string[]; bots: string[]; unna
 }
 
 /** What Hester should say next, given who she just wrote in and who is still unnamed. */
-function nextStep(greet: string[], bots: string[], unnamed: boolean, everyone: string): string {
+function nextStep(greet: string[], bots: string[], _unnamed: boolean, _everyone: string): string {
   const greeting = greet.length
-    ? `${greet.length === 1 ? greet[0] : greet.join(' and ')} told the page their name${greet.length === 1 ? '' : 's'}, so do not ask: greet ${greet.length === 1 ? 'them' : 'each'} by name in one short, in-character sentence (for example "Ah, ${greet[0]}, we've been expecting you") and they are already in the ledger. `
+    ? `${greet.join(' and ')} told the page ${greet.length === 1 ? 'their name' : 'their names'}, so do not ask: greet ${greet.length === 1 ? 'them' : 'each'} by name in one short, in-character sentence (for example "Ah, ${greet[0]}, we've been expecting you") and they are already in the ledger. `
     : '';
-  const mute = bots.length ? `${bots.join(' and ')} cannot speak, so do not ask: greet ${bots.length === 1 ? 'them' : 'each'} warmly too, in the same sentence or the next ("and your quiet friend, ${bots[0]}"), and write ${bots.length === 1 ? 'them' : 'each'} in the ledger. ` : '';
-  const hello = `${greeting}${mute}`;
-  return unnamed
-    ? `${hello}Another traveller at the door gave no name and you can hear them now: ask them for their first name.`
-    : `${hello}Everyone is in the ledger (${everyone}). In this same reply, say aloud that you will fetch Old Bram, who has been waiting all evening for a crowd, and call fetch_bram.`;
+  const mute = bots.length ? `${bots.join(' and ')} cannot speak: greet ${bots.length === 1 ? 'them' : 'each'} warmly too ("and your quiet friend, ${bots[0]}"). ` : '';
+  return `${greeting}${mute}Another traveller at the door gave no name and you can hear them now: ask them for their first name.`;
 }
 
 const switchListener = (session: voice.AgentSession<StoryData>, identity: string | null) => (session as any)._roomIO?.setParticipant(identity);
@@ -113,6 +114,19 @@ const HANDOVERS = [
 
 const BREVITY = 'You speak aloud, so keep to two short sentences at a time, with no lists, no stage directions and no emoji.';
 
+/** Hester announces she is fetching Old Bram, in her own voice, then the table passes to him. Code, not a model call. */
+async function fetchBram(session: voice.AgentSession<StoryData>, greet: string[], bots: string[]) {
+  const data = session.userData;
+  if (data.handed_off) return;
+  data.handed_off = true;
+  data.handoff_pending = false;
+  // Anyone who came in while Hester was talking (a bot, or a player who typed a name) is in the story too
+  const late = registerKnown(data);
+  const line = fetchLine([...greet, ...late.greet], [...bots, ...late.bots], data.players.length % 2);
+  await session.say(line, { allowInterruptions: false }).waitForPlayout();
+  session.updateAgent(Bram.build(data.players));
+}
+
 class Hester extends voice.Agent<StoryData> {
   /**
    * Opens the evening. Called once the room is connected and the first guest is at the door, because
@@ -123,10 +137,13 @@ class Hester extends voice.Agent<StoryData> {
     const { greet, bots, unnamed } = registerKnown(data);
     const first_human = unnamed[0] ?? data.players.find((p) => !p.bot)?.identity;
     if (first_human) switchListener(session, first_human);
+    // Everyone at the door already has a name (typed on the page, or a bot): greet them and fetch Bram, with no model call
+    if (!unnamed.length) return fetchBram(session, greet, bots);
     const intro = 'You are standing at the door of the inn, shaking the rain off your apron as travellers come in. ';
+    const known = greet.length || bots.length;
     session.generateReply({
-      instructions: greet.length || bots.length || !unnamed.length
-        ? `${intro}${nextStep(greet, bots, unnamed.length > 0, data.players.map((p) => p.name).join(', '))}`
+      instructions: known
+        ? `${intro}${nextStep(greet, bots, true, '')}`
         : `${intro}Greet them in one short sentence, say it is a wild night and the ledger is open, and ask the traveller you can hear for their first name.`,
     });
   }
@@ -134,39 +151,34 @@ class Hester extends voice.Agent<StoryData> {
   static build() {
     return new Hester({
       instructions: `You are Hester Pennywhistle, innkeeper of the Drowned Bell, a crooked old inn on the shore of the Hollow Mere. You are brisk, warm and a little nosy, with a dry sense of humour, and you call everyone "love" or "dear". You are a fictional character in a spoken adventure. ${BREVITY}
-Travellers who come in out of the storm must sign your ledger. A traveller who already gave their name at the door is written in for you: greet them by name, never ask for it again and never call write_in_ledger for them. Call write_in_ledger only for a name you have just heard a traveller say. You can hear only one traveller at a time. Ask the one you can hear for their first name, then call write_in_ledger with it, and greet them by name. When the ledger tells you everyone is written in, say aloud, in one sentence and in your own words, that you will fetch Old Bram, who has been waiting all evening for a crowd to tell his tale to, and in that same reply call fetch_bram, so that the sentence and the call come together.`,
+Travellers who come in out of the storm must sign your ledger. A traveller who already gave their name at the door is written in for you: never ask for it and never call write_in_ledger for them. You can hear only one traveller at a time: ask the one you can hear for their first name. When you hear it, call write_in_ledger with it as the whole of your reply, with no words before it, then greet them by name in one short sentence once it returns. Never write or say a tool name or function call. Never mention fetching Old Bram: that is done for you.`,
       tts: new inference.TTS({ model: HESTER_VOICE as any }),
-      // A player talking over her must not cancel the handoff
+      // A player talking over her must not cut her off
       allowInterruptions: false,
       tools: {
         write_in_ledger: llm.tool({
           description: 'Write the first name of the traveller you can hear in the inn ledger.',
           parameters: z.object({ name: z.string().describe('The traveller\'s first name') }),
           execute: async ({ name }, { ctx }: llm.ToolOptions<StoryData>) => {
-            const { players } = ctx.userData;
+            const data = ctx.userData;
+            const { players } = data;
             const session = ctx.session as voice.AgentSession<StoryData>;
             // Only a plausible first name goes in the ledger: not "I", "the" or a sentence
             if (!/^\p{L}[\p{L}'-]{1,19}$/u.test(name.trim()) || ['the', 'my', 'me', 'and', 'light', 'home', 'way'].includes(name.trim().toLowerCase())) return `That did not sound like a first name. Ask the traveller again, in your own words, for just their first name.`;
             const identity = listening_to(session);
             if (identity && !players.some((p) => p.identity === identity)) players.push({ identity, name, bot: false });
             // Anyone who came in with a name on the page, and any bot, goes in the ledger without being asked
-            const { greet, bots, unnamed } = registerKnown(ctx.userData);
+            const { greet, bots, unnamed } = registerKnown(data);
             if (unnamed.length) {
               switchListener(session, unnamed[0]);
               return `${name} is in the ledger. ${nextStep(greet, bots, true, '')}`;
             }
             const first = players.find((p) => !p.bot);
             if (first) switchListener(session, first.identity);
-            return `${name} is in the ledger. ${nextStep(greet, bots, false, players.map((p) => p.name).join(', '))}`;
-          },
-        }),
-        fetch_bram: llm.tool({
-          description: 'Hand the table over to Old Bram, the storyteller. Call it right after you have said you will fetch him.',
-          parameters: z.object({}),
-          execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
-            // Anyone who came in while Hester was talking (a bot, or a player who typed a name) is in the story too
-            registerKnown(ctx.userData);
-            return llm.handoff({ agent: Bram.build(ctx.userData.players), returns: 'Hester goes to fetch Old Bram.' });
+            // Everyone is in: once this reply has been spoken, the code (not the model) fetches Old Bram
+            data.handoff_pending = true;
+            data.pending_bots = bots;
+            return `${name} is in the ledger. Greet ${name} by name in one short sentence. Say nothing about fetching anyone: that is done for you.`;
           },
         }),
       },
@@ -185,7 +197,7 @@ class Bram extends voice.Agent<StoryData> {
   static build(players: Player[]) {
     const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak and answers with gestures, which arrive as short text lines like "*Pixel taps the map.*" when you give it the turn)` : p.name)).join(', ');
     return new Bram({
-      instructions: `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell. You are slow, gravelly and kind, with dry humour and sea-worn turns of phrase, and you love a pause. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers: ${roster}. ${BREVITY} Call tools silently: never write or say a tool name or function call in your speech.
+      instructions: `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell. You are slow, gravelly and kind, with dry humour and sea-worn turns of phrase, and you love a pause. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers: ${roster}. ${BREVITY} Call tools silently: when you need a tool, call it first in your reply, before you speak, and never write or say a tool name or function call in your speech.
 The story has four scenes. Call next_scene to start each one: it plays that scene's soundtrack and tells you what the scene is. Never call it twice in a row, and never name the scenes in advance.
 For each scene: call next_scene, set the scene in two short sentences, then call give_turn for each player in turn. give_turn tells you how to hand that turn over; follow it. Hand over once per reply and never ask two questions in one reply. React to each answer in one sentence that builds on what the player said, then move to the next player. Never repeat the way you handed over the turn before. A mute traveller such as Pixel never speaks: when you give it the turn, hand it the moment in one short sentence with no question, then stop and wait for its gesture, and weave that gesture into your reaction. Now and then, without being asked, mention what the mute traveller is doing in the corner of the scene. After the last player's turn in a scene, call next_scene again.
 The finale is the last scene: give every player a turn, then speak a closing of up to four sentences that gathers up what each player did and ends the story with a memorable last line. Only after that, call end_story. Do not rush the ending. Keep the whole story to about six minutes.`,
@@ -282,7 +294,12 @@ export default defineAgent({
     const session = new voice.AgentSession<StoryData>({
       stt: new inference.STT({ model: 'deepgram/nova-3', language: 'en' }),
       llm: makeLlm(),
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set(), gesture_waiters: new Map() },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set(), handoff_pending: false, pending_bots: [], handed_off: false, gesture_waiters: new Map() },
+    });
+    // Once Hester has finished the sentence that follows the last name in the ledger, she fetches Old Bram
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => {
+      const data = session.userData;
+      if (shouldFetchBram(e.oldState, e.newState, data.handoff_pending, data.handed_off)) fetchBram(session, [], data.pending_bots).catch((error) => console.log('handoff error:', error));
     });
     session.on(voice.AgentSessionEventTypes.Error, (e: any) => console.log('agent error:', e.error?.message ?? e));
     session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (e: any) => {

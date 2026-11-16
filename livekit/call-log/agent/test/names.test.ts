@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { planLedger, realName } from '../src/names.ts';
+import { fetchLine, planLedger, realName, shouldFetchBram } from '../src/names.ts';
 
 test('a typed name is a real name; an empty one, the identity or a placeholder is not', () => {
   assert.equal(realName('Priya', 'web-1a2b3c'), 'Priya');
@@ -42,4 +42,18 @@ test('the bot has a known name from its identity and is never asked', () => {
   const plan = planLedger([{ identity: 'bot-pixel', name: '', bot: true }], new Set());
   assert.deepEqual(plan.named, [{ identity: 'bot-pixel', name: 'Pixel', bot: true }]);
   assert.deepEqual(plan.unnamed, []);
+});
+
+test('the line Hester speaks before fetching Old Bram greets the named players and the quiet one', () => {
+  assert.equal(fetchLine(['Priya'], ['Pixel']), "Ah, Priya, we've been expecting you and your quiet friend, Pixel. Let me fetch Old Bram, love, he's been waiting all evening for a crowd.");
+  assert.match(fetchLine(['Priya', 'Sam'], []), /^Ah, Priya and Sam, we've been expecting you\. Let me fetch Old Bram/);
+  assert.match(fetchLine([], ['Pixel']), /^And there's your quiet friend, Pixel\. Let me fetch Old Bram/);
+  assert.match(fetchLine([], [], 1), /^Sit by the fire, dears, while I fetch Old Bram/);
+});
+
+test('Hester fetches Bram only after the ledger is complete and she has finished speaking, and only once', () => {
+  assert.equal(shouldFetchBram('speaking', 'listening', true, false), true);
+  assert.equal(shouldFetchBram('thinking', 'listening', true, false), false);
+  assert.equal(shouldFetchBram('speaking', 'listening', false, false), false);
+  assert.equal(shouldFetchBram('speaking', 'listening', true, true), false);
 });

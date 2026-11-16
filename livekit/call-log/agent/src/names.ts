@@ -40,3 +40,24 @@ export function planLedger(guests: Guest[], registered: Set<string>): LedgerPlan
   }
   return plan;
 }
+
+/**
+ * What Hester says when everyone is in the ledger and she goes to fetch Old Bram. It is spoken straight
+ * through text-to-speech, in her voice, with no model call: the handoff is code, so it cannot be skipped or
+ * leak a tool call into the speech, and the same words cost nothing.
+ */
+export function fetchLine(greet: string[], bots: string[], variant = 0): string {
+  const humans = greet.length === 0 ? '' : greet.length === 1 ? greet[0] : `${greet.slice(0, -1).join(', ')} and ${greet[greet.length - 1]}`;
+  const quiet = bots.length === 0 ? '' : ` and your quiet friend${bots.length > 1 ? 's' : ''}, ${bots.join(' and ')}`;
+  const welcome = humans ? `Ah, ${humans}, we've been expecting you${quiet}.` : quiet ? `And there's your quiet friend${bots.length > 1 ? 's' : ''}, ${bots.join(' and ')}.` : '';
+  const fetch = [
+    "Let me fetch Old Bram, love, he's been waiting all evening for a crowd.",
+    "Sit by the fire, dears, while I fetch Old Bram. He's been itching for a crowd all night.",
+  ][variant % 2];
+  return `${welcome} ${fetch}`.trim();
+}
+
+/** Hester fetches Bram when everyone is in the ledger and she has just finished speaking (speaking to listening). */
+export function shouldFetchBram(old_state: string, new_state: string, pending: boolean, handed_off: boolean): boolean {
+  return pending && !handed_off && old_state === 'speaking' && new_state === 'listening';
+}
