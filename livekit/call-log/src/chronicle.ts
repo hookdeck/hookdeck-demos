@@ -157,11 +157,14 @@ export function viewChronicle(chronicle: Chronicle): ChronicleView[] {
     .map((s): ChronicleView => {
       const lines: ChronicleLine[] = [];
       if (s.started_at) lines.push({ at: s.started_at, kind: 'room', text: 'The room opened' });
+      // A second agent joining the same room means the storyteller came back (LiveKit re-dispatched it, or "Continue the story")
+      const gm_order = Object.values(s.people).filter((p) => p.role === 'gm').sort((a, b) => (a.joined_at ?? 0) - (b.joined_at ?? 0)).map((p) => p.identity);
       for (const p of Object.values(s.people)) {
         if (p.role === 'soundtrack' || p.role === 'other') continue;
-        const who = p.role === 'gm' ? 'The story agent' : label(p);
+        const returned = p.role === 'gm' && gm_order.indexOf(p.identity) > 0;
+        const who = p.role === 'gm' ? (returned ? 'The storyteller' : 'The story agent') : label(p);
         const kind = p.role === 'gm' ? 'gm' : 'player';
-        if (p.joined_at) lines.push({ at: p.joined_at, kind, text: `${who} joined` });
+        if (p.joined_at) lines.push({ at: p.joined_at, kind, text: returned ? 'The storyteller returned' : `${who} joined` });
         if (p.left_at) lines.push(p.dropped
           ? { at: p.left_at, kind: 'drop', text: `${who} dropped (connection ${p.disconnect_reason === 'CONNECTION_TIMEOUT' ? 'timed out' : 'aborted'})` }
           : { at: p.left_at, kind, text: `${who} left` });

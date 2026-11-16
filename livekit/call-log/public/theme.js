@@ -12,6 +12,14 @@
 // (for example the design-system tokens under `html[data-theme="story"] main`). With
 // data-demo-theme-default="true" and no saved choice, the demo theme is the default; the switch
 // goes back to System, Light or Dark and remembers the choice.
+//
+// Wording can change with the theme too. A theme ships a copy file (for example theme-<id>.copy.js) that sets
+// `window.HookdeckThemeCopies["<id>"] = { key: "wording", ... }`. Elements carry data-copy="<key>" (their
+// content), data-copy-aria="<key>" (their aria-label) or data-copy-placeholder="<key>" (their placeholder),
+// with the default wording written in the HTML. The theme being on swaps the wording in; off restores it.
+// Text built at runtime asks for it: `HookdeckTheme.copy(key, fallback)` returns the theme's wording while the
+// theme is on and `fallback` otherwise. Values are inserted as HTML: escape anything that is not your own text.
+// The page can listen for the `hookdeck-theme` event on `document` to re-render runtime text.
 (function () {
   const KEY = 'hookdeck-demo-theme';
   const root = document.documentElement;
@@ -34,9 +42,31 @@
     } catch {}
   };
 
+  let theme_on = false;
+  const copies = () => (window.HookdeckThemeCopies && window.HookdeckThemeCopies[demo_id]) || {};
+  /** The theme's wording for a key while the theme is on, otherwise the fallback. */
+  function copy(key, fallback) {
+    const table = copies();
+    return theme_on && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
+  }
+  function swap_copy() {
+    const each = (selector, attr, get, set) => {
+      document.querySelectorAll(selector).forEach((el) => {
+        const key = el.dataset[attr];
+        if (!('plain_' + attr in el.dataset)) el.dataset['plain_' + attr] = get(el);
+        set(el, copy(key, el.dataset['plain_' + attr]));
+      });
+    };
+    each('[data-copy]', 'copy', (el) => el.innerHTML, (el, v) => { el.innerHTML = v; });
+    each('[data-copy-aria]', 'copyAria', (el) => el.getAttribute('aria-label') || '', (el, v) => el.setAttribute('aria-label', v));
+    each('[data-copy-placeholder]', 'copyPlaceholder', (el) => el.getAttribute('placeholder') || '', (el, v) => el.setAttribute('placeholder', v));
+  }
+
   function apply() {
     const mode = read();
     const is_demo = demo_id !== '' && mode === demo_id;
+    const changed = is_demo !== theme_on;
+    theme_on = is_demo;
     const dark = !is_demo && (mode === 'dark' || (mode === 'system' && media.matches));
     if (is_demo) root.dataset.theme = demo_id;
     else delete root.dataset.theme;
@@ -44,7 +74,11 @@
     document.querySelectorAll('[data-theme-option]').forEach((button) => {
       button.setAttribute('aria-pressed', String(button.dataset.themeOption === mode));
     });
+    swap_copy();
+    if ((changed || document.readyState !== 'loading') && typeof CustomEvent === 'function') document.dispatchEvent(new CustomEvent('hookdeck-theme', { detail: { on: theme_on } }));
   }
+
+  window.HookdeckTheme = { copy, apply, get on() { return theme_on; } };
 
   apply();
   media.addEventListener('change', apply);

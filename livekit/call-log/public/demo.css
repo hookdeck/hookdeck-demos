@@ -118,3 +118,11 @@ html[data-theme="story"] .only-story { display: initial; }
 .story-ornament { display: none; }
 
 .transcript li[data-role="mute"] .line-text { font-style: italic; }
+
+/* Banner: the plain themes show the title and the "now playing" badge; the sub line is for themes that style it */
+.turn-sub { display: none; }
+html[data-theme="story"] .turn-sub { display: initial; }
+.end-sub { display: none; }
+html[data-theme="story"] .end-sub { display: initial; }
+.turn-playing { margin-left: 8px; }
+.input[readonly] { opacity: 0.8; }

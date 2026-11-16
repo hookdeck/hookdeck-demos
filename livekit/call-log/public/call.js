@@ -4,10 +4,14 @@
 import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.24.0';
 
 const $ = (id) => document.getElementById(id);
-const say = (text) => { $('callStatus').textContent = text; };
+const say = (text) => { $('callStatus').textContent = text; $('callStatus').dataset.themed = ''; };
+// A status line built from theme wording is rebuilt when the theme changes
+let say_themed = () => {};
+const say_copy = (key, fallback, vars) => { const draw = () => { $('callStatus').textContent = T(key, fallback, vars); }; draw(); $('callStatus').dataset.themed = '1'; say_themed = draw; };
 const fail = (text) => { const m = $('callMessage'); m.hidden = !text; m.textContent = text || ''; m.className = 'message body-s error'; };
 let room = null;
 let room_name = null;
+let my_identity = null;
 
 // Remote audio (the innkeeper, the storyteller, other players, the scene soundtrack) plays through hidden <audio> elements.
 const audio_box = document.createElement('div');
@@ -54,17 +58,37 @@ let story_ended = false;
 // (.only-plain / .only-story), so the plain themes keep their wording.
 const FLAME = '<svg class="story-ornament story-flame" aria-hidden="true" width="22" height="30" viewBox="0 0 22 30"><path d="M11 1 C15 8 19 11 19 18 C19 24 15 29 11 29 C7 29 3 24 3 18 C3 13 7 10 9 5 C10 9 13 11 11 1 Z" class="flame-outer"></path><path d="M11 12 C13 16 15 18 15 21 C15 24 13 26 11 26 C9 26 7 24 7 21 C7 18 9 16 11 12 Z" class="flame-inner"></path></svg>';
 
+const T = (key, fallback, vars = {}) => {
+  const text = (window.HookdeckTheme ? window.HookdeckTheme.copy(key, fallback) : fallback);
+  return text.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : ''));
+};
+
+// The storyteller has left, or has not answered for 20 s after a player spoke: offer to call him back.
+let quiet_since = 0;
+function agent_quiet() {
+  if (!room || story_ended) return false;
+  const agent = agent_of();
+  if (!agent) return people_seen_agent;
+  const state = agent.attributes?.['lk.agent.state'];
+  const waiting = (state === 'thinking' || state === 'listening') && last_player_line_at && Date.now() - last_player_line_at > 20000 && last_agent_line_at < last_player_line_at;
+  return Boolean(waiting);
+}
+let people_seen_agent = false;
+let last_player_line_at = 0;
+let last_agent_line_at = 0;
+
 function renderBanner() {
   const box = $('storyBanner');
   const agent = agent_of();
+  if (agent) people_seen_agent = true;
   if (agent?.attributes?.['story.state'] === 'ended') story_ended = true;
+  if (story_ended) $('playerName').readOnly = false;
   if (!room && !story_ended) { box.hidden = true; return; }
   if (story_ended) {
     box.hidden = false;
     box.className = 'message success body-m story-banner story-ended';
-    box.innerHTML = '<span class="only-plain">The story has ended.</span>'
-      + '<span class="only-story end-text"><strong class="end-title">The End</strong><span class="end-sub">The lantern is lit and Hollow Mere is quiet again.</span></span>'
-      + ' <button class="button" id="newStoryBtn" type="button"><span class="only-plain">Start a new story</span><span class="only-story">Begin a new tale</span></button>';
+    box.innerHTML = `<span class="end-text"><strong class="end-title">${esc(T('ended_title', 'The story has ended.'))}</strong><span class="end-sub">${esc(T('ended_sub', ''))}</span></span>`
+      + ` <button class="button" id="newStoryBtn" type="button">${esc(T('new_btn', 'Start a new story'))}</button>`;
     $('newStoryBtn').addEventListener('click', async () => {
       story_ended = false;
       room?.disconnect();
@@ -73,12 +97,26 @@ function renderBanner() {
     });
     return;
   }
+  if (agent_quiet()) {
+    box.hidden = false;
+    box.className = 'message warning body-m story-banner';
+    box.innerHTML = `<span class="story-turn-body"><strong class="turn-title">${esc(T('quiet_title', 'The storyteller has stopped answering'))}</strong><span class="turn-sub">${esc(T('quiet_sub', 'The story is saved where it stopped.'))}</span></span>`
+      + ` <button class="button" id="continueBtn" type="button">${esc(T('continue_btn', 'Continue the story'))}</button>`;
+    $('continueBtn').addEventListener('click', async () => {
+      $('continueBtn').disabled = true;
+      const response = await fetch('/api/story/continue', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: room_name }) });
+      if (!response.ok) { fail((await response.json().catch(() => ({}))).error || 'Could not continue the story.'); $('continueBtn').disabled = false; return; }
+      last_player_line_at = 0;
+      people_seen_agent = false;
+      say('Calling the storyteller back…');
+    });
+    return;
+  }
   const attrs = agent?.attributes || {};
   const turn = attrs['story.turn'];
   const sound = [...(room?.remoteParticipants.values() || [])].find((p) => p.identity.startsWith('soundtrack-'));
   const scene = sound ? sound.identity.slice('soundtrack-'.length) : '';
   let tone = 'info';
-  let plain = '';
   let title = '';
   let sub = '';
   let mine = false;
@@ -86,22 +124,15 @@ function renderBanner() {
     mine = turn === room.localParticipant.identity;
     const who = esc(attrs['story.turn_name'] || 'Another player');
     if (mine) tone = 'success';
-    plain = `<strong>${mine ? 'Your turn' : `${who}'s turn`}</strong>`;
-    title = mine ? 'Your Turn' : `${who}'s Turn`;
-    sub = mine ? 'Old Bram waits for you.' : `Old Bram is listening to ${who}.`;
+    title = mine ? T('turn_mine_title', 'Your turn') : T('turn_other_title', "{who}'s turn", { who });
+    sub = mine ? T('turn_mine_sub', '') : T('turn_other_sub', '', { who });
   } else if (agent) {
-    plain = 'Listening to the story';
-    title = 'The Tale Unfolds';
-    sub = 'Old Bram is telling it.';
+    title = T('listening_title', 'Listening to the story');
+    sub = T('listening_sub', '');
   }
-  const badges = [plain && `<span class="only-plain">${plain}</span>`];
-  if (scene) badges.push(`<span class="badge badge--primary only-plain">Now playing: ${esc(scene)}</span>`);
-  const story = title
-    ? `<span class="only-story story-turn-body">${mine ? FLAME : ''}<strong class="turn-title">${title}</strong><span class="turn-sub">${sub}</span>${scene ? `<span class="turn-playing">Now playing: ${esc(scene)}</span>` : ''}</span>`
-    : '';
-  box.hidden = !(plain || scene);
+  box.hidden = !(title || scene);
   box.className = `message ${tone} body-m story-banner${mine ? ' your-turn' : ''}`;
-  box.innerHTML = badges.filter(Boolean).join(' ') + story;
+  box.innerHTML = `<span class="story-turn-body">${mine ? FLAME : ''}${title ? `<strong class="turn-title">${title}</strong>` : ''}${sub ? `<span class="turn-sub">${sub}</span>` : ''}${scene ? `<span class="turn-playing badge badge--primary">Now playing: ${esc(scene)}</span>` : ''}</span>`;
 }
 
 // Who is in the call, what each one is, and who is speaking right now. An agent's own state
@@ -111,11 +142,15 @@ function renderPeople() {
   audio_box.querySelectorAll('audio').forEach((a) => { if (!a.srcObject || a.srcObject.getTracks().every((t) => t.readyState === 'ended')) a.remove(); });
   renderBanner();
   if (!room) { peopleList().innerHTML = ''; return; }
+  // The name Hester wrote in her ledger: a player who joined without a name sees it in the (read-only) name field
+  const ledger = parseLedger(agent_of()?.attributes?.['story.ledger']);
+  const mine = ledger[room.localParticipant.identity];
+  if (mine && $('playerName').value.trim() !== mine && room.localParticipant.identity === my_identity) $('playerName').value = mine;
   const speaking = new Set(room.activeSpeakers.map((p) => p.identity));
   const everyone = [room.localParticipant, ...room.remoteParticipants.values()];
   const pixel_here = everyone.some((p) => p.identity === 'bot-pixel');
   $('testBtn').disabled = pixel_here || !room;
-  $('testBtn').textContent = pixel_here ? 'Pixel has joined' : 'Add Pixel, a mute player';
+  $('testBtn').textContent = T(pixel_here ? 'pixel_here' : 'pixel_add', pixel_here ? 'Pixel has joined' : 'Add Pixel, a mute player');
   peopleList().innerHTML = everyone.map((p) => {
     const bot = p.identity.startsWith('bot-');
     const name = p === room.localParticipant ? `${p.name || p.identity} (you)` : p.isAgent ? (character(p) || 'Story agent') : (p.name || p.identity);
@@ -143,6 +178,8 @@ function showLine(id, who, text, final, role = 'player') {
     while (box.children.length > 80) box.lastChild.remove();
   }
   li.className = final ? '' : 'interim';
+  if (role === 'player' || role === 'mute') last_player_line_at = Date.now();
+  else last_agent_line_at = Date.now();
   // A mute player's gesture arrives as *Pixel does something.*: show it as an italic line without the asterisks
   const shown = role === 'mute' ? text.replace(/^\s*\*+\s*|\s*\*+\s*$/g, '') : text;
   li.innerHTML = `<span class="badge badge--mono speaker">${esc(who)}</span> <span class="line-text">${esc(shown)}</span>`;
@@ -219,7 +256,7 @@ function watchRoom(r) {
       document.addEventListener('click', () => r.startAudio(), { once: true });
     }
   });
-  for (const event of [RoomEvent.ParticipantConnected, RoomEvent.ParticipantDisconnected, RoomEvent.ActiveSpeakersChanged, RoomEvent.ParticipantAttributesChanged]) {
+  for (const event of [RoomEvent.ParticipantConnected, RoomEvent.ParticipantDisconnected, RoomEvent.ActiveSpeakersChanged, RoomEvent.ParticipantAttributesChanged, RoomEvent.ParticipantNameChanged]) {
     r.on(event, renderPeople);
   }
 }
@@ -228,7 +265,9 @@ function set_state(connected) {
   $('joinBtn').disabled = connected;
   $('leaveBtn').disabled = !connected;
   $('testBtn').disabled = !connected;
-  if (!connected) $('testBtn').textContent = 'Add Pixel, a mute player';
+  if (!connected) $('testBtn').textContent = T('pixel_add', 'Add Pixel, a mute player');
+  // The name is fixed from joining until the player leaves or the story ends
+  $('playerName').readOnly = connected;
 }
 
 $('joinBtn').addEventListener('click', async () => {
@@ -247,7 +286,8 @@ $('joinBtn').addEventListener('click', async () => {
     await room.connect(url, token);
     await room.localParticipant.setMicrophoneEnabled(true);
     room_name = name;
-    say(`Connected to ${name} as ${identity}, microphone on.`);
+    my_identity = identity;
+    say_copy('status_connected', `Connected to ${name} as ${identity}, microphone on.`, { name: $('playerName').value.trim() || identity });
     set_state(true);
     await room.startAudio();
     renderPeople();
@@ -273,15 +313,23 @@ $('testBtn').addEventListener('click', async () => {
   say(`Connected to ${room_name}. Pixel, a mute traveller, has joined.`);
 });
 
+document.addEventListener('hookdeck-theme', () => { $('callStatus').dataset.themed && say_themed(); renderPeople(); });
+setInterval(() => renderBanner(), 5000);
+
 // Test-only: ?demo=mine|other|ended renders the story UI from sample participants, with no call, so the
 // layout can be checked in light and dark without spending anything.
 const demo_state = new URLSearchParams(location.search).get('demo');
 if (demo_state) {
   const person = (identity, name, extra = {}) => ({ identity, name, isAgent: false, attributes: {}, ...extra });
   const agent = person('agent-1', '', { isAgent: true, attributes: { 'story.character': 'Old Bram Tallow, storyteller', 'lk.agent.state': 'listening', 'story.turn': demo_state === 'mine' ? 'web-1' : demo_state === 'other' ? 'bot-pixel' : '', 'story.turn_name': 'Pixel', 'story.state': demo_state === 'ended' ? 'ended' : 'playing' } });
-  const remotes = [agent, person('bot-pixel', 'Pixel'), person('soundtrack-cave', 'Soundtrack: cave')];
+  if (demo_state === 'quiet') people_seen_agent = true;
+  const remotes = [...(demo_state === 'quiet' ? [] : [agent]), person('bot-pixel', 'Pixel'), person('soundtrack-cave', 'Soundtrack: cave')];
+  my_identity = 'web-1';
   room = { localParticipant: person('web-1', 'Priya'), remoteParticipants: new Map(remotes.map((p) => [p.identity, p])), activeSpeakers: [agent] };
-  $('callStatus').textContent = 'Connected to story-demo as web-1, microphone on.';
+  // As if joined without a name: the agent's ledger fills the read-only name field
+  agent.attributes['story.ledger'] = JSON.stringify({ 'web-1': 'Priya' });
+  set_state(true);
+  say_copy('status_connected', 'Connected to story-demo as web-1, microphone on.', { name: 'Priya' });
   renderPeople();
   showLine('a', 'Hester Pennywhistle', 'Ah, Priya, we\'ve been expecting you, and your quiet friend, Pixel.', true, 'innkeeper');
   showLine('b', 'Old Bram Tallow', 'The cave is dark and dripping. A stone ledge holds the Lantern. Priya, will you take it and leave by the tunnel, or row across the pool?', true, 'storyteller');

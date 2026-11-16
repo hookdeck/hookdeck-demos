@@ -2,10 +2,10 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { IngressClient, IngressInput, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
+import { AgentDispatchClient, IngressClient, IngressInput, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
 import { spawn, ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
-import { mintToken } from './token';
+import { AGENT_NAME, mintToken } from './token';
 import { applyEvent, LiveKitEvent, summarise } from './call-log';
 import { loadChronicle, loadLog, readDeliveries, recordDelivery, saveChronicle, saveLog } from './store';
 import { applyChronicle, viewChronicle } from './chronicle';
@@ -35,6 +35,22 @@ app.post('/api/token', express.json(), async (req: Request, res: Response) => {
   const identity = `web-${randomBytes(3).toString('hex')}`;
   const name = String(req.body?.name || '').replace(/[^\p{L}\p{N} '-]/gu, '').trim().slice(0, 24) || undefined;
   res.json({ url: process.env.LIVEKIT_URL, token: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, identity, name), room, identity });
+});
+
+// "Continue the story": the storyteller left the room, or stopped answering. Dispatches a new story agent to the room; it finds
+// the story state in the room's metadata and picks the story up. Refused while a live story agent is still in the room.
+const dispatch_client = new AgentDispatchClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
+app.post('/api/story/continue', express.json(), async (req: Request, res: Response) => {
+  const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  if (!room) return res.status(400).json({ error: 'room is required' });
+  try {
+    const here = await room_client.listParticipants(room);
+    if (here.some((p) => p.kind === 4)) return res.status(409).json({ error: 'The storyteller is still in the room.' });
+    await dispatch_client.createDispatch(room, 'story-gm');
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(502).json({ error: error.message });
+  }
 });
 
 // "Add a bot player": Pixel, a mute scripted traveller (agent/src/pixel.ts). It joins the room as a standard

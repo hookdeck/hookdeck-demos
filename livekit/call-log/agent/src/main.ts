@@ -14,11 +14,13 @@
  */
 import { type JobContext, ServerOptions, cli, defineAgent, inference, llm, voice } from '@livekit/agents';
 import { ParticipantKind, type RemoteParticipant } from '@livekit/rtc-node';
+import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
+import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
 import { SCENES, BREVITY, bramInstructions, createEndWatcher, moveOnVerdict, sceneHint, sceneStartNote, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
@@ -65,6 +67,10 @@ interface StoryData {
   handoff_pending: boolean;
   pending_bots: string[];
   handed_off: boolean;
+  /** The last few exchanges, one line each, saved with the story state. */
+  summary: string[];
+  /** This agent picked up a story another agent left. */
+  resumed: boolean;
 }
 
 const is_bot = (p: RemoteParticipant) => p.identity.startsWith('bot-');
@@ -87,6 +93,7 @@ function registerKnown(data: StoryData): { greet: string[]; bots: string[]; unna
     data.players.push({ identity: g.identity, name: g.name, bot: g.bot });
     (g.bot ? bots : greet).push(g.name);
   }
+  publishLedger(data);
   return { greet, bots, unnamed: plan.unnamed };
 }
 
@@ -105,6 +112,41 @@ const listening_to = (session: voice.AgentSession<StoryData>): string | undefine
 /** What the page shows, published as attributes on the agent's own participant. */
 const publish = (ctx: JobContext, attributes: Record<string, string>) => ctx.room.localParticipant?.setAttributes(attributes).catch(() => undefined);
 
+/**
+ * Publishes the ledger (identity to name, humans only) as `story.ledger` on the agent's participant, so the page can fill a name field
+ * with what Hester wrote, and gives each ledger name to its participant as the display name (people list, transcript, chronicle).
+ */
+const named_here = new Set<string>();
+function publishLedger(data: StoryData) {
+  const ledger: Record<string, string> = {};
+  for (const p of data.players) if (!p.bot) ledger[p.identity] = p.name;
+  publish(data.ctx, { 'story.ledger': JSON.stringify(ledger) });
+  for (const [identity, name] of Object.entries(ledger)) {
+    const here = data.ctx.room.remoteParticipants.get(identity);
+    const key = `${data.ctx.room.name}/${identity}/${name}`;
+    if (!here || here.name === name || named_here.has(key)) continue;
+    named_here.add(key);
+    room_client ??= new RoomServiceClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
+    room_client.updateParticipant(data.ctx.room.name!, identity, { name }).catch((error: any) => console.log('could not set the display name:', error?.message ?? error));
+  }
+}
+
+/** Saves the story state in the room's metadata (small JSON), so a new agent can pick the story up. Debounced; failures are only logged. */
+let room_client: RoomServiceClient | undefined;
+let save_timer: ReturnType<typeof setTimeout> | undefined;
+function saveState(data: StoryData, ended = false) {
+  if (save_timer) clearTimeout(save_timer);
+  save_timer = setTimeout(async () => {
+    try {
+      room_client ??= new RoomServiceClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
+      const state = buildState({ scene_index: data.scene_index, players: data.players, summary: data.summary, ended });
+      await room_client.updateRoomMetadata(data.ctx.room.name!, encodeState(state));
+      console.log(`story state saved: scene ${state.scene_index}, ${state.summary.length} summary lines`);
+    } catch (error: any) {
+      console.log('story state not saved:', error?.message ?? error);
+    }
+  }, 800);
+}
 
 /** Hester announces she is fetching Old Bram, in her own voice, then the table passes to him. Code, not a model call. */
 async function fetchBram(session: voice.AgentSession<StoryData>, greet: string[], bots: string[]) {
@@ -158,7 +200,7 @@ Travellers who come in out of the storm must sign your ledger. A traveller who a
             // Only a plausible first name goes in the ledger: not "I", "the" or a sentence
             if (!/^\p{L}[\p{L}'-]{1,19}$/u.test(name.trim()) || ['the', 'my', 'me', 'and', 'light', 'home', 'way'].includes(name.trim().toLowerCase())) return `That did not sound like a first name. Ask the traveller again, in your own words, for just their first name.`;
             const identity = listening_to(session);
-            if (identity && !players.some((p) => p.identity === identity)) players.push({ identity, name, bot: false });
+            if (identity && !players.some((p) => p.identity === identity)) { players.push({ identity, name, bot: false }); publishLedger(data); }
             // Anyone who came in with a name on the page, and any bot, goes in the ledger without being asked
             const { greet, bots, unnamed } = registerKnown(data);
             if (unnamed.length) {
@@ -179,9 +221,17 @@ Travellers who come in out of the storm must sign your ledger. A traveller who a
 }
 
 class Bram extends voice.Agent<StoryData> {
+  /** Set when this Bram is picking up a story another agent left: he recaps instead of starting the first scene. */
+  resume_state: StoryState | undefined;
+
   async onEnter() {
     publish(this.session.userData.ctx, { 'story.character': 'Old Bram Tallow, storyteller' });
     this.session.userData.bram = this;
+    if (this.resume_state) {
+      console.log(`resuming the story at scene ${this.resume_state.scene_index} with a recap`);
+      this.session.generateReply({ instructions: recapInstructions(this.resume_state, this.session.userData.players), toolChoice: 'none' });
+      return;
+    }
     this.session.generateReply({
       instructions: 'You have just come in from the fire at Hester\'s call. Call next_scene now, before you say anything. When it answers, introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name, then describe the first scene as the tool says and hand over with a short open prompt naming the player who goes first.',
     });
@@ -197,10 +247,18 @@ class Bram extends voice.Agent<StoryData> {
     onPlayerInput(data);
     data.watchdog?.arm();
     console.log(`player input counted: inputs=${data.inputs}`);
+    data.summary = addSummaryLine(data.summary, data.players.find((p) => p.identity === listening_to(this.session))?.name ?? 'Player', new_message.textContent);
+    saveState(data);
     chat_ctx.addMessage({ role: 'system', content: sceneHint(data.scene_index, data.ending) });
   }
 
-  static build(players: Player[]) {
+  static build(players: Player[], resume?: StoryState) {
+    const bram = Bram.make(players);
+    bram.resume_state = resume;
+    return bram;
+  }
+
+  private static make(players: Player[]) {
     return new Bram({
       instructions: bramInstructions(players),
       tts: new inference.TTS({ model: BRAM_VOICE as any }),
@@ -223,6 +281,7 @@ class Bram extends voice.Agent<StoryData> {
             onSceneStart(data, index);
             const { scene } = SCENES[index];
             data.last_scene_at = Date.now();
+            saveState(data);
             publish(data.ctx, { 'story.scene': scene, 'story.turn': '', 'story.turn_name': '' });
             let music = 'with its soundtrack';
             try {
@@ -253,6 +312,7 @@ class Bram extends voice.Agent<StoryData> {
             }
             data.ending = true;
             data.input_since_call = false;
+            saveState(data, true);
             // The story is marked ended, and the agent leaves, only after the closing has played out in full and a short pause
             data.end_watcher?.arm();
             console.log(`end_story accepted at ${new Date().toISOString()}`);
@@ -279,7 +339,7 @@ export default defineAgent({
         preemptiveGeneration: { enabled: false },
       },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {
@@ -330,7 +390,11 @@ export default defineAgent({
       const data = session.userData;
       if (!data.handed_off || data.ending) return;
       // Player inputs are counted in Bram's onUserTurnCompleted. Here only Bram's own reply is kept, to see who he named.
-      if (item.role === 'assistant') onBramReply(data, item.textContent);
+      if (item.role === 'assistant') {
+        onBramReply(data, item.textContent);
+        data.summary = addSummaryLine(data.summary, 'Bram', item.textContent);
+        saveState(data);
+      }
     });
     // When Bram has finished speaking, code (not a model tool) gives the next turn: the player he named, or the next in rotation
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => {
@@ -367,6 +431,8 @@ export default defineAgent({
             onPlayerInput(data);
             data.watchdog?.arm();
             console.log(`player gesture counted: inputs=${data.inputs}`);
+            data.summary = addSummaryLine(data.summary, data.players.find((p) => p.identity === listening_to(session))?.name ?? 'Player', ev.text);
+            saveState(data);
           }
           sess.interrupt();
           sess.generateReply({ userInput: ev.text, instructions: data.handed_off && !data.ending ? sceneHint(data.scene_index, data.ending) : undefined });
@@ -384,6 +450,24 @@ export default defineAgent({
     await publish(ctx, { 'story.character': 'Hester Pennywhistle, innkeeper', 'story.state': 'playing', 'story.turn': '', 'story.turn_name': '' });
     // Open once the first guest is at the door: whether they gave a name decides Hester's first words
     await ctx.waitForParticipant();
+    // A story another agent left (a dead job that LiveKit re-dispatched, or "Continue the story"): skip Hester and pick it up
+    const saved = decodeState(ctx.room.metadata);
+    if (shouldResume(saved)) {
+      const data = session.userData;
+      data.players = resumePlayers(saved.players, guests(ctx).map((g) => ({ identity: g.identity, name: g.name || '', bot: g.bot })));
+      data.scene_index = saved.scene_index;
+      data.last_scene_at = Date.now();
+      data.summary = saved.summary;
+      data.handed_off = true;
+      data.resumed = true;
+      const first = data.players.find((p) => !p.bot);
+      if (first) switchListener(session, first.identity);
+      publish(ctx, { 'story.scene': SCENES[Math.min(saved.scene_index, SCENES.length) - 1].scene });
+      console.log(`story state found in the room: resuming at scene ${saved.scene_index}`);
+      publishLedger(data);
+      session.updateAgent(Bram.build(data.players, saved));
+      return;
+    }
     await hester.open(session);
   },
 });

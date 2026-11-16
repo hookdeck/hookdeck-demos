@@ -86,7 +86,7 @@ Open <http://localhost:4000>.
 ## How it works
 
 - **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
-- **Idempotent call log.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
+- **Idempotent room record.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
 - **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
 - **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get the story agent.
 - **A soundtrack per scene.** At each new scene Old Bram calls a function tool. The tool posts to the app (`POST /api/scene`, local only), and the app asks LiveKit's Ingress API to pull that scene's soundtrack from a URL into the room. LiveKit reports `ingress_started`, `ingress_ended` and the track events back through Event Gateway.
@@ -180,7 +180,8 @@ Recording links come from egress events. Start a room composite egress with an o
 
 ## Known limits
 
-- **A storyteller job that dies restarts the story.** If the agent's job process stops responding mid-story, LiveKit restarts it in the same room and the story begins again from the first scene. A watchdog covers a model request that hangs (after 20 seconds Old Bram says one short line and the turn goes back to the player), but not a job process that dies.
+- **A storyteller that dies resumes the story.** After each player turn and each scene change the agent saves the story in the room's metadata: the scene, the names in the ledger, the clues shown and a few lines of running summary (small JSON, a few hundred bytes to about 4 KB). When a story agent joins a room that already has that state, Hester stays out of it and Old Bram opens with a short recap, then the same scene carries on. This covers LiveKit re-dispatching a dead job and the **Continue the story** button, which appears when the storyteller has left the room or has not answered for 20 seconds after a player spoke, and asks the app (`POST /api/story/continue`) to dispatch a new story agent. A second agent in a room that already has a live one leaves, so the story is never told twice. The chronicle notes "The storyteller returned". The saved summary is only the last few lines, so the recap is approximate.
+- **Stalls.** A final transcript that never ends the player's turn is recovered after 15 seconds (the turn is committed, then Old Bram says one short line). A model request that hangs is covered after 20 seconds. Turns end on voice activity (700 ms to 3 s of silence), not the local turn-detector model, preemptive generation and session recording are off.
 - The agent hears one player at a time, and a mute player (Pixel) takes part through a chat gesture, not audio.
 
 ## Tests

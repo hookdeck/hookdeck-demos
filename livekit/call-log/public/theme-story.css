@@ -205,3 +205,6 @@ html[data-theme="story"] .how-dialog p { font-size: 16px; line-height: 1.45; col
   html[data-theme="story"] main h2.title-l { font-size: 21px; }
   html[data-theme="story"] main .turn-playing { margin-left: 0; }
 }
+
+/* The "now playing" line is a badge in the plain themes and plain italic text here */
+html[data-theme="story"] main .turn-playing.badge { background: none; border: 0; padding: 0; box-shadow: none; text-transform: none; letter-spacing: normal; font-family: inherit; }

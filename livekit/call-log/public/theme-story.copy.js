@@ -1,0 +1,31 @@
+// Story wording for the theme hook (_shared/theme/theme.js): keys are the data-copy keys in index.html and the HookdeckTheme.copy() calls in call.js.
+window.HookdeckThemeCopies = window.HookdeckThemeCopies || {};
+window.HookdeckThemeCopies.story = {
+  "hero_title": "The Drowned Bell",
+  "hero_body": "Come in from the storm, traveller. An innkeeper keeps the ledger and an old lighthouse keeper tells the tale. Every footstep in the room reaches this app as a webhook through Hookdeck.",
+  "join_title": "Join the Table",
+  "join_hint": "Give your name at the door, allow the microphone, and wait for the storyteller to turn to you.",
+  "transcript_title": "The Tale So Far",
+  "chronicle_title": "The Ledger",
+  "chronicle_hint": "Written only from the webhooks this app receives.",
+  "failure_title": "Trouble at the Door",
+  "eyebrow": "A tale in four scenes",
+  "name_placeholder": "Hester will ask at the door",
+  "join_btn": "Enter the inn",
+  "pixel_add": "Bring Pixel along",
+  "pixel_here": "Pixel sits with you",
+  "leave_btn": "Leave the table",
+  "continue_btn": "Call Old Bram back",
+  "new_btn": "Begin a new tale",
+  "status_connected": "You're seated at the Drowned Bell, {name}.",
+  "turn_mine_title": "Your Turn",
+  "turn_other_title": "{who}'s Turn",
+  "turn_mine_sub": "Old Bram waits for you.",
+  "turn_other_sub": "Old Bram is listening to {who}.",
+  "listening_title": "The Tale Unfolds",
+  "listening_sub": "Old Bram is telling it.",
+  "ended_title": "The End",
+  "ended_sub": "The lantern is lit and Hollow Mere is quiet again.",
+  "quiet_title": "Old Bram has left the fire",
+  "quiet_sub": "The tale is waiting where it stopped."
+};
