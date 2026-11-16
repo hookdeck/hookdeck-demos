@@ -2,7 +2,8 @@
  * Creates the Hookdeck connection for the LiveKit call log and writes its Source
  * URL into .env. Idempotent: safe to run multiple times.
  *
- *   source livekit-call-log -> destination local-livekit-call-log (CLI, /webhooks/livekit)
+ *   source livekit-call-log -> destination local-livekit-call-log (CLI, /webhooks/livekit),
+ *   with a deduplicate rule (body.id) and an exponential retry rule
  *
  * Uses the project whose HOOKDECK_API_KEY is in .env, through the hookdeck-cli
  * npm dependency with a config file of its own (see hookdeck-cli.ts).
@@ -62,7 +63,17 @@ async function main(): Promise<void> {
   }
   const source = await cli.upsertSource({ name: SOURCE, type: source_type, auth });
   const destination = cli.upsertCliDestination({ name: DESTINATION, path: CLI_PATH });
-  const connection = cli.upsertConnection({ name: CONNECTION, sourceId: source.id, destinationId: destination.id });
+  const connection = cli.upsertConnection({
+    name: CONNECTION,
+    sourceId: source.id,
+    destinationId: destination.id,
+    rules: [
+      // The same LiveKit event id inside 10 minutes is a duplicate. The API takes the window in milliseconds.
+      { type: 'deduplicate', window: 600000, include_fields: ['body.id'] },
+      // If the app is down or erroring, retry for about two hours (30s, 60s, 2m, 4m, ...)
+      { type: 'retry', strategy: 'exponential', count: 8, interval: 30000 },
+    ],
+  });
 
   console.log(`${CONNECTION}: ${connection.source.url} (${source_type}) -> ${DESTINATION} (${CLI_PATH})`);
   console.log('');

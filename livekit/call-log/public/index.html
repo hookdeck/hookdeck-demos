@@ -7,6 +7,8 @@
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
   <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/scenes/scenes.css">
+  <link rel="stylesheet" href="/topology-pane/topology-pane.css">
   <script src="/theme.js"></script>
 </head>
 <body>
@@ -18,12 +20,27 @@
         <p class="body-m">
           LiveKit sends room, participant and egress (recording) events to a Hookdeck source. Hookdeck delivers them
           to this server, which builds one entry per room session: start, end, duration, participants and recording links.
+          Watch each webhook arrive in the <strong>Data flow</strong> pane at the bottom of the page.
         </p>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
       <span class="lined__dots lined__dots--top_right"></span>
       <span class="lined__dots"></span>
       <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+    <section class="card">
+      <h2 class="title-l">Failure injection</h2>
+      <p class="body-s muted">
+        Make this app misbehave, then watch Hookdeck absorb it: the event stays queued and is retried until the app
+        answers 2xx. LiveKit itself is never kept waiting.
+      </p>
+      <div class="actions">
+        <label class="field inline"><span class="subtitle-xs">Fail the next</span><input class="input narrow" id="failNext" type="number" min="0" max="10" value="2"></label>
+        <label class="field inline"><span class="subtitle-xs">Delay each answer (s)</span><input class="input narrow" id="delay" type="number" min="0" max="60" value="0"></label>
+        <button class="button button--secondary" id="chaosBtn" type="button">Apply</button>
+        <span class="body-xs muted" id="chaosState"></span>
+      </div>
     </section>
 
     <section class="card">
@@ -41,5 +58,8 @@
     </section>
   </main>
   <script src="/app.js"></script>
+  <script src="/scenes/scenes.js"></script>
+  <script src="/topology-pane/topology-pane.js"></script>
+  <script src="/topology.js"></script>
 </body>
 </html>

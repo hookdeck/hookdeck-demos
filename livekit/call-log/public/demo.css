@@ -82,3 +82,10 @@ footer { color: var(--neutral-fg-3); }
 .deliveries { width: 100%; border-collapse: collapse; }
 .deliveries th, .deliveries td { text-align: left; padding: var(--s1-5) var(--s2); border-bottom: 1px dashed var(--neutral-outline-3); }
 .deliveries th { color: var(--neutral-fg-3); font-weight: normal; }
+
+/* Failure injection */
+.muted { color: var(--neutral-fg-3); }
+.field.inline { display: flex; align-items: center; gap: var(--s2); }
+.input.narrow { width: 72px; }
+/* The default WEBHOOK source verifies nothing, so the detail strip's "Verified" pill would overclaim */
+body.no-verify .tp-pill.tp-ok { display: none; }

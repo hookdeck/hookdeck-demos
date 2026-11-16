@@ -40,3 +40,4 @@ data/
 
 # Hookdeck CLI config written by the setup and listen scripts
 run/
+public/scenes/

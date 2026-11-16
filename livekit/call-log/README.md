@@ -13,6 +13,8 @@ The demo has three parts: this app, LiveKit Cloud and Hookdeck Event Gateway.
 - **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
 - **Idempotent call log.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
 - **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
+- **Event Gateway rules.** The connection deduplicates on the LiveKit event id (`body.id`, 10 minutes) and retries failed deliveries with exponential backoff (8 attempts from 30 seconds).
+- **A data flow pane.** The page's bottom pane shows each webhook travelling from LiveKit Cloud through Event Gateway and `hookdeck listen` to the app, with scripted scenes for a call's lifecycle, a duplicate, a bad signature and an app that is down.
 
 ## Setup
 
@@ -37,7 +39,7 @@ cp .env.example .env
 npm run setup
 ```
 
-This creates a `livekit-call-log` source, a CLI destination that forwards to `/webhooks/livekit`, and the connection between them. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It logs the bundled Hookdeck CLI in to the project for `HOOKDECK_API_KEY` with a config file of its own, so your interactive `hookdeck login` is untouched.
+This creates a `livekit-call-log` source, a CLI destination that forwards to `/webhooks/livekit`, and the connection between them with a deduplicate rule and a retry rule. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It logs the bundled Hookdeck CLI in to the project for `HOOKDECK_API_KEY` with a config file of its own, so your interactive `hookdeck login` is untouched.
 
 ### 4. Add the webhook in LiveKit Cloud
 
@@ -56,6 +58,12 @@ npm start        # the app
 
 Open <http://localhost:4000>.
 
+## The data flow pane
+
+The page has a **Data flow** pane at the bottom, open by default. **Live** shows the demo as it runs: each webhook travels from LiveKit Cloud through Event Gateway (receive, store, dedup, retry) and `hookdeck listen` to the app. Click a node or a packet for that webhook's details below the diagram: each delivery attempt, what the app answered and a **View in Hookdeck** link. The other tabs play scripted scenes with captions: **Call lifecycle**, **Duplicate dropped**, **Bad signature** and **App down, retry succeeds**.
+
+The scenes live in `scenes/livekit-calls.ts` (the kit in `scenes/kit/` is synced from `_shared/scenes`). MP4 captures of the four scenes, landscape and square, are in `scenes/captures/`. To render them again: `npm run capture -- livekit-call-lifecycle`.
+
 ## Generate activity
 
 Install the [LiveKit CLI](https://docs.livekit.io/home/cli/) (`brew install livekit-cli`), then:
@@ -72,6 +80,18 @@ To end a call immediately, delete the room:
 lk room delete <room-name>
 ```
 
+### Without a LiveKit room
+
+`npm run simulate` sends correctly signed events to your Hookdeck source, signed the way LiveKit signs them (a JWT in the `Authorization` header with a `sha256` claim for the body). Use it to try the duplicate and bad-signature paths:
+
+```bash
+npm run simulate                                    # room_started, participant_joined, participant_left, room_finished
+npm run simulate -- room_finished --twice           # the second request is deduplicated by Event Gateway
+npm run simulate -- room_finished --bad-signature   # the app rejects it with 401
+```
+
+**A failing app.** In the page's failure injection panel, set "Fail the next" to 2 and generate some activity. The app answers 503 to the first two deliveries. Hookdeck keeps the event, retries it, and the call log updates when the app finally answers 200. LiveKit is never kept waiting. Set "Delay each answer" to make the app slow instead.
+
 ### Recordings
 
 Recording links come from egress events. Start a room composite egress with an output location you control (see LiveKit's [egress documentation](https://docs.livekit.io/home/egress/overview/)); when it ends, `egress_ended` carries the file location and the app adds it to the call.
@@ -82,7 +102,7 @@ Recording links come from egress events. Start a room composite egress with an o
 npm test
 ```
 
-The tests build a call log from a sample event sequence, then check that duplicates, reverse order and a late `egress_updated` give the same result, and that `WebhookReceiver` accepts a signed body and rejects an altered one.
+The tests build a call log from a sample event sequence, then check that duplicates, reverse order and a late `egress_updated` give the same result, and that `WebhookReceiver` accepts a signed body and rejects an altered one. The scene and pane tests run in a browser: install one with `npx playwright install chromium` first.
 
 ## Replaying a delivery
 
@@ -94,17 +114,24 @@ Every request the app receives is appended to `data/deliveries.jsonl` with its h
 livekit/call-log/
 ├── .env.example
 ├── package.json
+├── scenes/
+│   ├── livekit-calls.ts     # The topology: live scene and four scripted scenes
+│   ├── entry.ts             # What the page's bundle exposes
+│   ├── captures/            # MP4s, landscape and square
+│   └── kit/                 # Synced from _shared/scenes
 ├── scripts/
 │   ├── activity.sh          # Creates a room and joins test participants with the lk CLI
-│   ├── hookdeck-cli.ts      # Runs the bundled Hookdeck CLI against the API key's project
+│   ├── simulate.ts          # Sends signed events (or a bad signature, or a duplicate) to the source
+│   ├── hookdeck-cli.ts      # Synced from _shared: runs the Hookdeck CLI against the API key's project
 │   ├── listen.ts            # npm run listen
 │   └── setup-hookdeck.ts    # npm run setup
 ├── src/
 │   ├── call-log.ts          # Turns events into calls (idempotent, order-independent)
 │   ├── server.ts            # Express app and the verified webhook endpoint
+│   ├── deliveries.ts        # What the app answered, for the data flow pane
 │   └── store.ts             # JSON file persistence in data/
-├── test/call-log.test.ts
-└── public/                  # The call log page
+├── test/                    # Call log, scenes and pane tests
+└── public/                  # The call log page and the data flow pane
 ```
 
 <!--

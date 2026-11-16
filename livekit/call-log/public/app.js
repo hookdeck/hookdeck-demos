@@ -28,5 +28,21 @@ async function refresh() {
     `<tr><td>${new Date(d.received_at).toLocaleTimeString()}</td><td><code>${esc(d.event || '-')}</code></td><td><code>${esc(d.event_id || '-')}</code></td><td>${d.verified ? (d.duplicate ? 'duplicate' : 'applied') : `rejected: ${esc(d.error)}`}</td></tr>`).join('');
 }
 
+async function loadChaos() {
+  const state = await (await fetch('/api/state')).json();
+  document.getElementById('chaosState').textContent = state.fail_next || state.delay_seconds
+    ? `Active: fail next ${state.fail_next}, delay ${state.delay_seconds}s`
+    : '';
+}
+
+document.getElementById('chaosBtn').addEventListener('click', async () => {
+  await fetch('/api/chaos', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ fail_next: document.getElementById('failNext').value, delay_seconds: document.getElementById('delay').value }),
+  });
+  loadChaos();
+});
+
 refresh();
-setInterval(() => document.getElementById('autoRefresh').checked && refresh(), 2000);
+loadChaos();
+setInterval(() => { if (document.getElementById('autoRefresh').checked) { refresh(); loadChaos(); } }, 2000);
