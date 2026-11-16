@@ -73,7 +73,7 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
    npm run call
    ```
 
-   `npm run call` needs the agent to allow the text-only override (agent -> Security -> Overrides). A few seconds after the call ends, the transcript appears in the app.
+   A few seconds after the call ends, the transcript appears in the app.
 
 ### Set up ElevenLabs by hand
 
@@ -181,4 +181,3 @@ elevenlabs/post-call-transcripts/
 
 - **No webhook arrives**: check that `npm run listen` is running and that the agent's **Post-call webhooks** setting selects the webhook. The Hookdeck dashboard shows the request under the `elevenlabs-post-call` source.
 - **A request is rejected with `VERIFICATION_FAILED`**: the signing secret on the Hookdeck source doesn't match the ElevenLabs webhook's. Run `npm run setup` again after deleting the webhook in ElevenLabs, or paste the correct secret into the source.
-- **`npm run call` closes immediately**: the agent doesn't allow the text-only override. Start a test call from the dashboard instead.

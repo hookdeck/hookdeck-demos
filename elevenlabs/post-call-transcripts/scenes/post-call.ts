@@ -51,9 +51,9 @@ export const captionsBy = {
   ],
   'bad-signature': [
     'A request claims to come from ElevenLabs, but its signature was made with the wrong secret.',
-    'Event Gateway accepts the request first: for ElevenLabs sources, the signature is verified after ingestion.',
+    'Event Gateway accepts the request, then checks its signature.',
     `Verification of \`${facts.signatureHeader}\` fails. The request is recorded as \`VERIFICATION_FAILED\` and no event is created.`,
-    'ElevenLabs sources are verified after ingestion, so the sender still gets a 200. Your app is never called.',
+    'The sender still gets a 200, and your app is never called.',
   ],
   'app-down': [
     'Your app is down: it answers every delivery with a 500.',

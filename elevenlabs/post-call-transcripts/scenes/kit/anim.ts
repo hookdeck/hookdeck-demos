@@ -33,7 +33,7 @@ export interface Packet {
   head: number
   tail: number
   width: number
-  label?: { g: SVGGElement, at: (p: Point) => void }
+  label?: { g: SVGGElement, width: number, at: (p: Point) => void }
   destroy: () => void
 }
 
@@ -63,9 +63,11 @@ export function packet(stage: Stage, conn: Connector, o: PacketOptions = {}): Pa
 
   let label: Packet['label']
   if (o.label) {
-    const lg = el('g', {}, stage.labels)
     const size = 20
     const w = o.label.length * size * 0.64 + 28
+    // A label wider than its connector can't fit between two nodes, so it draws above them
+    // (the overlay layer) instead of sliding under them.
+    const lg = el('g', {}, conn.dir === 'h' && w + 16 > conn.length ? stage.overlay : stage.labels)
     const rect = el('rect', { x: -w / 2, y: -17, width: w, height: 34, rx: 17, 'stroke-width': 1.5 }, lg)
     rect.style.fill = big ? color.blue : color.blueBadgeBg
     rect.style.stroke = big ? color.blue : color.blueBadgeOutline
@@ -74,6 +76,7 @@ export function packet(stage: Stage, conn: Connector, o: PacketOptions = {}): Pa
     gsap.set(lg, { autoAlpha: 0 })
     label = {
       g: lg,
+      width: w,
       at: (pt) => {
         // Above a left-to-right connector, to the right of a top-to-bottom one.
         const pos = conn.dir === 'h' ? { x: pt.x, y: pt.y - 46 } : { x: pt.x + w / 2 + 22, y: pt.y }
@@ -99,7 +102,11 @@ export function travel(tl: Timeline, p: Packet, at: number, mode: 'into' | 'arri
     const { label } = p
     const proxy = { p: 0 }
     const place = () => {
-      const front = Math.max(0, Math.min(p.conn.length, -p.width + (distance + p.width) * proxy.p))
+      let front = Math.max(0, Math.min(p.conn.length, -p.width + (distance + p.width) * proxy.p))
+      // A packet that stops at a node keeps its label whole on the connector: centered on the
+      // head, half of it would sit under the node card.
+      if (mode === 'arrive' && p.conn.dir === 'h')
+        front = Math.min(front, Math.max(p.conn.length / 2, p.conn.length - label.width / 2 - 8))
       label.at(p.conn.path.getPointAtLength(front))
     }
     place()
