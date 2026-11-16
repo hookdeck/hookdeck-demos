@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
-import { SCENES, BREVITY, bramInstructions, createEndWatcher, moveOnVerdict, sceneHint, sceneStartNote, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, stallLine } from './story.ts';
+import { SCENES, BREVITY, bramInstructions, createEndWatcher, moveOnVerdict, sceneHint, sceneStartNote, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -271,6 +271,13 @@ export default defineAgent({
       llm: makeLlm(),
       // Bram has two tools and a model that chains tool calls gets cut off: allow one step, and filter tool names from speech as a backstop
       maxToolSteps: 2,
+      turnHandling: {
+        // The local turn-detector model stalled under load (a final transcript, then silence), and our scene note changes the chat
+        // context every turn so a preemptive reply is always thrown away. End turns on VAD silence (at most 3 s) and generate after the turn.
+        turnDetection: 'vad',
+        endpointing: { minDelay: 700, maxDelay: 3000 },
+        preemptiveGeneration: { enabled: false },
+      },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
       userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false },
     });
@@ -284,19 +291,29 @@ export default defineAgent({
         .finally(() => setTimeout(() => job_ctx.shutdown('the story is over'), 3000));
     });
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => session.userData.end_watcher?.onAgentState(e.oldState, e.newState));
-    // If a model request hangs, Bram says one short line and the turn goes back to the player, rather than leaving them waiting
-    session.userData.watchdog = createLlmWatchdog(() => {
+    // The in-character "say that again" line, with the turn handed back to the player
+    const say_again = (why: string) => {
       const data = session.userData;
       if (data.ending) return;
       const player = data.players[data.rotation] ?? data.players.find((p) => !p.bot);
-      console.log(`watchdog: no reply for 20 s, giving the turn back to ${player?.name ?? 'the player'}`);
+      console.log(`watchdog (${why}): giving the turn back to ${player?.name ?? 'the player'} with the say-that-again line`);
       session.interrupt();
       session.say(stallLine(player?.name), { allowInterruptions: false });
       if (player) {
         switchListener(session, player.identity);
         publish(data.ctx, { 'story.turn': player.identity, 'story.turn_name': player.name, 'story.turn_seq': String(data.inputs + data.scene_index * 100 + data.rotation + 50) });
       }
+    };
+    // If a model request hangs after the turn ended, Bram says one short line and the turn goes back to the player
+    session.userData.watchdog = createLlmWatchdog(() => say_again('no reply 20 s after the turn ended'));
+    // If a final transcript arrives and the turn never ends (the stall seen under load), force the turn to end after 15 s; if that
+    // produces nothing either, say the line
+    const recovery = createTurnRecovery({
+      commit: () => { console.log('watchdog (turn never ended 15 s after a final transcript): committing the user turn'); session.commitUserTurn(); },
+      say_again: () => say_again('committing the turn did not start a reply'),
     });
+    session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (e: any) => { if (e.isFinal && String(e.transcript || '').trim() && !session.userData.ending) recovery.onFinalTranscript(); });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => { if (e.newState === 'thinking' || e.newState === 'speaking') recovery.onProgress(); });
     // Progress: Bram started speaking, so the request is not hung. A tool that ran owes a follow-up reply, so the watchdog starts again
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => { if (e.newState === 'speaking') session.userData.watchdog?.progress(); });
     session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => session.userData.watchdog?.arm());
@@ -339,6 +356,8 @@ export default defineAgent({
     await session.start({
       agent: hester,
       room: ctx.room,
+      // No session audio or trace recording: the recorder (ffmpeg, plus whole-session buffers) was holding most of the job's memory
+      record: false,
       inputOptions: {
         closeOnDisconnect: false,
         // Chat text from the player being listened to: a mute player's gesture. It is a real player input, and Bram reacts to it as to a spoken answer.

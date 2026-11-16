@@ -200,3 +200,46 @@ test('the instructions describe, end without a tacked-on name, reveal clues on i
   // no pacing pressure
   assert.doesNotMatch(text, /nudge the group|move on yet|enough exploring|time to move on/i);
 });
+
+import { createTurnRecovery } from '../src/story.ts';
+
+test('turn recovery: a final transcript with no turn end commits the turn after 15 s, then says the line after 15 s more', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const log: string[] = [];
+    const r = createTurnRecovery({ commit: () => log.push('commit'), say_again: () => log.push('say') }, 15000, { set: setTimeout, clear: clearTimeout });
+    r.onFinalTranscript();
+    mock.timers.tick(14999);
+    assert.deepEqual(log, []);
+    mock.timers.tick(2);
+    assert.deepEqual(log, ['commit']);
+    mock.timers.tick(15001);
+    assert.deepEqual(log, ['commit', 'say']);
+    mock.timers.tick(60000);
+    assert.deepEqual(log, ['commit', 'say']); // done: nothing repeats
+  } finally { mock.timers.reset(); }
+});
+
+test('turn recovery: progress (the turn ended, or the agent started thinking or speaking) cancels it', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const log: string[] = [];
+    const r = createTurnRecovery({ commit: () => log.push('commit'), say_again: () => log.push('say') }, 15000, { set: setTimeout, clear: clearTimeout });
+    r.onFinalTranscript();
+    mock.timers.tick(10000);
+    r.onProgress();
+    mock.timers.tick(60000);
+    assert.deepEqual(log, []);
+    // after a commit, progress also clears the second stage
+    r.onFinalTranscript();
+    mock.timers.tick(15001);
+    assert.deepEqual(log, ['commit']);
+    r.onProgress();
+    mock.timers.tick(60000);
+    assert.deepEqual(log, ['commit']);
+    // a later final transcript starts over from stage zero
+    r.onFinalTranscript();
+    mock.timers.tick(15001);
+    assert.deepEqual(log, ['commit', 'commit']);
+  } finally { mock.timers.reset(); }
+});

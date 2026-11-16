@@ -269,3 +269,28 @@ export function sceneStartNote(index: number, music: string): string {
   const finale = index === SCENES.length - 1;
   return `Scene ${index + 1} of ${SCENES.length} has started ${music}. Place: ${place}. What can be seen and heard: ${sights}.${finale ? ' This is the finale.' : ` The way out, to mention only as part of the place: ${onward}.`}${clue ? ` Things to find, revealed only when a player investigates that thing: ${clue}.` : ''} Describe the place in two short plain sentences using some of what can be seen and heard, then hand over with a short open prompt naming the player who goes first.`;
 }
+
+
+/**
+ * Recovery for a user turn that never ends. A final transcript arms it; when the agent starts thinking or speaking, or the
+ * user turn completes, it is cleared. If nothing happens for `ms` the first stage forces the turn to end (`commit`) and waits
+ * once more; if that also produces nothing, the second stage says the in-character "say that again" line (`say_again`).
+ */
+export function createTurnRecovery(actions: { commit: () => void; say_again: () => void }, ms = 15000, timers = { set: setTimeout, clear: clearTimeout }) {
+  let stage = 0;
+  const watchdog = createLlmWatchdog(() => {
+    if (stage === 0) {
+      stage = 1;
+      actions.commit();
+      watchdog.arm();
+    } else {
+      stage = 0;
+      actions.say_again();
+    }
+  }, ms, timers);
+  return {
+    onFinalTranscript() { stage = 0; watchdog.arm(); },
+    onProgress() { stage = 0; watchdog.progress(); },
+    get stage() { return stage; },
+  };
+}
