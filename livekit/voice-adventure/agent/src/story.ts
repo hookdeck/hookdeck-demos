@@ -165,6 +165,9 @@ export interface TurnState {
   rotation: number;
   ending: boolean;
   short_mode: boolean;
+  /** Bram's replies since the scene began (the arrival description is the first), and the sights he has already used in them. */
+  replies_in_scene?: number;
+  described?: string[];
 }
 
 /** A final transcript from the linked player, or Pixel's chat gesture. The only thing that counts as an exchange. */
@@ -175,6 +178,17 @@ export function onPlayerInput(s: TurnState) {
 
 export function onBramReply(s: TurnState, text: string) {
   s.last_reply = text;
+  s.replies_in_scene = (s.replies_in_scene ?? 0) + 1;
+  const scene = s.scene_index > 0 ? SCENES[Math.min(s.scene_index, SCENES.length) - 1] : undefined;
+  if (scene) s.described = [...new Set([...(s.described ?? []), ...usedDetails(scene.sights, text)])];
+}
+
+const DETAIL_STOP = new Set(['the', 'and', 'with', 'its', 'on', 'in', 'of', 'a', 'an', 'to', 'it', 'from', 'under', 'over', 'into', 'across', 'near', 'that', 'small', 'front']);
+
+/** The sights (the scene's comma-separated details) that a reply mentions: a detail counts as used when one of its key words appears. */
+export function usedDetails(sights: string, reply: string): string[] {
+  const text = reply.toLowerCase();
+  return sights.split(/,\s*/).filter((detail) => detail.toLowerCase().match(/[a-z]+/g)?.some((word) => word.length >= 3 && !DETAIL_STOP.has(word) && new RegExp(`\\b${word}(?:s|es)?\\b`).test(text)));
 }
 
 /** Bram has finished speaking: who gets the turn now (the player he named, or the next in rotation), or nobody. */
@@ -191,6 +205,8 @@ export function onSceneStart(s: TurnState, index: number) {
   s.scene_index = index + 1;
   s.inputs = 0;
   s.input_since_call = false;
+  s.replies_in_scene = 0;
+  s.described = [];
 }
 
 // ---- A watchdog for a model request that never answers ----
@@ -233,17 +249,31 @@ export const LEADING_BLOCK_START = '[never say lines like these]';
 export const LEADING_BLOCK_END = '[end of lines never to say]';
 
 /** What is true of the scene right now, given to Bram as a system message before each reply to a player. */
-export function sceneHint(scene_index: number, ending: boolean): string {
+export function sceneHint(scene_index: number, ending: boolean, atmo?: { replies_in_scene?: number; described?: string[] }): string {
   const scene = scene_index > 0 ? SCENES[Math.min(scene_index, SCENES.length) - 1] : undefined;
   const finale = scene_index >= SCENES.length;
-  const where = scene
-    ? `Current scene (${scene_index} of ${SCENES.length}): ${scene.place}. What can be seen and heard: ${scene.sights}.${finale ? '' : ` The way out, to mention only as part of the place: ${scene.onward}.`}${scene.clue ? ` Things to find, revealed only when a player investigates that thing: ${scene.clue}.` : ''}`
-    : 'The story has not started: call next_scene.';
+  const replies = atmo?.replies_in_scene ?? 0;
+  const way_out = finale ? '' : ` The way out, to mention only as part of the place: ${scene?.onward}.`;
+  const clue = scene?.clue ? ` Things to find, revealed only when a player investigates that thing: ${scene.clue}.` : '';
+  let where: string;
+  if (!scene) where = 'The story has not started: call next_scene.';
+  else if (replies === 0) where = `Current scene (${scene_index} of ${SCENES.length}): ${scene.place}. What can be seen and heard: ${scene.sights}.${way_out}${clue}`;
+  else {
+    // The place has been described: do not do it again. Name what has been used, and what is still unmentioned.
+    const described = atmo?.described ?? [];
+    const fresh = scene.sights.split(/,\s*/).filter((d) => !described.includes(d));
+    where = `Current scene (${scene_index} of ${SCENES.length}): ${scene.place}. You have already described this place${described.length ? `: already described, so do not repeat it unless something about it changes or it matters to what the player just did: ${described.join('; ')}` : ''}.${fresh.length ? ` Not yet mentioned: ${fresh.join('; ')}.` : ''}${way_out}${clue}`;
+  }
+  const length = replies >= 4
+    ? ' Give the shortest reply now: one sentence about what happens, and no atmosphere at all.'
+    : replies >= 1
+      ? ' Answer only what the player did, in one or two sentences, with no recap of the scene.'
+      : '';
   const phase = ending
     ? 'The story is ending: speak your closing only.'
     : finale
-      ? 'This is the finale. Let the players take their time and respond to what they try. When each has had their moment, or a player says they are done, call end_story, and after it answers speak your closing.'
-      : 'Let the players explore as long as they like. Respond to what they actually try, including the unexpected: say what happens and let consequences follow. Moving on is handled for you. Never narrate arriving somewhere new, or leaving this place, yourself: the place changes only when the scene note changes, so until then describe what happens here, and if the players head for the way out say only that they set off.';
+      ? `This is the finale. Let the players take their time and respond to what they try. When each has had their moment, or a player says they are done, call end_story, and after it answers speak your closing.${length}`
+      : `Let the players explore as long as they like. Respond to what they actually try, including the unexpected: say what happens and let consequences follow. Moving on is handled for you. Never narrate arriving somewhere new, or leaving this place, yourself: the place changes only when the scene note changes, so until then describe what happens here, and if the players head for the way out say only that they set off.${length}`;
   return `${where} ${phase}`;
 }
 
@@ -259,6 +289,7 @@ ${LEADING_BLOCK_START} "Would you like to search the room to find something to o
 Good lines describe only: "A small iron chest sits under the bench, its lock rusted shut." "Silver footprints lead off into the pines." "The stranger watches you over the rim of his mug."
 Clues sit in the scene for the players to find. Reveal a clue only when a player investigates that thing. If a player says they are stuck or asks for a hint, give one gentle nudge about something to look at, never the solution.
 Respond to what the players actually try, including the unexpected: say what happens and let consequences follow.
+Describe a place in full only when you arrive in it. After that, never restate the setting (the weather, the fire, the map): answer what the player did, in one or two sentences, and mention a sight or sound only if it is new, has changed, or matters to what they just did.
 End each reply on the description or on what happens. Never tack a name or a question onto the end ("${example_name}?", "What do you do?"): the page already shows whose turn it is. Use a player's name only where it fits naturally inside a sentence, for example when reacting to what they did, and only the names of the travellers listed above, never a name from an example. Never point at an action. Then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players.${mute} Never ask two questions in one reply.
 Each reply to a player is preceded by a system note about the current scene: follow it. You have only two tools, next_scene and end_story. Call a tool only when the note says to, and never write or say a tool name or function call in your speech.`;
 }

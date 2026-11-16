@@ -284,3 +284,47 @@ test('scene move: yes moves the scene once, no does not, and the tool cannot mov
   assert.equal(await maybeMoveScene(state, 'I leave', async () => { throw new Error('x'); }, move), false);
   assert.equal(moves, 1);
 });
+
+import { usedDetails } from '../src/story.ts';
+
+test('atmosphere: the arrival note lists everything; the first reply after it says the place is already described', () => {
+  const s: any = { scene_index: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false, short_mode: false };
+  onSceneStart(s, 0); // arrive in the tavern
+  assert.equal(s.replies_in_scene, 0);
+  const arrival = sceneHint(1, false, s);
+  assert.match(arrival, /What can be seen and heard: rain on the shutters/);
+  assert.doesNotMatch(arrival, /already described/);
+  onBramReply(s, 'The rain hammers the shutters while the fire pops in the hearth, and a salt-stained map lies on the table.');
+  const later = sceneHint(1, false, s);
+  assert.match(later, /You have already described this place/);
+  assert.match(later, /Answer only what the player did, in one or two sentences, with no recap/);
+  assert.doesNotMatch(later, /What can be seen and heard/);
+});
+
+test('atmosphere: the already-described list follows what Bram actually said, and the rest is offered as not yet mentioned', () => {
+  const used = usedDetails(SCENES[0].sights, 'The fire pops and the rain hammers the shutters.');
+  assert.deepEqual(used, ['rain on the shutters', 'the fire popping']);
+  const s: any = { scene_index: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false, short_mode: false };
+  onSceneStart(s, 0);
+  onBramReply(s, 'The fire pops and the rain hammers the shutters.');
+  assert.deepEqual(s.described, ['rain on the shutters', 'the fire popping']);
+  onBramReply(s, 'The stranger nods at the map.');
+  assert.ok(s.described.includes('a salt-stained map on the table in front of the stranger'));
+  const note = sceneHint(1, false, s);
+  assert.match(note, /already described, so do not repeat it[^:]*: rain on the shutters; the fire popping/);
+  assert.match(note, /Not yet mentioned: a small iron chest/);
+  // a new scene starts from nothing
+  onSceneStart(s, 1);
+  assert.deepEqual(s.described, []);
+  assert.match(sceneHint(2, false, s), /What can be seen and heard: a rope bridge/);
+});
+
+test('atmosphere: after four replies in a scene the note asks for the shortest replies with no atmosphere', () => {
+  const s: any = { scene_index: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false, short_mode: false };
+  onSceneStart(s, 0);
+  for (let i = 0; i < 3; i++) onBramReply(s, 'Something happens.');
+  assert.doesNotMatch(sceneHint(1, false, s), /shortest reply/);
+  onBramReply(s, 'Something else happens.');
+  assert.equal(s.replies_in_scene, 4);
+  assert.match(sceneHint(1, false, s), /shortest reply now: one sentence .* no atmosphere at all/);
+});

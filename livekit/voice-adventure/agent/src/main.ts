@@ -71,6 +71,8 @@ interface StoryData {
   summary: string[];
   /** The scene was changed by the leave check this turn: the next_scene tool must not move it again. */
   moved_turn: boolean;
+  replies_in_scene: number;
+  described: string[];
   /** This agent picked up a story another agent left. */
   resumed: boolean;
 }
@@ -275,7 +277,7 @@ class Bram extends voice.Agent<StoryData> {
     const words = new_message.textContent;
     let moved_note: string | undefined;
     await maybeMoveScene(data, words, askShort, async () => { moved_note = await changeScene(data); }, (line) => console.log(line));
-    chat_ctx.addMessage({ role: 'system', content: moved_note ? `${moved_note} Do not call any tool.` : sceneHint(data.scene_index, data.ending) });
+    chat_ctx.addMessage({ role: 'system', content: moved_note ? `${moved_note} Do not call any tool.` : sceneHint(data.scene_index, data.ending, data) });
   }
 
   static build(players: Player[], resume?: StoryState) {
@@ -301,7 +303,7 @@ class Bram extends voice.Agent<StoryData> {
             if (verdict !== 'ok' || data.scene_index >= SCENES.length) {
               console.log(`next_scene refused (${verdict === 'ok' ? 'story over' : verdict}), inputs=${data.inputs}`);
               // Nothing is returned, so the model gets no follow-up of its own. The player still gets an answer: one reply, with no tools.
-              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
+              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending, data)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
               return undefined;
             }
             return changeScene(data);
@@ -315,7 +317,7 @@ class Bram extends voice.Agent<StoryData> {
             const verdict = moveOnVerdict(data.input_since_call);
             if (data.scene_index < SCENES.length || verdict !== 'ok') {
               console.log(`end_story refused (${verdict}), scene ${data.scene_index}, inputs=${data.inputs}`);
-              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
+              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending, data)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
               return undefined;
             }
             data.ending = true;
@@ -347,7 +349,7 @@ export default defineAgent({
         preemptiveGeneration: { enabled: false },
       },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, moved_turn: false },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, moved_turn: false, replies_in_scene: 0, described: [] },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {
@@ -443,7 +445,7 @@ export default defineAgent({
             saveState(data);
           }
           sess.interrupt();
-          sess.generateReply({ userInput: ev.text, instructions: data.handed_off && !data.ending ? sceneHint(data.scene_index, data.ending) : undefined });
+          sess.generateReply({ userInput: ev.text, instructions: data.handed_off && !data.ending ? sceneHint(data.scene_index, data.ending, data) : undefined });
         },
       },
     });
