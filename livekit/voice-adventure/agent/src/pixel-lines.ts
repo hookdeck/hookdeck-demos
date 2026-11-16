@@ -3,34 +3,46 @@
  * sends as a chat message when the storyteller gives it the turn, so Pixel takes part with no model call
  * of its own. The storyteller then reacts to the gesture on his normal turn.
  */
-export const SCENE_LINES: Record<string, string[]> = {
+/** A gesture line, and the items the party must already carry for it to make sense (a gesture never refers to something the party lacks). */
+export interface GestureLine {
+  text: string;
+  needs?: string[];
+}
+
+const L = (text: string, ...needs: string[]): GestureLine => ({ text, needs: needs.length ? needs : undefined });
+
+export const SCENE_LINES: Record<string, GestureLine[]> = {
   tavern: [
-    '*Pixel taps the salt-stained map and points at a small drawing of a lantern.*',
-    '*Pixel slides the hooded stranger\'s mug a little closer, then raises one eyebrow.*',
-    '*Pixel unfolds the map flat on the table and holds the corners down with two spoons.*',
-    '*Pixel nods slowly at the stranger and taps two fingers on the table, once.*',
-    '*Pixel points at the storm outside, then at the map, then at the door.*',
+    L('*Pixel taps the salt-stained map and points at a small drawing of a lantern.*'),
+    L('*Pixel slides the hooded stranger\'s mug a little closer, then raises one eyebrow.*'),
+    L('*Pixel unfolds the map flat on the table and holds the corners down with two spoons.*'),
+    L('*Pixel nods slowly at the stranger and taps two fingers on the table, once.*'),
+    L('*Pixel points at the storm outside, then at the map, then at the door.*'),
+    L('*Pixel crouches by the small iron chest and gives its lock a puzzled tug.*'),
   ],
   forest: [
-    '*Pixel presses a palm to a tree trunk and tilts an ear to the bark.*',
-    '*Pixel crouches, brushes the leaves aside and points at a trail of silver footprints.*',
-    '*Pixel holds a finger to the wind, then points deeper into the trees.*',
-    '*Pixel whistles nothing at all, only mimes it, and the branches seem to lean closer.*',
-    '*Pixel ties a scrap of cloth to a low branch to mark the way back.*',
+    L('*Pixel presses a palm to a tree trunk and tilts an ear to the bark.*'),
+    L('*Pixel crouches, brushes the leaves aside and points at a trail of silver footprints.*'),
+    L('*Pixel holds a finger to the wind, then points deeper into the trees.*'),
+    L('*Pixel whistles nothing at all, only mimes it, and the branches seem to lean closer.*'),
+    L('*Pixel ties a scrap of cloth to a low branch to mark the way back.*'),
+    L('*Pixel peers into the hollow oak and points at its small door.*'),
+    L('*Pixel turns the small brass key over in its fingers and tilts its head.*', 'brass_key'),
   ],
   cave: [
-    '*Pixel holds the lantern up to the cave wall and taps a carving.*',
-    '*Pixel counts the drips from the ceiling on four fingers, then points at the dark.*',
-    '*Pixel presses a hand to the cold stone and shakes its head, then points left.*',
-    '*Pixel cups a hand around its ear, then holds up a finger: something is breathing.*',
-    '*Pixel steps forward, stops, and gently sets a spoon on the ground as an offering.*',
+    L('*Pixel counts the drips from the ceiling on four fingers, then points at the dark.*'),
+    L('*Pixel presses a hand to the cold stone and shakes its head, then points left.*'),
+    L('*Pixel cups a hand around its ear, then holds up a finger: something is breathing.*'),
+    L('*Pixel steps forward, stops, and gently sets a spoon on the ground as an offering.*'),
+    L('*Pixel runs a finger along the carving of a boat on the wall.*'),
+    L('*Pixel holds the Lantern up to the cave wall and taps a carving.*', 'lantern'),
   ],
   finale: [
-    '*Pixel lifts the Lantern high and walks in front so the others can see the path.*',
-    '*Pixel hands the Lantern to the nearest traveller and bows.*',
-    '*Pixel points back at the cave, then at the others, then at the sky, and smiles.*',
-    '*Pixel taps its chest, then the Lantern, then makes a small circle with both hands.*',
-    '*Pixel shields the flame with both hands against the wind and nods: home.*',
+    L('*Pixel points back at the cave, then at the others, then at the sky, and smiles.*'),
+    L('*Pixel looks up at the dark lamp, then out at the clearing storm.*'),
+    L('*Pixel taps the iron chest and mimes turning a key.*', 'brass_key'),
+    L('*Pixel lifts the Lantern high and walks in front so the others can see the way.*', 'lantern'),
+    L('*Pixel cups both hands around the Lantern and nods: nearly home.*', 'lantern'),
   ],
 };
 
@@ -44,8 +56,8 @@ export const FALLBACK_LINES = [
  * Picks a gesture for the scene that has not been used yet. `used` is updated. When a scene's lines run out
  * it falls back to the generic lines, and when those run out too it starts the generic lines again.
  */
-export function pickGesture(scene: string | undefined, used: Set<string>, random: () => number = Math.random): string {
-  const pool = (SCENE_LINES[scene ?? ''] ?? []).filter((line) => !used.has(line));
+export function pickGesture(scene: string | undefined, used: Set<string>, random: () => number = Math.random, satchel: readonly string[] = []): string {
+  const pool = (SCENE_LINES[scene ?? ''] ?? []).filter((line) => (line.needs ?? []).every((id) => satchel.includes(id))).map((line) => line.text).filter((line) => !used.has(line));
   let candidates = pool;
   if (!candidates.length) candidates = FALLBACK_LINES.filter((line) => !used.has(line));
   if (!candidates.length) {
@@ -64,6 +76,8 @@ export interface StoryAttributes {
   scene?: string;
   state?: string;
   agent_state?: string;
+  /** Item ids the party carries (JSON array in the `story.satchel` attribute). */
+  satchel?: string[];
 }
 
 export const PIXEL_IDENTITY = 'bot-pixel';
@@ -74,6 +88,7 @@ export const readAttributes = (a: Record<string, string>): StoryAttributes => ({
   scene: a['story.scene'],
   state: a['story.state'],
   agent_state: a['lk.agent.state'],
+  satchel: (() => { try { const v = JSON.parse(a['story.satchel'] || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; } })(),
 });
 
 /**

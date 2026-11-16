@@ -4,6 +4,7 @@
  * Small JSON: the scene, who is in the ledger, the clues the players have been shown, and a few lines of running summary.
  */
 import { SCENES } from './story.ts';
+import { itemById, newQuest, questNote, type ItemId, type QuestState } from './quest.ts';
 
 export interface SavedPlayer {
   identity: string;
@@ -21,6 +22,8 @@ export interface StoryState {
   /** The last few exchanges, one short line each, oldest first. */
   summary: string[];
   ended: boolean;
+  /** Where the quest stands: the satchel, whether the chest is open, whether the Lantern is lit. */
+  quest?: QuestState;
   saved_at: number;
 }
 
@@ -44,7 +47,7 @@ export function addSummaryLine(lines: readonly string[], speaker: string, text: 
   return [...lines, `${speaker}: ${line}`].slice(-SUMMARY_LINES);
 }
 
-export function buildState(input: { scene_index: number; players: readonly SavedPlayer[]; summary: readonly string[]; ended?: boolean }, now = Date.now()): StoryState {
+export function buildState(input: { scene_index: number; players: readonly SavedPlayer[]; summary: readonly string[]; ended?: boolean; quest?: QuestState }, now = Date.now()): StoryState {
   return {
     v: 1,
     scene_index: input.scene_index,
@@ -52,6 +55,7 @@ export function buildState(input: { scene_index: number; players: readonly Saved
     clues: cluesFor(input.scene_index),
     summary: [...input.summary],
     ended: Boolean(input.ended),
+    quest: input.quest ? { satchel: [...input.quest.satchel], chest_open: input.quest.chest_open, lantern_lit: input.quest.lantern_lit } : undefined,
     saved_at: now,
   };
 }
@@ -80,6 +84,9 @@ export function decodeState(metadata: string | undefined | null): StoryState | n
       clues: Array.isArray(raw.clues) ? raw.clues.filter((c: unknown) => typeof c === 'string') : [],
       summary: Array.isArray(raw.summary) ? raw.summary.filter((c: unknown) => typeof c === 'string').slice(-SUMMARY_LINES) : [],
       ended: Boolean(raw.ended),
+      quest: raw.quest && typeof raw.quest === 'object'
+        ? { satchel: (Array.isArray(raw.quest.satchel) ? raw.quest.satchel : []).filter((id: unknown): id is ItemId => typeof id === 'string' && !!itemById(id)), chest_open: Boolean(raw.quest.chest_open), lantern_lit: Boolean(raw.quest.lantern_lit) }
+        : undefined,
       saved_at: typeof raw.saved_at === 'number' ? raw.saved_at : 0,
     };
   } catch {
@@ -108,5 +115,5 @@ export function recapInstructions(state: StoryState, players: readonly SavedPlay
   const recent = state.summary.length ? `\nWhat was said last:\n${state.summary.join('\n')}` : '';
   return `You have been away from the fire for a moment and you are back. The story is in scene ${state.scene_index} of ${SCENES.length}: ${scene.place}. The travellers are ${names || 'the players'}.
 What they have been shown so far: ${state.clues.join('; ') || 'nothing yet'}.${recent}
-Do not call any tool now. In one or two plain sentences, in character, say where the tale had got to ("Now, where were we?") and what is in front of the travellers. Do not start a new scene and do not repeat the earlier lines. End with a short open prompt that names the player who goes next.`;
+Do not call any tool now. In one or two plain sentences, in character, say where the tale had got to ("Now, where were we?") and what is in front of the travellers. Do not start a new scene and do not repeat the earlier lines. ${questNote(state.quest ?? newQuest(), state.scene_index)} Speak to the player as "you" and use no name. End on a short open line with no question.`;
 }

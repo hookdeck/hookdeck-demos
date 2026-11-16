@@ -137,10 +137,23 @@ function renderBanner() {
 
 // Who is in the call, what each one is, and who is speaking right now. An agent's own state
 // (listening, thinking, speaking) already says when it is talking, so it gets no second badge.
+// What the party carries: item ids from the agent's `story.satchel` attribute, worded by the theme
+function renderSatchel() {
+  const box = $('satchel');
+  const agent = agent_of();
+  if (!room || !agent || !agent.attributes?.['story.satchel']) { box.hidden = true; return; }
+  const ids = parseSatchel(agent.attributes['story.satchel']);
+  box.hidden = false;
+  $('satchelItems').innerHTML = ids.length
+    ? ids.map((id) => `<li class="badge badge--primary">${esc(T('item_' + id, SATCHEL_PLAIN_LABELS[id]))}</li>`).join('')
+    : `<li class="satchel-empty">${esc(T('satchel_empty', 'None yet'))}</li>`;
+}
+
 function renderPeople() {
   // Drop audio elements whose track has ended (a scene's soundtrack that has finished)
   audio_box.querySelectorAll('audio').forEach((a) => { if (!a.srcObject || a.srcObject.getTracks().every((t) => t.readyState === 'ended')) a.remove(); });
   renderBanner();
+  renderSatchel();
   if (!room) { peopleList().innerHTML = ''; return; }
   // The name Hester wrote in her ledger: a player who joined without a name sees it in the (read-only) name field
   const ledger = parseLedger(agent_of()?.attributes?.['story.ledger']);
@@ -342,6 +355,7 @@ if (demo_state) {
   room = { localParticipant: person('web-1', 'Priya'), remoteParticipants: new Map(remotes.map((p) => [p.identity, p])), activeSpeakers: [agent] };
   // As if joined without a name: the agent's ledger fills the read-only name field
   agent.attributes['story.ledger'] = JSON.stringify({ 'web-1': 'Priya' });
+  agent.attributes['story.satchel'] = JSON.stringify(demo_state === 'quiet' ? [] : ['map', 'brass_key']);
   set_state(true);
   say_copy('status_connected', 'Connected to story-demo as web-1, microphone on.', { name: 'Priya' });
   renderPeople();

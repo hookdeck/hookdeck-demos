@@ -188,12 +188,12 @@ test('the scene data describes only: no scene text suggests an action', () => {
 test('the instructions describe, end without a tacked-on name, reveal clues on investigation, and keep bad examples apart', () => {
   const text = bramInstructions([{ name: 'Priya', bot: false }, { name: 'Pixel', bot: true }]);
   assert.match(text, /Describe, don't direct/);
-  assert.match(text, /A small iron chest sits under the bench, its lock rusted shut\./);
+  assert.match(text, /A small iron chest sits under the bench, locked\./);
   assert.match(text, /Reveal a clue only when a player investigates that thing/);
   assert.match(text, /one gentle nudge about something to look at, never the solution/);
   assert.match(text, /what the players actually try, including the unexpected/);
-  assert.match(text, /Never tack a name or a question onto the end \("Priya\?", "What do you do\?"\)/);
-  assert.match(text, /only the names of the travellers listed above, never a name from an example/);
+  assert.match(text, /Never put a name at the start or the end of a reply/);
+  assert.match(text, /Use only the names of the travellers listed above/);
   // the leading lines appear only inside the marked block of examples
   assert.ok(LEADING.test(text) && text.includes(LEADING_BLOCK_START));
   assert.doesNotMatch(withoutLeadingExamples(text), LEADING);
@@ -327,4 +327,15 @@ test('atmosphere: after four replies in a scene the note asks for the shortest r
   onBramReply(s, 'Something else happens.');
   assert.equal(s.replies_in_scene, 4);
   assert.match(sceneHint(1, false, s), /shortest reply now: one sentence .* no atmosphere at all/);
+});
+
+test('the name rule: you for the player, never third person, names only to tell two humans apart, a correction is acknowledged', () => {
+  const one = bramInstructions([{ name: 'Snaggle', bot: false }, { name: 'Pixel', bot: true }]);
+  assert.match(one, /Speak to the player as "you"/);
+  assert.match(one, /never talk about the player you are answering in the third person/);
+  assert.match(one, /There is one human player: after your greeting never use their name at all/);
+  assert.match(one, /If a player tells you their name or corrects it \("I'm Snaggle"\), acknowledge it/);
+  const two = bramInstructions([{ name: 'Snaggle', bot: false }, { name: 'Priya', bot: false }]);
+  assert.match(two, /use a name only when you need to say which of the players you mean/);
+  assert.doesNotMatch(one, /Use a player's name only where it fits naturally/);
 });

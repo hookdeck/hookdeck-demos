@@ -47,7 +47,7 @@ setInterval(async () => {
   busy = true;
   last_answered_seq = attrs.turn_seq;
   setTimeout(async () => {
-    const line = pickGesture(attrs.scene, used);
+    const line = pickGesture(attrs.scene, used, Math.random, attrs.satchel);
     await room.localParticipant!.sendText(line, { topic: 'lk.chat' });
     console.log('Pixel:', line);
     busy = false;

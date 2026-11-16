@@ -18,6 +18,7 @@ import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { endAllowed, newQuest, parseNameCorrection, satchelAttribute, shortModeQuest, takeItem, useItem, usesName, type QuestState } from './quest.ts';
 import { askShort, describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
 import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
@@ -73,6 +74,12 @@ interface StoryData {
   moved_turn: boolean;
   replies_in_scene: number;
   described: string[];
+  /** Where the quest stands: shared satchel, chest, lantern. */
+  quest: QuestState;
+  /** An item tool already ran for this player input. */
+  item_acted: boolean;
+  /** Who the current reply answers, for the name check. */
+  last_speaker_name: string | undefined;
   /** This agent picked up a story another agent left. */
   resumed: boolean;
 }
@@ -143,7 +150,7 @@ function saveState(data: StoryData, ended = false) {
   save_timer = setTimeout(async () => {
     try {
       room_client ??= new RoomServiceClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
-      const state = buildState({ scene_index: data.scene_index, players: data.players, summary: data.summary, ended });
+      const state = buildState({ scene_index: data.scene_index, players: data.players, summary: data.summary, ended, quest: data.quest });
       await room_client.updateRoomMetadata(data.ctx.room.name!, encodeState(state));
       console.log(`story state saved: scene ${state.scene_index}, ${state.summary.length} summary lines`);
     } catch (error: any) {
@@ -165,6 +172,23 @@ async function fetchBram(session: voice.AgentSession<StoryData>, greet: string[]
   session.updateAgent(Bram.build(data.players));
 }
 
+/** The satchel, as item ids on the agent's participant: the page lists it, and Pixel picks gestures from it. */
+const publishSatchel = (data: StoryData) => publish(data.ctx, { 'story.satchel': satchelAttribute(data.quest) });
+
+/** Runs an item action: one per player input, and only after a player has spoken. Answers with a short factual sentence for Bram to narrate. */
+function itemAction(data: StoryData, name: string, run: () => { ok: boolean; message: string }): string {
+  if (!data.input_since_call) return 'No player has asked for this: do nothing.';
+  if (data.item_acted) return 'Only one item action happens per reply. Narrate what already happened and stop.';
+  data.item_acted = true;
+  const result = run();
+  console.log(`${name}: ${result.ok ? 'ok' : 'refused'}: ${result.message}`);
+  if (result.ok) {
+    publishSatchel(data);
+    saveState(data);
+  }
+  return result.message;
+}
+
 /** Starts the next scene: state, saved story, the page's scene attribute, and the soundtrack through the app's Ingress call. Returns its start note. */
 async function changeScene(data: StoryData): Promise<string> {
   const index = nextSceneIndex(data.scene_index, data.short_mode);
@@ -181,7 +205,7 @@ async function changeScene(data: StoryData): Promise<string> {
     music = 'without music';
   }
   console.log(`scene change accepted: scene ${index + 1} ${scene}`);
-  return sceneStartNote(index, music);
+  return sceneStartNote(index, music, data.quest);
 }
 
 class Hester extends voice.Agent<StoryData> {
@@ -256,7 +280,7 @@ class Bram extends voice.Agent<StoryData> {
       return;
     }
     this.session.generateReply({
-      instructions: 'You have just come in from the fire at Hester\'s call. Call next_scene now, before you say anything. When it answers, introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name, then describe the first scene as the tool says and hand over with a short open prompt naming the player who goes first.',
+      instructions: 'You have just come in from the fire at Hester\'s call. Call next_scene now, before you say anything. When it answers, introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name once, state the goal plainly in one sentence (your lighthouse went dark in the storm, and only the Lantern of Hollow Mere can relight it), then describe the first scene as the tool says and stop on a short open line with no name.',
     });
   }
 
@@ -275,9 +299,21 @@ class Bram extends voice.Agent<StoryData> {
     // A small separate check decides whether the player has chosen to leave by the way out; the code then changes the scene itself
     // and Bram describes arriving. Otherwise he stays in this scene.
     const words = new_message.textContent;
+    const speaker = data.players.find((p) => p.identity === listening_to(this.session));
+    // A player who gives or corrects their name ("I'm Snaggle"): the ledger follows, and Bram acknowledges it
+    let name_note = '';
+    const given = parseNameCorrection(words);
+    if (speaker && !speaker.bot && given && given.toLowerCase() !== speaker.name.toLowerCase()) {
+      console.log(`name corrected: ${speaker.name} -> ${given}`);
+      speaker.name = given;
+      publishLedger(data);
+      saveState(data);
+      name_note = ` The player has just told you their name is ${given}: acknowledge it in a few words and carry on.`;
+    }
+    data.last_speaker_name = speaker?.name;
     let moved_note: string | undefined;
     await maybeMoveScene(data, words, askShort, async () => { moved_note = await changeScene(data); }, (line) => console.log(line));
-    chat_ctx.addMessage({ role: 'system', content: moved_note ? `${moved_note} Do not call any tool.` : sceneHint(data.scene_index, data.ending, data) });
+    chat_ctx.addMessage({ role: 'system', content: `${moved_note ? `${moved_note} Do not call any tool.` : sceneHint(data.scene_index, data.ending, data)}${name_note}` });
   }
 
   static build(players: Player[], resume?: StoryState) {
@@ -309,14 +345,30 @@ class Bram extends voice.Agent<StoryData> {
             return changeScene(data);
           },
         }),
+        take_item: llm.tool({
+          description: 'Put an item into the satchel. Call it only in the reply to a player who says they take or pick up that item.',
+          parameters: z.object({ item: z.string().describe('The item, for example "brass key"') }),
+          execute: async ({ item }, { ctx }: llm.ToolOptions<StoryData>) => {
+            const data = ctx.userData;
+            return itemAction(data, `take_item(${item})`, () => takeItem(data.quest, data.scene_index, item));
+          },
+        }),
+        use_item: llm.tool({
+          description: 'Use one item on another thing, for example the key on the chest or the flint and wick on the Lantern. Call it only in the reply to a player who says they do that.',
+          parameters: z.object({ item: z.string().describe('The item being used'), target: z.string().describe('What it is used on') }),
+          execute: async ({ item, target }, { ctx }: llm.ToolOptions<StoryData>) => {
+            const data = ctx.userData;
+            return itemAction(data, `use_item(${item}, ${target})`, () => useItem(data.quest, data.scene_index, item, target));
+          },
+        }),
         end_story: llm.tool({
           description: 'End the story. Call it before your closing; it tells you when to speak the closing.',
           parameters: z.object({}),
           execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
             const data = ctx.userData;
             const verdict = moveOnVerdict(data.input_since_call);
-            if (data.scene_index < SCENES.length || verdict !== 'ok') {
-              console.log(`end_story refused (${verdict}), scene ${data.scene_index}, inputs=${data.inputs}`);
+            if (data.scene_index < SCENES.length || verdict !== 'ok' || !endAllowed(data.quest)) {
+              console.log(`end_story refused (${endAllowed(data.quest) ? verdict : 'the Lantern is not lit'}), scene ${data.scene_index}, inputs=${data.inputs}`);
               ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending, data)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
               return undefined;
             }
@@ -349,7 +401,7 @@ export default defineAgent({
         preemptiveGeneration: { enabled: false },
       },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, moved_turn: false, replies_in_scene: 0, described: [] },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, moved_turn: false, replies_in_scene: 0, described: [], quest: process.env.STORY_SHORT === '1' ? shortModeQuest() : newQuest(), item_acted: false, last_speaker_name: undefined },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {
@@ -402,6 +454,7 @@ export default defineAgent({
       // Player inputs are counted in Bram's onUserTurnCompleted. Here only Bram's own reply is kept, to see who he named.
       if (item.role === 'assistant') {
         onBramReply(data, item.textContent);
+        if (data.players.filter((p) => !p.bot).length === 1 && data.inputs > 0 && usesName(item.textContent, data.last_speaker_name)) console.log(`name check: the reply used the speaker's name "${data.last_speaker_name}"`);
         data.summary = addSummaryLine(data.summary, 'Bram', item.textContent);
         saveState(data);
       }
@@ -458,6 +511,7 @@ export default defineAgent({
     }
     // onEnter ran before the room connected, so publish Hester's attributes again now
     await publish(ctx, { 'story.character': 'Hester Pennywhistle, innkeeper', 'story.state': 'playing', 'story.turn': '', 'story.turn_name': '' });
+    publishSatchel(session.userData);
     // Open once the first guest is at the door: whether they gave a name decides Hester's first words
     await ctx.waitForParticipant();
     // A story another agent left (a dead job that LiveKit re-dispatched, or "Continue the story"): skip Hester and pick it up
@@ -470,11 +524,13 @@ export default defineAgent({
       data.summary = saved.summary;
       data.handed_off = true;
       data.resumed = true;
+      data.quest = saved.quest ?? data.quest;
       const first = data.players.find((p) => !p.bot);
       if (first) switchListener(session, first.identity);
       publish(ctx, { 'story.scene': SCENES[Math.min(saved.scene_index, SCENES.length) - 1].scene });
       console.log(`story state found in the room: resuming at scene ${saved.scene_index}`);
       publishLedger(data);
+      publishSatchel(data);
       session.updateAgent(Bram.build(data.players, saved));
       return;
     }

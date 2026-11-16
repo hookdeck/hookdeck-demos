@@ -9,15 +9,17 @@ test('the language model is LiveKit Inference gpt-4.1-mini, and the startup line
 });
 
 test('every scene has four to six gesture lines, and a line is not repeated until the pool runs out', () => {
-  for (const [scene, lines] of Object.entries(SCENE_LINES)) assert.ok(lines.length >= 4 && lines.length <= 6, scene);
+  for (const [scene, lines] of Object.entries(SCENE_LINES)) assert.ok(lines.length >= 4 && lines.length <= 7, scene);
   const used = new Set<string>();
-  const picked = SCENE_LINES.cave.map(() => pickGesture('cave', used));
-  assert.equal(new Set(picked).size, SCENE_LINES.cave.length);
-  assert.ok(picked.every((l) => SCENE_LINES.cave.includes(l)));
+  // with an empty satchel only the lines that need no item are available
+  const open = SCENE_LINES.cave.filter((l) => !l.needs);
+  const picked = open.map(() => pickGesture('cave', used));
+  assert.equal(new Set(picked).size, open.length);
+  assert.ok(picked.every((l) => open.some((o) => o.text === l)));
 });
 
 test('after a scene\'s lines run out, and for an unknown scene, the generic lines are used without repeats', () => {
-  const used = new Set<string>(SCENE_LINES.tavern);
+  const used = new Set<string>(SCENE_LINES.tavern.map((l) => l.text));
   const generic = FALLBACK_LINES.map(() => pickGesture('tavern', used));
   assert.deepEqual(new Set(generic), new Set(FALLBACK_LINES));
   assert.ok(FALLBACK_LINES.includes(pickGesture(undefined, new Set())));
@@ -37,4 +39,17 @@ test('Pixel answers its own turn once, and only its own turn', () => {
   assert.equal(shouldGesture({ ...turn, turn_seq: '4' }, '3'), 'gesture');
   assert.equal(shouldGesture({ ...turn, turn: 'web-1a2b3c' }, undefined), 'idle');
   assert.equal(shouldGesture({ turn: '' }, undefined), 'idle');
+});
+
+test('gestures never refer to an item the party does not carry', () => {
+  for (const scene of Object.keys(SCENE_LINES)) {
+    for (let i = 0; i < 40; i++) {
+      const line = pickGesture(scene, new Set(), Math.random, []);
+      assert.doesNotMatch(line, /\bLantern\b|brass key|turning a key/, `${scene}: ${line}`);
+    }
+  }
+  // with the lantern in the satchel the cave line that holds it up becomes possible
+  const withLantern = new Set<string>();
+  for (let i = 0; i < 80; i++) withLantern.add(pickGesture('cave', new Set(), Math.random, ['lantern']));
+  assert.ok([...withLantern].some((l) => /Lantern/.test(l)));
 });

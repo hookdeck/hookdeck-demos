@@ -26,6 +26,12 @@ window.HookdeckThemeCopies.story = {
   "listening_sub": "Old Bram is telling it.",
   "ended_title": "The End",
   "ended_sub": "The lantern is lit and Hollow Mere is quiet again.",
+  "satchel_title": "Satchel",
+  "satchel_empty": "Empty for now",
+  "item_map": "A salt-stained map",
+  "item_brass_key": "A small brass key",
+  "item_lantern": "The Lantern of Hollow Mere",
+  "item_flint_and_wick": "Flint and a wick",
   "quiet_title": "Old Bram has fallen silent",
   "quiet_sub": "The tale is waiting where it stopped."
 };

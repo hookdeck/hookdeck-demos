@@ -208,3 +208,9 @@ html[data-theme="story"] .how-dialog p { font-size: 16px; line-height: 1.45; col
 
 /* The "now playing" line is a badge in the plain themes and plain italic text here */
 html[data-theme="story"] main .turn-playing.badge { background: none; border: 0; padding: 0; box-shadow: none; text-transform: none; letter-spacing: normal; font-family: inherit; }
+
+/* The satchel: a row of small parchment tags */
+html[data-theme="story"] main .satchel { padding: 8px 14px; border: 1px dashed var(--neutral-outline-2); border-radius: 6px; background: rgba(255, 248, 230, 0.55); }
+html[data-theme="story"] main .satchel .subtitle-xs { font-family: var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; font-size: 14px; color: var(--neutral-fg-1); }
+html[data-theme="story"] main .satchel-items .badge { background: #f3e3bd; border: 1px solid #b08a4a; color: #3a2a19; font-family: inherit; font-size: 16px; padding: 2px 10px; text-transform: none; letter-spacing: normal; }
+html[data-theme="story"] main .satchel-empty { font-style: italic; font-size: 16px; }

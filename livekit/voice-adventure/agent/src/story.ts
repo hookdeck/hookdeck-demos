@@ -1,3 +1,4 @@
+import { questNote, type QuestState } from './quest.ts';
 import { ReadableStream, TransformStream, type TransformStreamDefaultController } from 'node:stream/web';
 
 /**
@@ -23,30 +24,30 @@ export const SCENES: readonly SceneDef[] = [
   {
     scene: 'tavern',
     place: 'the common room of the Drowned Bell on a stormy night, with a fire, a long table and a hooded stranger',
-    sights: 'rain on the shutters, the fire popping, a salt-stained map on the table in front of the stranger, a small iron chest under the bench with its lock rusted shut',
+    sights: 'rain on the shutters, the fire popping, a salt-stained map on the table in front of the stranger, a small iron chest under the bench, locked',
     onward: 'a north door leads out into the storm toward the Hollow Wood',
-    clue: 'the map has a lantern drawn near the Hollow Mere and a margin note about dripping water; the stranger knows the way and says so only if asked',
+    clue: 'the map has a lantern drawn near the Hollow Mere and a margin note about dripping water; the stranger knows the way and says so only if asked; the chest is locked and needs a key',
   },
   {
     scene: 'forest',
     place: 'the Hollow Wood, a damp pine forest',
     sights: 'a rope bridge over a stream, a muddy path under the pines, silver footprints in the mud, a hollow oak with a small door in its trunk',
     onward: 'the rope bridge leads to stone steps beside a waterfall, and the footprints go on through the pines',
-    clue: 'the footprints are small and lead to the door in the oak; the steps beside the waterfall go down toward the Mere',
+    clue: 'the small door in the oak opens on a root shelf with a small brass key on it; the steps beside the waterfall go down toward the Mere',
   },
   {
     scene: 'cave',
     place: 'the cave under the Hollow Mere, dripping and dark',
-    sights: 'a stone ledge with the Lantern on it, drips from the ceiling, a carving on the wall, a narrow tunnel and a small rowboat on the underground pool',
-    onward: 'a narrow tunnel leads up and out, and the rowboat sits at the edge of the pool',
-    clue: 'the carving shows a boat crossing the pool toward a light',
+    sights: 'a stone ledge with the Lantern of Hollow Mere on it, unlit, drips from the ceiling, a carving on the wall, a small rowboat on the underground pool',
+    onward: 'rowing the boat across the pool leads out to the shore and the road back to the lighthouse',
+    clue: 'the carving shows a boat crossing the pool toward a light; the Lantern is cold and unlit',
   },
   {
     scene: 'finale',
-    place: 'the shore of the Mere at dawn, with the Lantern lit',
-    sights: 'the storm clearing, the Lantern burning steadily, the lights of the Drowned Bell across the water',
+    place: 'the lamp room of Old Bram\'s lighthouse above the Drowned Bell at dawn, the great lamp dark',
+    sights: 'the storm clearing outside, the dark lamp, the iron chest from the tavern set down beside it (the stranger carried it up)',
     onward: '',
-    clue: '',
+    clue: 'the chest opens with the small brass key and holds flint and a wick; the Lantern is lit at the lighthouse with them, which completes the quest',
   },
 ];
 
@@ -119,7 +120,7 @@ export function moveOnVerdict(input_since_last_call: boolean): MoveOnVerdict {
 
 // ---- A backstop so the model never speaks a tool name ----
 
-export const TOOL_NAMES = ['next_scene', 'end_story', 'write_in_ledger', 'fetch_bram', 'give_turn'];
+export const TOOL_NAMES = ['next_scene', 'end_story', 'take_item', 'use_item', 'write_in_ledger', 'fetch_bram', 'give_turn'];
 const SPOKEN_CALL = new RegExp(`(?:functions\\.)?(?:${TOOL_NAMES.join('|')})(?:\\s*\\([^)]*\\)?)?|functions\\.\\w*(?:\\s*\\([^)]*\\)?)?`, 'gi');
 
 /** Removes tool calls and tool names from text that is about to be spoken. Returns the cleaned text and whether it removed anything. */
@@ -168,11 +169,14 @@ export interface TurnState {
   /** Bram's replies since the scene began (the arrival description is the first), and the sights he has already used in them. */
   replies_in_scene?: number;
   described?: string[];
+  /** An item tool already ran for this player input: one per reply. */
+  item_acted?: boolean;
 }
 
 /** A final transcript from the linked player, or Pixel's chat gesture. The only thing that counts as an exchange. */
 export function onPlayerInput(s: TurnState) {
   s.inputs += 1;
+  s.item_acted = false;
   s.input_since_call = true;
 }
 
@@ -249,7 +253,7 @@ export const LEADING_BLOCK_START = '[never say lines like these]';
 export const LEADING_BLOCK_END = '[end of lines never to say]';
 
 /** What is true of the scene right now, given to Bram as a system message before each reply to a player. */
-export function sceneHint(scene_index: number, ending: boolean, atmo?: { replies_in_scene?: number; described?: string[] }): string {
+export function sceneHint(scene_index: number, ending: boolean, atmo?: { replies_in_scene?: number; described?: string[]; quest?: QuestState }): string {
   const scene = scene_index > 0 ? SCENES[Math.min(scene_index, SCENES.length) - 1] : undefined;
   const finale = scene_index >= SCENES.length;
   const replies = atmo?.replies_in_scene ?? 0;
@@ -272,33 +276,39 @@ export function sceneHint(scene_index: number, ending: boolean, atmo?: { replies
   const phase = ending
     ? 'The story is ending: speak your closing only.'
     : finale
-      ? `This is the finale. Let the players take their time and respond to what they try. When each has had their moment, or a player says they are done, call end_story, and after it answers speak your closing.${length}`
+      ? `This is the finale. Let the players take their time and respond to what they try. The quest ends only when the Lantern is lit at the lighthouse: never call end_story before that. Once it is lit and the players have had their moment, call end_story, and after it answers speak your closing.${length}`
       : `Let the players explore as long as they like. Respond to what they actually try, including the unexpected: say what happens and let consequences follow. Moving on is handled for you. Never narrate arriving somewhere new, or leaving this place, yourself: the place changes only when the scene note changes, so until then describe what happens here, and if the players head for the way out say only that they set off.${length}`;
-  return `${where} ${phase}`;
+  const quest = atmo?.quest && !ending && scene ? ` ${questNote(atmo.quest, scene_index)}` : '';
+  return `${where} ${phase}${quest}`;
 }
 
 /** Bram's standing instructions: who he is, how he speaks, how he describes and hands over. */
 export function bramInstructions(players: Array<{ name: string; bot: boolean }>): string {
-  const example_name = players.find((p) => !p.bot)?.name ?? 'traveller';
+  const humans = players.filter((p) => !p.bot);
   const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak: what ${p.name} does arrives as a message like "${p.name} taps the map.")` : p.name)).join(', ');
   const mute = players.some((p) => p.bot) ? ' A mute traveller never decides anything: its gestures can show the way, but only a spoken decision from a player moves the group on.' : '';
+  const names = humans.length > 1
+    ? 'There is more than one human player: address the player who just spoke as "you", and use a name only when you need to say which of the players you mean.'
+    : 'There is one human player: after your greeting never use their name at all. Address them as "you".';
   return `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell: warm, gravelly and kind. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers and only these: ${roster}. ${BREVITY}
+The goal, which you state plainly once when you open: your lighthouse went dark in the storm, and only the Lantern of Hollow Mere can relight it.
 Speak plainly, with at most one sea-worn phrase per reply, and none is fine. No riddles.
-Describe, don't direct. Say what the players see, hear and notice. Never tell them what to do, never ask whether they would like to do something, and never put an object next to the action that solves it. Write "A small iron chest sits under the bench, its lock rusted shut." and stop there.
+Describe, don't direct. Say what the players see, hear and notice, and where each thing lies. Never tell them what to do, never ask whether they would like to do something, and never put an object next to the action that solves it. Write "A small iron chest sits under the bench, locked." and stop there.
 ${LEADING_BLOCK_START} "Would you like to search the room to find something to open the chest?" "Why not follow the footprints?" "Maybe you could use the key on the door." ${LEADING_BLOCK_END}
-Good lines describe only: "A small iron chest sits under the bench, its lock rusted shut." "Silver footprints lead off into the pines." "The stranger watches you over the rim of his mug."
+Good lines describe only: "A small iron chest sits under the bench, locked." "Silver footprints lead off into the pines." "The stranger watches you over the rim of his mug."
 Clues sit in the scene for the players to find. Reveal a clue only when a player investigates that thing. If a player says they are stuck or asks for a hint, give one gentle nudge about something to look at, never the solution.
-Respond to what the players actually try, including the unexpected: say what happens and let consequences follow.
+Respond to what the players actually try, including the unexpected: say what happens and let consequences follow. Never invent items, doors or puzzles that the scene note does not give you.
 Describe a place in full only when you arrive in it. After that, never restate the setting (the weather, the fire, the map): answer what the player did, in one or two sentences, and mention a sight or sound only if it is new, has changed, or matters to what they just did.
-End each reply on the description or on what happens. Never tack a name or a question onto the end ("${example_name}?", "What do you do?"): the page already shows whose turn it is. Use a player's name only where it fits naturally inside a sentence, for example when reacting to what they did, and only the names of the travellers listed above, never a name from an example. Never point at an action. Then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players.${mute} Never ask two questions in one reply.
-Each reply to a player is preceded by a system note about the current scene: follow it. You have only two tools, next_scene and end_story. Call a tool only when the note says to, and never write or say a tool name or function call in your speech.`;
+Names. Speak to the player as "you": never talk about the player you are answering in the third person ("Snaggle is beside you now", "the stranger falls in behind Snaggle"). ${names} Never put a name at the start or the end of a reply ("Snaggle, the way is before you"). If a player tells you their name or corrects it ("I'm Snaggle"), acknowledge it in a few words and use it from then on only as the rules above allow. Use only the names of the travellers listed above.
+End each reply on the description or on what happens, with no question and no name tacked on: the page already shows whose turn it is. Never point at an action. Then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players.${mute} Never ask two questions in one reply.
+Each reply to a player is preceded by a system note about the current scene and the satchel: follow it. You have four tools: next_scene, end_story, take_item and use_item. Call a tool only as the note says, never write or say a tool name or function call in your speech, and when a tool answers that something cannot be done, narrate that fact plainly.`;
 }
 
 /** What next_scene returns to Bram when a scene starts. */
-export function sceneStartNote(index: number, music: string): string {
+export function sceneStartNote(index: number, music: string, quest?: QuestState): string {
   const { place, sights, onward, clue } = SCENES[index];
   const finale = index === SCENES.length - 1;
-  return `Scene ${index + 1} of ${SCENES.length} has started ${music}. Place: ${place}. What can be seen and heard: ${sights}.${finale ? ' This is the finale.' : ` The way out, to mention only as part of the place: ${onward}.`}${clue ? ` Things to find, revealed only when a player investigates that thing: ${clue}.` : ''} Describe the place in two short plain sentences using some of what can be seen and heard, then hand over with a short open prompt naming the player who goes first.`;
+  return `Scene ${index + 1} of ${SCENES.length} has started ${music}. Place: ${place}. What can be seen and heard: ${sights}.${finale ? ' This is the finale.' : ` The way out, to mention only as part of the place: ${onward}.`}${clue ? ` Things to find, revealed only when a player investigates that thing: ${clue}.` : ''} Describe the place in two short plain sentences using some of what can be seen and heard, then stop on a short open line with no name and no question.${quest ? ` ${questNote(quest, index + 1)}` : ''}`;
 }
 
 
