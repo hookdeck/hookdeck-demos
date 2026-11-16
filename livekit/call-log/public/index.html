@@ -1,12 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-demo-theme="story" data-demo-theme-label="Story" data-demo-theme-default="true">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LiveKit call log</title>
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/theme-story.css">
   <link rel="stylesheet" href="/scenes/scenes.css">
   <link rel="stylesheet" href="/topology-pane/topology-pane.css">
   <script src="/theme.js"></script>
@@ -14,10 +18,20 @@
 <body>
   <main>
     <section class="hero lined">
+      <svg class="story-ornament story-compass" aria-hidden="true" width="190" height="190" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="44" fill="none"></circle>
+        <circle cx="50" cy="50" r="36" fill="none" class="thin"></circle>
+        <path d="M50 4 L56 50 L50 96 L44 50 Z"></path>
+        <path d="M4 50 L50 44 L96 50 L50 56 Z" class="mid"></path>
+        <path d="M18 18 L52 48 L82 82 L48 52 Z" class="faint"></path>
+        <path d="M82 18 L52 52 L18 82 L48 48 Z" class="faint"></path>
+        <text x="50" y="14" text-anchor="middle">N</text>
+      </svg>
       <div class="lined__box">
-        <span class="eyebrow mono-xs">{ LiveKit call log }</span>
-        <h1 class="title-2xl">A spoken adventure, told by <em>room webhooks</em></h1>
-        <p class="body-m">An AI innkeeper and storyteller run a short adventure. Every room event reaches this app as a webhook through Hookdeck.</p>
+        <span class="eyebrow mono-xs"><span class="only-plain">{ LiveKit call log }</span><span class="only-story">A tale in four scenes</span></span>
+        <h1 class="title-2xl"><span class="only-plain">A spoken adventure, told by <em>room webhooks</em></span><span class="only-story">The Drowned Bell</span></h1>
+        <svg class="story-ornament story-divider" aria-hidden="true" width="320" height="16" viewBox="0 0 320 16"><line x1="0" y1="8" x2="140" y2="8"></line><path d="M160 1 L167 8 L160 15 L153 8 Z"></path><line x1="180" y1="8" x2="320" y2="8"></line></svg>
+        <p class="body-m"><span class="only-plain">An AI innkeeper and storyteller run a short adventure. Every room event reaches this app as a webhook through Hookdeck.</span><span class="only-story">Come in from the storm, traveller. An innkeeper keeps the ledger and an old lighthouse keeper tells the tale. Every footstep in the room reaches this app as a webhook through Hookdeck.</span></p>
         <p><button class="button button--secondary" id="howBtn" type="button">How it works</button></p>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
@@ -27,8 +41,8 @@
     </section>
 
     <section class="card">
-      <h2 class="title-l">Join a call</h2>
-      <p class="body-s muted">Type a name, join, and allow the microphone. Wait for your turn.</p>
+      <h2 class="title-l"><span class="only-plain">Join a call</span><span class="only-story">Join the Table</span></h2>
+      <p class="body-s muted"><span class="only-plain">Type a name, join, and allow the microphone. Wait for your turn.</span><span class="only-story">Give your name at the door, allow the microphone, and wait for the storyteller to turn to you.</span></p>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Your name</span><input class="input" id="playerName" maxlength="24" placeholder="optional" style="width:140px"></label>
         <button class="button" id="joinBtn" type="button">Join a call</button>
@@ -41,18 +55,18 @@
     </section>
 
     <section class="card">
-      <h2 class="title-l">Transcript</h2>
+      <h2 class="title-l"><span class="only-plain">Transcript</span><span class="only-story">The Tale So Far</span></h2>
       <ul id="transcript" class="transcript body-s"></ul>
     </section>
 
     <section class="card">
-      <h2 class="title-l">Session chronicle</h2>
-      <p class="body-s muted">Built from webhooks only.</p>
+      <h2 class="title-l"><span class="only-plain">Session chronicle</span><span class="only-story">The Ledger</span></h2>
+      <p class="body-s muted"><span class="only-plain">Built from webhooks only.</span><span class="only-story">Written only from the webhooks this app receives.</span></p>
       <div id="chronicle" class="requests"></div>
     </section>
 
     <section class="card">
-      <h2 class="title-l">Failure injection</h2>
+      <h2 class="title-l"><span class="only-plain">Failure injection</span><span class="only-story">Trouble at the Door</span></h2>
       <p class="body-s muted">Make the app fail or slow down; Hookdeck retries.</p>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Fail the next</span><input class="input narrow" id="failNext" type="number" min="0" max="10" value="2"></label>

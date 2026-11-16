@@ -50,6 +50,10 @@ const character = (p) => (p?.attributes?.['story.character'] || '').split(',')[0
 let story_ended = false;
 
 // What is happening in the story: the soundtrack that is playing, whose turn it is, or that it has ended.
+// Plain-theme text and story-theme text sit side by side; the page's CSS shows the one for the theme in use
+// (.only-plain / .only-story), so the plain themes keep their wording.
+const FLAME = '<svg class="story-ornament story-flame" aria-hidden="true" width="22" height="30" viewBox="0 0 22 30"><path d="M11 1 C15 8 19 11 19 18 C19 24 15 29 11 29 C7 29 3 24 3 18 C3 13 7 10 9 5 C10 9 13 11 11 1 Z" class="flame-outer"></path><path d="M11 12 C13 16 15 18 15 21 C15 24 13 26 11 26 C9 26 7 24 7 21 C7 18 9 16 11 12 Z" class="flame-inner"></path></svg>';
+
 function renderBanner() {
   const box = $('storyBanner');
   const agent = agent_of();
@@ -57,8 +61,10 @@ function renderBanner() {
   if (!room && !story_ended) { box.hidden = true; return; }
   if (story_ended) {
     box.hidden = false;
-    box.className = 'message success body-m story-banner';
-    box.innerHTML = '<span>The story has ended.</span> <button class="button" id="newStoryBtn" type="button">Start a new story</button>';
+    box.className = 'message success body-m story-banner story-ended';
+    box.innerHTML = '<span class="only-plain">The story has ended.</span>'
+      + '<span class="only-story end-text"><strong class="end-title">The End</strong><span class="end-sub">The lantern is lit and Hollow Mere is quiet again.</span></span>'
+      + ' <button class="button" id="newStoryBtn" type="button"><span class="only-plain">Start a new story</span><span class="only-story">Begin a new tale</span></button>';
     $('newStoryBtn').addEventListener('click', async () => {
       story_ended = false;
       room?.disconnect();
@@ -69,18 +75,33 @@ function renderBanner() {
   }
   const attrs = agent?.attributes || {};
   const turn = attrs['story.turn'];
-  const badges = [];
-  let tone = 'info';
-  if (turn && room) {
-    const mine = turn === room.localParticipant.identity;
-    if (mine) tone = 'success';
-    badges.push(`<strong>${mine ? 'Your turn' : `${esc(attrs['story.turn_name'] || 'Another player')}'s turn`}</strong>`);
-  } else if (agent) badges.push('Listening to the story');
   const sound = [...(room?.remoteParticipants.values() || [])].find((p) => p.identity.startsWith('soundtrack-'));
-  if (sound) badges.push(`<span class="badge badge--primary">Now playing: ${esc(sound.identity.slice('soundtrack-'.length))}</span>`);
-  box.hidden = !badges.length;
-  box.className = `message ${tone} body-m story-banner`;
-  box.innerHTML = badges.join(' ');
+  const scene = sound ? sound.identity.slice('soundtrack-'.length) : '';
+  let tone = 'info';
+  let plain = '';
+  let title = '';
+  let sub = '';
+  let mine = false;
+  if (turn && room) {
+    mine = turn === room.localParticipant.identity;
+    const who = esc(attrs['story.turn_name'] || 'Another player');
+    if (mine) tone = 'success';
+    plain = `<strong>${mine ? 'Your turn' : `${who}'s turn`}</strong>`;
+    title = mine ? 'Your Turn' : `${who}'s Turn`;
+    sub = mine ? 'Old Bram waits for you.' : `Old Bram is listening to ${who}.`;
+  } else if (agent) {
+    plain = 'Listening to the story';
+    title = 'The Tale Unfolds';
+    sub = 'Old Bram is telling it.';
+  }
+  const badges = [plain && `<span class="only-plain">${plain}</span>`];
+  if (scene) badges.push(`<span class="badge badge--primary only-plain">Now playing: ${esc(scene)}</span>`);
+  const story = title
+    ? `<span class="only-story story-turn-body">${mine ? FLAME : ''}<strong class="turn-title">${title}</strong><span class="turn-sub">${sub}</span>${scene ? `<span class="turn-playing">Now playing: ${esc(scene)}</span>` : ''}</span>`
+    : '';
+  box.hidden = !(plain || scene);
+  box.className = `message ${tone} body-m story-banner${mine ? ' your-turn' : ''}`;
+  box.innerHTML = badges.filter(Boolean).join(' ') + story;
 }
 
 // Who is in the call, what each one is, and who is speaking right now.
@@ -107,18 +128,27 @@ function renderPeople() {
 // as a text stream on the `lk.transcription` topic. The agent's lines arrive in pieces as it speaks; a
 // player's arrive as the recognizer updates them.
 const lines = new Map();
-function showLine(id, who, text, final) {
+function showLine(id, who, text, final, role = 'player') {
   const box = $('transcript');
   let li = lines.get(id);
   if (!li) {
     li = document.createElement('li');
+    li.dataset.role = role;
+    // The first line the storyteller speaks gets an illuminated first letter in the story theme
+    if (role === 'storyteller' && !box.querySelector('li[data-role="storyteller"]')) li.dataset.first = 'true';
     lines.set(id, li);
     box.append(li);
     while (box.children.length > 80) box.firstChild.remove();
   }
   li.className = final ? '' : 'interim';
-  li.innerHTML = `<span class="badge badge--mono">${esc(who)}</span> <span>${esc(text)}</span>`;
+  li.innerHTML = `<span class="badge badge--mono speaker">${esc(who)}</span> <span class="line-text">${esc(text)}</span>`;
   box.scrollTop = box.scrollHeight;
+}
+
+function speakerRole(identity) {
+  const p = identity === room.localParticipant.identity ? room.localParticipant : room.remoteParticipants.get(identity);
+  if (p?.isAgent) return /Hester/.test(p.attributes?.['story.character'] || '') ? 'innkeeper' : 'storyteller';
+  return identity.startsWith('bot-') ? 'mute' : 'player';
 }
 
 function speakerName(identity) {
@@ -141,7 +171,7 @@ function watchTranscription(r) {
     const final = attrs['lk.transcription_final'] === 'true';
     if (!from_agent) {
       // A player's speech: the recognizer sends the whole phrase again as it improves, under one segment id
-      showLine(attrs['lk.segment_id'] || reader.info.id, who, text, final);
+      showLine(attrs['lk.segment_id'] || reader.info.id, who, text, final, speakerRole(participant.identity));
       return;
     }
     // The agent's speech arrives a few words at a time, each piece as its own stream: join pieces into one line
@@ -151,7 +181,7 @@ function watchTranscription(r) {
     agent_line.text = `${agent_line.text} ${text.trim()}`.trim();
     agent_line.at = now;
     agent_line.final = final;
-    showLine(agent_line.id, who, agent_line.text, final);
+    showLine(agent_line.id, who, agent_line.text, final, speakerRole(participant.identity));
   });
 }
 
@@ -159,7 +189,7 @@ function watchTranscription(r) {
 function watchChat(r) {
   r.registerTextStreamHandler('lk.chat', async (reader, participant) => {
     const text = await reader.readAll();
-    showLine(`chat-${reader.info.id}`, speakerName(participant.identity), text, true);
+    showLine(`chat-${reader.info.id}`, speakerName(participant.identity), text, true, speakerRole(participant.identity));
   });
 }
 
@@ -249,8 +279,8 @@ if (demo_state) {
   room = { localParticipant: person('web-1', 'Priya'), remoteParticipants: new Map(remotes.map((p) => [p.identity, p])), activeSpeakers: [agent] };
   $('callStatus').textContent = 'Connected to story-demo as web-1, microphone on.';
   renderPeople();
-  showLine('a', 'Hester Pennywhistle', 'Ah, Priya, we\'ve been expecting you, and your quiet friend, Pixel.', true);
-  showLine('b', 'Old Bram Tallow', 'The cave is dark and dripping. A stone ledge holds the Lantern. Priya, will you take it and leave by the tunnel, or row across the pool?', true);
-  showLine('c', 'Priya (you)', 'I take the Lantern and row across the pool.', true);
-  showLine('d', 'Pixel', '*Pixel holds the lantern up to the cave wall and taps a carving.*', false);
+  showLine('a', 'Hester Pennywhistle', 'Ah, Priya, we\'ve been expecting you, and your quiet friend, Pixel.', true, 'innkeeper');
+  showLine('b', 'Old Bram Tallow', 'The cave is dark and dripping. A stone ledge holds the Lantern. Priya, will you take it and leave by the tunnel, or row across the pool?', true, 'storyteller');
+  showLine('c', 'Priya (you)', 'I take the Lantern and row across the pool.', true, 'player');
+  showLine('d', 'Pixel', '*Pixel holds the lantern up to the cave wall and taps a carving.*', true, 'mute');
 }

@@ -107,6 +107,12 @@ body.no-verify .tp-pill.tp-ok { display: none; }
 .transcript .badge { flex: none; }
 
 /* "How it works": the explanations, out of the way of the controls */
-.how-dialog { max-width: 640px; width: calc(100% - 32px); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); padding: var(--s6); background: var(--bg-0); color: inherit; }
+.how-dialog { margin: auto; max-height: calc(100vh - 32px); overflow-y: auto; max-width: 640px; width: calc(100% - 32px); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); padding: var(--s6); background: var(--bg-0); color: inherit; }
 .how-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .how-dialog h3 { margin: 16px 0 4px; }
+
+/* Text that exists in two versions: the plain themes show the first, the Story theme the second */
+.only-story { display: none; }
+html[data-theme="story"] .only-plain { display: none; }
+html[data-theme="story"] .only-story { display: initial; }
+.story-ornament { display: none; }
