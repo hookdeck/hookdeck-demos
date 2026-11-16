@@ -142,7 +142,9 @@ function showLine(id, who, text, final, role = 'player') {
     while (box.children.length > 80) box.firstChild.remove();
   }
   li.className = final ? '' : 'interim';
-  li.innerHTML = `<span class="badge badge--mono speaker">${esc(who)}</span> <span class="line-text">${esc(text)}</span>`;
+  // A mute player's gesture arrives as *Pixel does something.*: show it as an italic line without the asterisks
+  const shown = role === 'mute' ? text.replace(/^\s*\*+\s*|\s*\*+\s*$/g, '') : text;
+  li.innerHTML = `<span class="badge badge--mono speaker">${esc(who)}</span> <span class="line-text">${esc(shown)}</span>`;
   box.scrollTop = box.scrollHeight;
 }
 

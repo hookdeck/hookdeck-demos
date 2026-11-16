@@ -116,3 +116,5 @@ body.no-verify .tp-pill.tp-ok { display: none; }
 html[data-theme="story"] .only-plain { display: none; }
 html[data-theme="story"] .only-story { display: initial; }
 .story-ornament { display: none; }
+
+.transcript li[data-role="mute"] .line-text { font-style: italic; }

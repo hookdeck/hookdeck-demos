@@ -3,9 +3,7 @@ import { ReadableStream, TransformStream, type TransformStreamDefaultController 
 /**
  * The story's shape and pacing, as plain functions so they can be tested without a model.
  *
- * Players drive the pace. A scene ends when the group's choices take them somewhere new, or when
- * Bram offers a clear choice to move on and they take it. There are 2 or 3 exchanges per scene,
- * and a safety limit after which he nudges the group onward.
+ * Players drive the pace, with no timing pressure. A scene changes only when a player clearly chooses to move on.
  */
 
 export interface SceneDef {
@@ -13,56 +11,44 @@ export interface SceneDef {
   scene: 'tavern' | 'forest' | 'cave' | 'finale';
   /** What the players are in, in plain words. */
   place: string;
-  /** Concrete things a player can look at or do here. */
+  /** What they can see, hear and notice: observations only, never an action to take. */
   sights: string;
-  /** Concrete ways onward, for the choice that moves the group on. Empty for the finale. */
+  /** The exits, described as part of the place. Empty for the finale. */
   onward: string;
+  /** Things to find. Bram reveals one only when a player investigates that thing. */
+  clue: string;
 }
 
 export const SCENES: readonly SceneDef[] = [
   {
     scene: 'tavern',
     place: 'the common room of the Drowned Bell on a stormy night, with a fire, a long table and a hooded stranger',
-    sights: 'the stranger has slid a map across the table; the map is marked with a lantern and a path to the Hollow Mere; there is a locked chest by the fire',
-    onward: 'leave by the north door into the storm toward the Hollow Wood, or stay and ask the stranger more',
+    sights: 'rain on the shutters, the fire popping, a salt-stained map on the table in front of the stranger, a small iron chest under the bench with its lock rusted shut',
+    onward: 'a north door leads out into the storm toward the Hollow Wood',
+    clue: 'the map has a lantern drawn near the Hollow Mere and a margin note about dripping water; the stranger knows the way and says so only if asked',
   },
   {
     scene: 'forest',
-    place: 'the Hollow Wood, a damp pine forest with two ways forward',
-    sights: 'a rope bridge over a stream, a muddy path under the pines, silver footprints in the mud, and a hollow oak with a door in it',
-    onward: 'cross the rope bridge to the cave steps by the waterfall, or follow the footprints through the pines',
+    place: 'the Hollow Wood, a damp pine forest',
+    sights: 'a rope bridge over a stream, a muddy path under the pines, silver footprints in the mud, a hollow oak with a small door in its trunk',
+    onward: 'the rope bridge leads to stone steps beside a waterfall, and the footprints go on through the pines',
+    clue: 'the footprints are small and lead to the door in the oak; the steps beside the waterfall go down toward the Mere',
   },
   {
     scene: 'cave',
-    place: 'the cave under the Hollow Mere, dripping and dark, where the Lantern is kept',
-    sights: 'a stone ledge with the Lantern on it, a carving of a boat on the wall, drips from the ceiling, and a narrow tunnel and a small rowboat on the underground pool',
-    onward: 'take the Lantern and leave by the tunnel, or take it and row across the pool',
+    place: 'the cave under the Hollow Mere, dripping and dark',
+    sights: 'a stone ledge with the Lantern on it, drips from the ceiling, a carving on the wall, a narrow tunnel and a small rowboat on the underground pool',
+    onward: 'a narrow tunnel leads up and out, and the rowboat sits at the edge of the pool',
+    clue: 'the carving shows a boat crossing the pool toward a light',
   },
   {
     scene: 'finale',
-    place: 'the way home with the Lantern, at the shore of the Mere at dawn',
-    sights: 'the Lantern is lit, the storm is clearing, and the lights of the Drowned Bell can be seen across the water',
+    place: 'the shore of the Mere at dawn, with the Lantern lit',
+    sights: 'the storm clearing, the Lantern burning steadily, the lights of the Drowned Bell across the water',
     onward: '',
+    clue: '',
   },
 ];
-
-export const MIN_EXCHANGES = 2;
-export const SAFETY_EXCHANGES = 5;
-
-export type Guidance = 'open' | 'offer_choice' | 'nudge';
-
-/**
- * What the next give_turn should do. The first exchanges are open. From the minimum on, Bram offers a clear choice
- * to move on, and once the safety limit is reached he nudges the group onward.
- */
-export function guidanceFor(exchanges_so_far: number): Guidance {
-  if (exchanges_so_far >= SAFETY_EXCHANGES) return 'nudge';
-  if (exchanges_so_far >= MIN_EXCHANGES) return 'offer_choice';
-  return 'open';
-}
-
-/** next_scene is refused until the scene has had its minimum exchanges, unless the safety limit was reached or short mode is on. */
-export const canStartNext = (exchanges_so_far: number, short_mode: boolean) => short_mode || exchanges_so_far >= MIN_EXCHANGES;
 
 /** Test-only short mode (STORY_SHORT=1): after the first scene the story jumps to the finale. */
 export function nextSceneIndex(scenes_started: number, short_mode: boolean): number {
@@ -120,16 +106,15 @@ export function nextSpeakerIndex<T extends Addressable>(players: T[], last_index
   return named ? players.indexOf(named) : (last_index + 1) % players.length;
 }
 
-export type MoveOnVerdict = 'ok' | 'too_early' | 'no_new_input';
+export type MoveOnVerdict = 'ok' | 'no_new_input';
 
 /**
- * next_scene (and end_story) are allowed only in the reply that answers a player's input (not chained after another
- * call), and only once the scene has had its minimum real player inputs. A refusal returns nothing, so Bram does not speak again.
+ * next_scene (and end_story) are allowed only in the reply that answers a player's input, never chained after another
+ * call. There is no minimum number of exchanges and no nudge: the players are free to explore, and a scene changes when a
+ * player clearly chooses to move on. A refusal returns nothing, so Bram does not speak again.
  */
-export function moveOnVerdict(inputs_in_scene: number, input_since_last_call: boolean, short_mode: boolean): MoveOnVerdict {
-  if (!input_since_last_call) return 'no_new_input';
-  if (!short_mode && inputs_in_scene < MIN_EXCHANGES) return 'too_early';
-  return 'ok';
+export function moveOnVerdict(input_since_last_call: boolean): MoveOnVerdict {
+  return input_since_last_call ? 'ok' : 'no_new_input';
 }
 
 // ---- A backstop so the model never speaks a tool name ----
@@ -236,4 +221,50 @@ export function stallLine(player_name: string | undefined, variant = 0): string 
     `Ah, the tide took my words for a moment. Say that again for me, ${who}.`,
     `Forgive an old keeper, ${who}, I lost the thread there. What was it you said?`,
   ][variant % 2];
+}
+
+
+// ---- What Bram is told: describe, don't direct ----
+
+export const BREVITY = 'You speak aloud, so keep to two short sentences at a time, with no lists, no stage directions and no emoji.';
+
+/** Bad lines, shown to Bram only as examples of what never to say. The prompt tests skip this block. */
+export const LEADING_BLOCK_START = '[never say lines like these]';
+export const LEADING_BLOCK_END = '[end of lines never to say]';
+
+/** What is true of the scene right now, given to Bram as a system message before each reply to a player. */
+export function sceneHint(scene_index: number, ending: boolean): string {
+  const scene = scene_index > 0 ? SCENES[Math.min(scene_index, SCENES.length) - 1] : undefined;
+  const finale = scene_index >= SCENES.length;
+  const where = scene
+    ? `Current scene (${scene_index} of ${SCENES.length}): ${scene.place}. What can be seen and heard: ${scene.sights}.${finale ? '' : ` The way out, to mention only as part of the place: ${scene.onward}.`}${scene.clue ? ` Things to find, revealed only when a player investigates that thing: ${scene.clue}.` : ''}`
+    : 'The story has not started: call next_scene.';
+  const phase = ending
+    ? 'The story is ending: speak your closing only.'
+    : finale
+      ? 'This is the finale. Let the players take their time and respond to what they try. When each has had their moment, or a player says they are done, call end_story, and after it answers speak your closing.'
+      : 'Let the players explore as long as they like. Respond to what they actually try, including the unexpected: say what happens and let consequences follow. Call next_scene only when a player clearly chooses to move on.';
+  return `${where} ${phase}`;
+}
+
+/** Bram's standing instructions: who he is, how he speaks, how he describes and hands over. */
+export function bramInstructions(players: Array<{ name: string; bot: boolean }>): string {
+  const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak: what ${p.name} does arrives as a message like "${p.name} taps the map.")` : p.name)).join(', ');
+  const mute = players.some((p) => p.bot) ? ' A mute traveller never decides anything: its gestures can show the way, but only a spoken decision from a player moves the group on.' : '';
+  return `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell: warm, gravelly and kind. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers and only these: ${roster}. ${BREVITY}
+Speak plainly, with at most one sea-worn phrase per reply, and none is fine. No riddles.
+Describe, don't direct. Say what the players see, hear and notice. Never tell them what to do, never ask whether they would like to do something, and never put an object next to the action that solves it. Write "A small iron chest sits under the bench, its lock rusted shut." and stop there.
+${LEADING_BLOCK_START} "Would you like to search the room to find something to open the chest?" "Why not follow the footprints?" "Maybe you could use the key on the door." ${LEADING_BLOCK_END}
+Good lines describe only: "A small iron chest sits under the bench, its lock rusted shut." "Silver footprints lead off into the pines." "The stranger watches you over the rim of his mug."
+Clues sit in the scene for the players to find. Reveal a clue only when a player investigates that thing. If a player says they are stuck or asks for a hint, give one gentle nudge about something to look at, never the solution.
+Respond to what the players actually try, including the unexpected: say what happens and let consequences follow.
+End every reply by handing over with a short open prompt that varies from reply to reply, such as "Priya?", "What do you do?" or "The room is yours." Name the player or the table, and never point at an action. Then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players.${mute} Never ask two questions in one reply.
+Each reply to a player is preceded by a system note about the current scene: follow it. You have only two tools, next_scene and end_story. Call a tool only when the note says to, never to push the group on, and never write or say a tool name or function call in your speech.`;
+}
+
+/** What next_scene returns to Bram when a scene starts. */
+export function sceneStartNote(index: number, music: string): string {
+  const { place, sights, onward, clue } = SCENES[index];
+  const finale = index === SCENES.length - 1;
+  return `Scene ${index + 1} of ${SCENES.length} has started ${music}. Place: ${place}. What can be seen and heard: ${sights}.${finale ? ' This is the finale.' : ` The way out, to mention only as part of the place: ${onward}.`}${clue ? ` Things to find, revealed only when a player investigates that thing: ${clue}.` : ''} Describe the place in two short plain sentences using some of what can be seen and heard, then hand over with a short open prompt naming the player who goes first.`;
 }

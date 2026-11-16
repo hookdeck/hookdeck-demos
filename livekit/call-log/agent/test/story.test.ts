@@ -1,18 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { MIN_EXCHANGES, SAFETY_EXCHANGES, SCENES, canStartNext, createEndWatcher, guidanceFor, nextSceneIndex, speakerAfterMute } from '../src/story.ts';
-
-test('a scene has 2 or 3 open exchanges, then offers a way on, and nudges at the safety limit', () => {
-  assert.equal(MIN_EXCHANGES, 2);
-  assert.equal(SAFETY_EXCHANGES, 5);
-  assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map(guidanceFor), ['open', 'open', 'offer_choice', 'offer_choice', 'offer_choice', 'nudge', 'nudge']);
-});
-
-test('the next scene waits for the minimum exchanges, except in short mode', () => {
-  assert.equal(canStartNext(1, false), false);
-  assert.equal(canStartNext(2, false), true);
-  assert.equal(canStartNext(0, true), true);
-});
+import { SCENES, createEndWatcher, nextSceneIndex, speakerAfterMute } from '../src/story.ts';
 
 test('short mode jumps from the first scene to the finale, and normal mode goes in order', () => {
   assert.equal(nextSceneIndex(1, true), SCENES.length - 1);
@@ -21,8 +9,8 @@ test('short mode jumps from the first scene to the finale, and normal mode goes 
   assert.equal(nextSceneIndex(2, true), 2);
 });
 
-test('every scene but the finale names concrete ways onward', () => {
-  for (const s of SCENES.slice(0, -1)) assert.ok(s.onward.includes(' or '), s.scene);
+test('every scene but the finale describes concrete ways out', () => {
+  for (const s of SCENES.slice(0, -1)) assert.ok(s.onward.length > 20, s.scene);
   assert.equal(SCENES.at(-1)!.onward, '');
 });
 
@@ -77,13 +65,6 @@ test('the next speaker is the player Bram names last, else the next in rotation'
   assert.equal(nextSpeakerIndex([], 0, 'x'), -1);
 });
 
-test('next_scene is refused with no new player input, and before the minimum inputs, and a refusal is a verdict, not speech', () => {
-  assert.equal(moveOnVerdict(3, false, false), 'no_new_input');
-  assert.equal(moveOnVerdict(1, true, false), 'too_early');
-  assert.equal(moveOnVerdict(2, true, false), 'ok');
-  assert.equal(moveOnVerdict(0, true, true), 'ok'); // short mode, but still only answering an input
-});
-
 test('the speech filter removes spoken tool calls and tool names', () => {
   assert.deepEqual(cleanSpeech('We step out. functions.next_scene()'), { text: 'We step out. ', removed: true });
   assert.equal(cleanSpeech('Time for next_scene now').text, 'Time for now');
@@ -111,27 +92,30 @@ test('simulation: Bram asks, nothing is heard, and then nothing happens: no turn
   onBramReply(s, 'The map lies open. Priya, which way do you take?');
   assert.equal(onPlayout(s, crew)?.name, 'Priya'); // turn given after playout, to the player he named
   // ... silence: no player input arrives. The guard says no move on is possible,
-  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'no_new_input');
+  assert.equal(moveOnVerdict(s.input_since_call), 'no_new_input');
   assert.equal(s.inputs, 0);
   // and a second playout with no new reply keeps the same speaker's turn logic stable (rotation moves only on a new playout)
   assert.equal(s.rotation, 0);
 });
 
-test('simulation: only real player input counts, a scene needs two, and a call consumes the input', () => {
+test('simulation: one player input that chooses to leave is accepted, and a call consumes the input', () => {
   const s = fresh();
-  onBramReply(s, 'Priya, which way?');
+  onBramReply(s, 'Priya, the stranger is waiting.');
   onPlayout(s, crew);
-  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'no_new_input');
-  onPlayerInput(s); // Priya answers
-  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'too_early'); // one input is not enough
-  onBramReply(s, 'Sam, what about you?');
-  assert.equal(onPlayout(s, crew)?.name, 'Sam');
-  onPlayerInput(s); // Sam answers
-  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'ok');
+  assert.equal(moveOnVerdict(s.input_since_call), 'no_new_input'); // nobody has spoken yet
+  onPlayerInput(s); // Priya says "we leave by the north door"
+  assert.equal(moveOnVerdict(s.input_since_call), 'ok'); // one input is enough: no minimum
   s.input_since_call = false; // next_scene consumed it
-  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'no_new_input'); // a chained call is refused
+  assert.equal(moveOnVerdict(s.input_since_call), 'no_new_input'); // a chained call is refused
   onSceneStart(s, 1);
   assert.deepEqual([s.scene_index, s.inputs, s.input_since_call], [2, 0, false]);
+});
+
+test('there is no nudge and no minimum: many inputs never force a scene change', () => {
+  const s = fresh();
+  for (let i = 0; i < 12; i++) { onPlayerInput(s); s.input_since_call = false; }
+  assert.equal(s.scene_index, 1); // still the same scene
+  assert.equal(moveOnVerdict(s.input_since_call), 'no_new_input');
 });
 
 test('simulation: no turn is given before the first scene or while the story is ending', () => {
@@ -181,4 +165,37 @@ test('the stall line is short, in character and names the player', () => {
   assert.match(stallLine('Priya'), /Priya/);
   assert.ok(stallLine(undefined, 1).length < 90);
   assert.notEqual(stallLine('Sam', 0), stallLine('Sam', 1));
+});
+
+import { LEADING_BLOCK_END, LEADING_BLOCK_START, bramInstructions, sceneHint, sceneStartNote } from '../src/story.ts';
+
+// Phrasing that directs the players: offers, choices, suggestions and "would you like to" questions
+const LEADING = /would you like|do you want to|you could|you might|you may want|why not|maybe you|try to|try and|how about|shall (we|you)|should you|offer|choice|suggest|search for/i;
+
+const withoutLeadingExamples = (text: string) => text.replace(new RegExp(`${escapeRegExp(LEADING_BLOCK_START)}[\\s\\S]*?${escapeRegExp(LEADING_BLOCK_END)}`), '');
+function escapeRegExp(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+test('the scene note has no offer, choice or suggestion phrasing, for every scene and for the ending', () => {
+  for (let i = 0; i <= SCENES.length; i++) assert.doesNotMatch(sceneHint(i, false), LEADING, `scene ${i}`);
+  assert.doesNotMatch(sceneHint(2, true), LEADING);
+  for (let i = 0; i < SCENES.length; i++) assert.doesNotMatch(sceneStartNote(i, 'with its soundtrack'), LEADING, `start note ${i}`);
+});
+
+test('the scene data describes only: no scene text suggests an action', () => {
+  for (const s of SCENES) assert.doesNotMatch([s.place, s.sights, s.onward, s.clue].join(' '), LEADING, s.scene);
+});
+
+test('the instructions describe, hand over openly, reveal clues on investigation, and keep bad examples apart', () => {
+  const text = bramInstructions([{ name: 'Priya', bot: false }, { name: 'Pixel', bot: true }]);
+  assert.match(text, /Describe, don't direct/);
+  assert.match(text, /A small iron chest sits under the bench, its lock rusted shut\./);
+  assert.match(text, /Reveal a clue only when a player investigates that thing/);
+  assert.match(text, /one gentle nudge about something to look at, never the solution/);
+  assert.match(text, /what the players actually try, including the unexpected/);
+  assert.match(text, /"Priya\?", "What do you do\?" or "The room is yours\."/);
+  // the leading lines appear only inside the marked block of examples
+  assert.ok(LEADING.test(text) && text.includes(LEADING_BLOCK_START));
+  assert.doesNotMatch(withoutLeadingExamples(text), LEADING);
+  // no pacing pressure
+  assert.doesNotMatch(text, /nudge the group|move on yet|enough exploring|time to move on/i);
 });

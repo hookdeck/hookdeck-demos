@@ -37,7 +37,7 @@ function chronicleCard(c) {
 async function refresh() {
   const [calls, deliveries, chronicle] = await Promise.all([fetch('/api/calls').then((r) => r.json()), fetch('/api/deliveries').then((r) => r.json()), fetch('/api/chronicle').then((r) => r.json())]);
   document.getElementById('chronicle').innerHTML = chronicle.length ? chronicle.map(chronicleCard).join('') : '<p class="empty body-s">No session yet. Join a call and the chronicle fills in as the webhooks arrive.</p>';
-  document.getElementById('calls').innerHTML = calls.length ? calls.map(callCard).join('') : '<p class="empty body-s">No calls yet. Create a room in LiveKit (see the README) and the events appear here.</p>';
+  document.getElementById('calls').innerHTML = calls.length ? calls.map(callCard).join('') : '<p class="empty body-s">No calls yet. Select Join a call above and the events appear here.</p>';
   document.getElementById('deliveries').innerHTML = deliveries.map((d) =>
     `<tr><td>${new Date(d.received_at).toLocaleTimeString()}</td><td><code>${esc(d.event || '-')}</code></td><td><code>${esc(d.event_id || '-')}</code></td><td>${d.verified ? (d.duplicate ? 'duplicate' : 'applied') : `rejected: ${esc(d.error)}`}</td></tr>`).join('');
 }

@@ -22,6 +22,12 @@ html[data-theme="story"] {
 html[data-theme="story"], html[data-theme="story"] body {
   background-color: var(--story-walnut);
 }
+html[data-theme="story"] h1, html[data-theme="story"] h2, html[data-theme="story"] .turn-title, html[data-theme="story"] .end-title,
+html[data-theme="story"] .transcript li[data-first] .line-text::first-letter {
+  font-variant-ligatures: none; font-feature-settings: "liga" 0, "dlig" 0, "clig" 0, "calt" 0;
+  /* Cinzel Decorative's swash capitals (the T in THE, the D in DOOR) touch their neighbours at zero tracking: a little space keeps the letters apart */
+  letter-spacing: 0.06em !important;
+}
 html[data-theme="story"] body {
   background: radial-gradient(ellipse at 50% 0%, #3a281a 0%, var(--story-walnut) 55%, #170f09 100%) fixed;
 }
@@ -52,9 +58,9 @@ html[data-theme="story"] .how-dialog {
   background: var(--bg-0);
   border-radius: var(--radius);
   box-shadow: inset 0 0 0 5px var(--bg-0), inset 0 0 0 6px var(--story-gilt), 0 8px 28px rgb(0 0 0 / 0.45);
-  padding: var(--s9);
+  padding: var(--s7);
 }
-html[data-theme="story"] .how-dialog { border: none; padding: var(--s9); }
+html[data-theme="story"] .how-dialog { border: none; padding: var(--s7); }
 html[data-theme="story"] .how-dialog::backdrop { background: rgb(23 15 9 / 0.7); }
 
 /* Hero: a larger, double-framed page with a compass rose and a divider */
@@ -65,13 +71,13 @@ html[data-theme="story"] main .hero {
 }
 html[data-theme="story"] .hero.lined:before,
 html[data-theme="story"] .hero .lined__dots { display: none; }
-html[data-theme="story"] .hero .lined__box { border: none; padding: 52px 56px; gap: var(--s4); }
-html[data-theme="story"] .hero p { max-width: 660px; font-size: 23px; line-height: 1.45; color: #3a2a19; }
+html[data-theme="story"] .hero .lined__box { border: none; padding: 36px 40px; gap: var(--s3); }
+html[data-theme="story"] .hero p { max-width: 660px; font-size: 19px; line-height: 1.4; color: #3a2a19; }
 html[data-theme="story"] .hero h1 {
-  font-family: var(--font-display); font-weight: 900; font-size: 60px; line-height: 1.05; letter-spacing: 0; max-width: 640px;
+  font-family: var(--font-display); font-weight: 900; font-size: 46px; line-height: 1.05; letter-spacing: 0; max-width: 640px;
 }
 html[data-theme="story"] .eyebrow {
-  font-family: var(--font-label); font-weight: 700; font-size: 13px; letter-spacing: 0.3em; color: var(--story-wax);
+  font-family: var(--font-label); font-weight: 700; font-size: 12px; letter-spacing: 0.26em; color: var(--story-wax);
 }
 html[data-theme="story"] .story-ornament { display: block; }
 html[data-theme="story"] .story-compass { position: absolute; right: 36px; top: 36px; opacity: 0.35; }
@@ -85,20 +91,20 @@ html[data-theme="story"] .story-divider line { stroke: var(--story-gilt); stroke
 html[data-theme="story"] .story-divider path { fill: var(--story-wax); }
 
 /* Headings, text and labels */
-html[data-theme="story"] main h2.title-l { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1.2; letter-spacing: 0; color: var(--neutral-fg-1); }
+html[data-theme="story"] main h2.title-l { font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.2; letter-spacing: 0; color: var(--neutral-fg-1); }
 html[data-theme="story"] main .card p,
-html[data-theme="story"] main .card .body-s { font-size: 19px; line-height: 1.45; color: var(--neutral-fg-2); }
+html[data-theme="story"] main .card .body-s { font-size: 16px; line-height: 1.4; color: var(--neutral-fg-2); }
 html[data-theme="story"] main .muted { color: var(--neutral-fg-2); }
 html[data-theme="story"] main .subtitle-xs,
 html[data-theme="story"] main .field > span {
-  font-family: var(--font-label); font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-fg-1);
+  font-family: var(--font-label); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-fg-1);
 }
 html[data-theme="story"] main code, html[data-theme="story"] .how-dialog code { font-family: var(--font-mono); }
 
 /* Inputs */
 html[data-theme="story"] main input:not([type="range"]):not([type="checkbox"]),
 html[data-theme="story"] main textarea {
-  font-family: var(--font-story); font-size: 19px; min-height: 44px; box-sizing: border-box; border-radius: 4px;
+  font-family: var(--font-story); font-size: 17px; min-height: 44px; box-sizing: border-box; border-radius: 4px;
   border: 1px solid #8c6a3c; background: #faf3e1; color: var(--neutral-fg-1); box-shadow: none;
 }
 html[data-theme="story"] main input[type="range"] { accent-color: var(--story-wax); }
@@ -107,37 +113,37 @@ html[data-theme="story"] main input::placeholder { color: var(--neutral-fg-3); o
 /* Buttons: wax-seal crimson for actions, outlined ink for the rest */
 html[data-theme="story"] main .button,
 html[data-theme="story"] .how-dialog .button {
-  font-family: var(--font-label); font-weight: 700 !important; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase;
-  min-height: 44px; padding: 0 22px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-label); font-weight: 700 !important; font-size: 13px; letter-spacing: 0.07em; text-transform: uppercase;
+  min-height: 44px; padding: 0 18px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--primary-blue-bg-hover); background: var(--primary-blue-bg); color: var(--on-hue-fg); box-shadow: inset 0 0 0 2px #8e2a24;
 }
 html[data-theme="story"] main .button:hover { background: var(--primary-blue-bg-hover); color: var(--on-hue-fg); }
 html[data-theme="story"] main .button--secondary,
 html[data-theme="story"] .how-dialog .button--secondary {
-  border: 1px solid #5a3e1b; background: transparent; color: var(--neutral-fg-1); box-shadow: none; padding: 0 18px;
+  border: 1px solid #5a3e1b; background: transparent; color: var(--neutral-fg-1); box-shadow: none; padding: 0 14px;
 }
 html[data-theme="story"] main .button--secondary:hover { background: var(--bg-3); color: var(--neutral-fg-1); }
 html[data-theme="story"] main .button:disabled { border: 1px dashed #a88c60; background: transparent; color: var(--disabled-fg); box-shadow: none; cursor: not-allowed; }
 
 /* Badges: small caps seals */
 html[data-theme="story"] main .badge {
-  font-family: var(--font-label); font-weight: 700; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.4;
-  padding: 4px 10px; border-radius: 3px; border: 1px solid #5a3e1b; background: transparent; color: #3a2a19; box-shadow: none;
+  font-family: var(--font-label); font-weight: 700; font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; line-height: 1.4;
+  padding: 3px 8px; border-radius: 3px; border: 1px solid #5a3e1b; background: transparent; color: #3a2a19; box-shadow: none;
 }
 html[data-theme="story"] main .badge--primary { background: var(--story-wax); border-color: var(--story-wax); color: #fbf1dc; }
 html[data-theme="story"] main .badge--bold_primary { background: var(--story-candle); border-color: #b8892f; color: #5a2e05; }
 html[data-theme="story"] main .people-list .badge:not(.badge--primary):not(.badge--bold_primary):not(.badge--success) { background: #e3d3ac; border-color: #8c6a3c; }
-html[data-theme="story"] main .people-list { font-family: var(--font-story); font-size: 19px; }
+html[data-theme="story"] main .people-list { font-family: var(--font-story); font-size: 16px; }
 
 /* The story banner: candlelight for your turn, parchment for others, a dark card for the end */
 html[data-theme="story"] main .story-banner {
-  border: none; border-radius: var(--radius); padding: 18px 22px; background: var(--bg-3);
-  box-shadow: inset 0 0 0 1px #8c6a3c; color: var(--neutral-fg-1); gap: var(--s4);
+  border: none; border-radius: var(--radius); padding: 12px 18px; background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px #8c6a3c; color: var(--neutral-fg-1); gap: var(--s3);
 }
 html[data-theme="story"] main .story-turn-body { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; width: 100%; }
-html[data-theme="story"] main .turn-title { font-family: var(--font-display); font-weight: 700; font-size: 24px; color: var(--neutral-fg-1); }
-html[data-theme="story"] main .turn-sub { font-size: 20px; color: #3a2a19; }
-html[data-theme="story"] main .turn-playing { font-style: italic; font-size: 19px; color: var(--neutral-fg-2); margin-left: auto; }
+html[data-theme="story"] main .turn-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--neutral-fg-1); }
+html[data-theme="story"] main .turn-sub { font-size: 17px; color: #3a2a19; }
+html[data-theme="story"] main .turn-playing { font-style: italic; font-size: 16px; color: var(--neutral-fg-2); margin-left: auto; }
 html[data-theme="story"] main .story-banner.your-turn {
   background: radial-gradient(ellipse at 10% 50%, #fbe7b0 0%, var(--story-candle) 100%);
   box-shadow: inset 0 0 0 1px #b8892f, 0 0 24px rgb(243 197 98 / 0.55);
@@ -151,51 +157,51 @@ html[data-theme="story"] main .story-flame .flame-inner { fill: #f7c94c; }
   @keyframes flicker { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.07) skewX(-2deg); } }
 }
 html[data-theme="story"] main .story-banner.story-ended {
-  background: #2b1e12; box-shadow: inset 0 0 0 4px #2b1e12, inset 0 0 0 5px var(--story-gilt); padding: 22px; justify-content: space-between;
+  background: #2b1e12; box-shadow: inset 0 0 0 4px #2b1e12, inset 0 0 0 5px var(--story-gilt); padding: 18px; justify-content: space-between;
 }
 html[data-theme="story"] main .end-text { display: flex; flex-direction: column; gap: 4px; }
-html[data-theme="story"] main .end-title { font-family: var(--font-display); font-weight: 900; font-size: 26px; color: var(--story-candle); }
-html[data-theme="story"] main .end-sub { font-size: 20px; color: #efe2c2; }
+html[data-theme="story"] main .end-title { font-family: var(--font-display); font-weight: 900; font-size: 22px; color: var(--story-candle); }
+html[data-theme="story"] main .end-sub { font-size: 17px; color: #efe2c2; }
 
 /* The tale: the transcript reads like a page of a book */
-html[data-theme="story"] main .transcript { max-height: 460px; gap: 16px; padding: 0; background: transparent; border: none; }
+html[data-theme="story"] main .transcript { max-height: 420px; gap: 12px; padding: 0; background: transparent; border: none; }
 html[data-theme="story"] main .transcript li { display: flex; flex-direction: column; align-items: stretch; gap: 2px; color: var(--neutral-fg-1); }
 html[data-theme="story"] main .transcript .speaker {
   align-self: flex-start; padding: 0; border: none; background: transparent; box-shadow: none; border-radius: 0;
-  font-family: var(--font-label); font-weight: 700; font-size: 12px; letter-spacing: 0.14em; color: var(--neutral-fg-2);
+  font-family: var(--font-label); font-weight: 700; font-size: 11px; letter-spacing: 0.12em; color: var(--neutral-fg-2);
 }
 html[data-theme="story"] main .transcript li[data-role="innkeeper"] .speaker { color: var(--story-wax); }
 html[data-theme="story"] main .transcript li[data-role="storyteller"] .speaker { color: #1f4a4f; }
 html[data-theme="story"] main .transcript li[data-role="mute"] .speaker { color: #3d5a2a; }
-html[data-theme="story"] main .transcript .line-text { font-size: 21px; line-height: 1.45; }
+html[data-theme="story"] main .transcript .line-text { font-size: 18px; line-height: 1.4; }
 html[data-theme="story"] main .transcript li[data-role="mute"] .line-text { font-style: italic; color: #3a2a19; }
 html[data-theme="story"] main .transcript li.interim .line-text { color: var(--neutral-fg-3); }
 html[data-theme="story"] main .transcript li[data-first] .line-text::first-letter {
-  font-family: var(--font-display); font-weight: 900; font-size: 58px; line-height: 0.9; float: left; padding-right: 8px; color: var(--story-wax);
+  font-family: var(--font-display); font-weight: 900; font-size: 48px; line-height: 0.9; float: left; padding-right: 8px; color: var(--story-wax);
 }
 
 /* The ledger: dated rules, in ink */
 html[data-theme="story"] main .request { background: transparent; border: none; padding: 0; gap: var(--s3); }
 html[data-theme="story"] main .request-text { font-family: var(--font-label); font-weight: 700; letter-spacing: 0.08em; color: var(--neutral-fg-1); }
-html[data-theme="story"] main .request-meta { color: var(--neutral-fg-2); font-family: var(--font-story); font-size: 16px; }
-html[data-theme="story"] main .timeline { border-top: 2px solid var(--story-gilt); gap: 0; font-size: 18px; }
-html[data-theme="story"] main .timeline li { padding: 10px 0; border-bottom: 1px solid var(--neutral-outline-1); color: var(--neutral-fg-1); }
-html[data-theme="story"] main .timeline code { font-family: var(--font-story); font-size: 16px; color: var(--story-wax); min-width: 72px; }
+html[data-theme="story"] main .request-meta { color: var(--neutral-fg-2); font-family: var(--font-story); font-size: 14px; }
+html[data-theme="story"] main .timeline { border-top: 2px solid var(--story-gilt); gap: 0; font-size: 16px; }
+html[data-theme="story"] main .timeline li { padding: 8px 0; border-bottom: 1px solid var(--neutral-outline-1); color: var(--neutral-fg-1); }
+html[data-theme="story"] main .timeline code { font-family: var(--font-story); font-size: 14px; color: var(--story-wax); min-width: 72px; }
 html[data-theme="story"] main .timeline .dup { color: var(--story-wax); }
-html[data-theme="story"] main .people, html[data-theme="story"] main .recs { font-size: 18px; }
+html[data-theme="story"] main .people, html[data-theme="story"] main .recs { font-size: 16px; }
 html[data-theme="story"] main .deliveries th { font-family: var(--font-label); letter-spacing: 0.06em; }
 
 /* How it works */
-html[data-theme="story"] .how-dialog h2 { font-family: var(--font-display); font-weight: 700; font-size: 28px; }
-html[data-theme="story"] .how-dialog h3 { font-family: var(--font-label); font-weight: 700; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; }
-html[data-theme="story"] .how-dialog p { font-size: 18px; line-height: 1.45; color: var(--neutral-fg-2); }
+html[data-theme="story"] .how-dialog h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+html[data-theme="story"] .how-dialog h3 { font-family: var(--font-label); font-weight: 700; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
+html[data-theme="story"] .how-dialog p { font-size: 16px; line-height: 1.45; color: var(--neutral-fg-2); }
 
 @media (max-width: 700px) {
   html[data-theme="story"] .story-compass { display: none; }
-  html[data-theme="story"] .hero .lined__box { padding: 32px 24px; }
-  html[data-theme="story"] .hero h1 { font-size: 40px; }
-  html[data-theme="story"] .hero p { font-size: 20px; }
-  html[data-theme="story"] main .card, html[data-theme="story"] .how-dialog { padding: var(--s6); }
-  html[data-theme="story"] main h2.title-l { font-size: 24px; }
+  html[data-theme="story"] .hero .lined__box { padding: 24px 20px; }
+  html[data-theme="story"] .hero h1 { font-size: 34px; }
+  html[data-theme="story"] .hero p { font-size: 17px; }
+  html[data-theme="story"] main .card, html[data-theme="story"] .how-dialog { padding: var(--s5); }
+  html[data-theme="story"] main h2.title-l { font-size: 21px; }
   html[data-theme="story"] main .turn-playing { margin-left: 0; }
 }
