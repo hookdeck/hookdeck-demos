@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import * as path from 'path';
-import { IngressClient, IngressInput, RoomAgentDispatch, RoomConfiguration, WebhookReceiver } from 'livekit-server-sdk';
+import { IngressClient, IngressInput, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
 import { spawn, ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
 import { mintToken } from './token';
@@ -68,7 +68,33 @@ app.post('/api/test-participant/stop', express.json(), (req: Request, res: Respo
 // soundtrack into the room with LiveKit's Ingress API (a URL input), which produces ingress_started
 // and ingress_ended webhooks that come back through Event Gateway like every other event.
 const ingress_client = new IngressClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
-const last_ingress = new Map<string, string>();
+const room_client = new RoomServiceClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+
+/** Deletes this demo's scene ingresses (named `scene:<scene>`) in one room, or in every room. Returns how many. */
+async function deleteSceneIngresses(room?: string): Promise<number> {
+  const all = await ingress_client.listIngress(room ? { roomName: room } : {});
+  const ours = all.filter((i) => i.name.startsWith('scene:'));
+  for (const i of ours) await ingress_client.deleteIngress(i.ingressId).catch(() => undefined);
+  return ours.length;
+}
+
+// A soundtrack plays until the next scene replaces it, the story ends or the room finishes: nothing is left behind
+// to count against the project's ingress limit. At startup, sweep leftovers from rooms that are gone.
+(async () => {
+  try {
+    const leftovers = (await ingress_client.listIngress({})).filter((i) => i.name.startsWith('scene:'));
+    const live = new Set((await room_client.listRooms()).map((r) => r.name));
+    let swept = 0;
+    for (const i of leftovers) {
+      if (live.has(i.roomName)) continue;
+      await ingress_client.deleteIngress(i.ingressId).catch(() => undefined);
+      swept += 1;
+    }
+    if (swept) console.log(`Deleted ${swept} leftover scene ingress${swept === 1 ? '' : 'es'} from rooms that are gone`);
+  } catch (error: any) {
+    console.warn(`Could not sweep leftover ingresses: ${error.message}`);
+  }
+})();
 app.post('/api/scene', express.json(), async (req: Request, res: Response) => {
   // Only the agent on this machine calls this: it spends LiveKit Cloud ingress minutes
   const from = req.socket.remoteAddress || '';
@@ -79,8 +105,7 @@ app.post('/api/scene', express.json(), async (req: Request, res: Response) => {
   const started = Date.now();
   try {
     // One soundtrack at a time: stop the previous scene's before the next starts
-    const previous = last_ingress.get(room);
-    if (previous) await ingress_client.deleteIngress(previous).catch(() => undefined);
+    await deleteSceneIngresses(room).catch(() => undefined);
     const ingress = await ingress_client.createIngress(IngressInput.URL_INPUT, {
       name: `scene:${scene}`,
       roomName: room,
@@ -88,7 +113,6 @@ app.post('/api/scene', express.json(), async (req: Request, res: Response) => {
       participantName: `Soundtrack: ${scene}`,
       url: soundtrackUrl(scene),
     });
-    last_ingress.set(room, ingress.ingressId);
     logOutbound({ kind: 'start_ingress', room, scene, ok: true });
     console.log(`Scene ${scene} in ${room}: ingress ${ingress.ingressId} (${Date.now() - started} ms)`);
     res.json({ ok: true, ingress_id: ingress.ingressId });
@@ -97,6 +121,15 @@ app.post('/api/scene', express.json(), async (req: Request, res: Response) => {
     console.warn(`Scene ${scene} in ${room}: ingress failed: ${error.message}`);
     res.status(502).json({ ok: false, error: error.message });
   }
+});
+
+// The storyteller calls this when the story ends: the last soundtrack stops.
+app.post('/api/scene/end', express.json(), async (req: Request, res: Response) => {
+  const from = req.socket.remoteAddress || '';
+  if (!/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(from)) return res.status(403).json({ error: 'local only' });
+  const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  if (!room) return res.status(400).json({ error: 'room is required' });
+  res.json({ ok: true, deleted: await deleteSceneIngresses(room).catch(() => 0) });
 });
 
 // Failure injection, to show Hookdeck absorbing a slow or failing app
@@ -149,6 +182,8 @@ app.post('/webhooks/livekit', express.raw({ type: '*/*', limit: '1mb' }), async 
   const event = JSON.parse(raw_body.toString('utf-8')) as LiveKitEvent;
   const { duplicate } = applyEvent(log, event);
   applyChronicle(chronicle, event);
+  // The room is over: delete any scene ingress it still has
+  if (event.event === 'room_finished' && event.room?.name) deleteSceneIngresses(event.room.name).then((n) => n && console.log(`Deleted ${n} scene ingress after ${event.room!.name} finished`)).catch(() => undefined);
   saveLog(log);
   saveChronicle(chronicle);
   recordDelivery({ ...delivery, event_id: event.id, event: event.event, verified: true, duplicate });

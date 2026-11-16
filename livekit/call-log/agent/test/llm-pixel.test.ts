@@ -1,19 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chooseLlm, describeLlm } from '../src/llm.ts';
+import { LLM_MODEL, describeLlm } from '../src/llm.ts';
 import { FALLBACK_LINES, SCENE_LINES, gestureDelayMs, pickGesture, shouldGesture } from '../src/pixel-lines.ts';
 
-test('LiveKit Inference is the default, and an OpenAI key switches the language model only', () => {
-  assert.deepEqual(chooseLlm({}), { kind: 'inference', model: 'openai/gpt-4.1-mini' });
-  assert.deepEqual(chooseLlm({ OPENAI_API_KEY: '' }), { kind: 'inference', model: 'openai/gpt-4.1-mini' });
-  assert.deepEqual(chooseLlm({ OPENAI_API_KEY: ' ' }), { kind: 'inference', model: 'openai/gpt-4.1-mini' });
-  assert.deepEqual(chooseLlm({ OPENAI_API_KEY: 'sk-test' }), { kind: 'openai', model: 'gpt-4.1-mini' });
-});
-
-test('the startup line names the path and never contains the key', () => {
-  const line = describeLlm(chooseLlm({ OPENAI_API_KEY: 'sk-secret-value' }));
-  assert.ok(line.includes('OpenAI') && !line.includes('sk-secret-value'));
-  assert.ok(describeLlm(chooseLlm({})).includes('LiveKit Inference'));
+test('the language model is LiveKit Inference gpt-4.1-mini, and the startup line says so', () => {
+  assert.equal(LLM_MODEL, 'openai/gpt-4.1-mini');
+  assert.equal(describeLlm(), 'LLM: LiveKit Inference openai/gpt-4.1-mini');
 });
 
 test('every scene has four to six gesture lines, and a line is not repeated until the pool runs out', () => {

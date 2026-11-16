@@ -17,7 +17,7 @@ import { ParticipantKind, type RemoteParticipant } from '@livekit/rtc-node';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { describeLlm, chooseLlm, makeLlm } from './llm.ts';
+import { describeLlm, makeLlm } from './llm.ts';
 import { planLedger } from './names.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
@@ -251,7 +251,11 @@ The finale is the last scene: give every player a turn, then speak a closing of 
             const job = ctx.userData.ctx;
             publish(job, { 'story.state': 'ended', 'story.turn': '', 'story.turn_name': '' });
             // Let the farewell finish playing, then leave the room
-            setTimeout(() => job.shutdown('the story is over'), 14000);
+            setTimeout(async () => {
+              // The last soundtrack stops with the story
+              await fetch(`${APP_URL}/api/scene/end`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: job.room.name }), signal: AbortSignal.timeout(10000) }).catch(() => undefined);
+              job.shutdown('the story is over');
+            }, 14000);
             return 'The story has ended. Say one last short farewell line to the travellers now.';
           },
         }),
@@ -264,7 +268,7 @@ export default defineAgent({
   entry: async (ctx: JobContext) => {
     const session = new voice.AgentSession<StoryData>({
       stt: new inference.STT({ model: 'deepgram/nova-3', language: 'en' }),
-      llm: makeLlm(process.env),
+      llm: makeLlm(),
       userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set() },
     });
     session.on(voice.AgentSessionEventTypes.Error, (e: any) => console.log('agent error:', e.error?.message ?? e));
@@ -295,5 +299,5 @@ export default defineAgent({
   },
 });
 
-console.log(describeLlm(chooseLlm(process.env)));
+console.log(describeLlm());
 cli.runApp(new ServerOptions({ agent: fileURLToPath(import.meta.url), agentName: AGENT_NAME }));
