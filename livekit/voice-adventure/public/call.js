@@ -164,25 +164,39 @@ function renderPeople() {
 // as a text stream on the `lk.transcription` topic. The agent's lines arrive in pieces as it speaks; a
 // player's arrive as the recognizer updates them.
 const lines = new Map();
+// One transcript entry per turn: speech-to-text splits an utterance into several segments at each
+// pause, so consecutive segments from the same speaker join the newest entry until someone else speaks.
+const entries = new WeakMap();
 function showLine(id, who, text, final, role = 'player') {
   const box = $('transcript');
   let li = lines.get(id);
   if (!li) {
-    li = document.createElement('li');
-    li.dataset.role = role;
-    // The first line the storyteller speaks gets an illuminated first letter in the story theme
-    if (role === 'storyteller' && !box.querySelector('li[data-role="storyteller"]')) li.dataset.first = 'true';
+    const top = box.firstElementChild;
+    const top_entry = top && entries.get(top);
+    if (top_entry && top_entry.who === who && top_entry.role === role) {
+      li = top;
+    } else {
+      li = document.createElement('li');
+      li.dataset.role = role;
+      // The first line the storyteller speaks gets an illuminated first letter in the story theme
+      if (role === 'storyteller' && !box.querySelector('li[data-role="storyteller"]')) li.dataset.first = 'true';
+      entries.set(li, { who, role, segments: new Map() });
+      // Newest first, so the transcript reads down from the latest line
+      box.prepend(li);
+      while (box.children.length > 80) box.lastChild.remove();
+    }
     lines.set(id, li);
-    // Newest first, so the transcript reads down from the latest line
-    box.prepend(li);
-    while (box.children.length > 80) box.lastChild.remove();
   }
-  li.className = final ? '' : 'interim';
-  if (role === 'player' || role === 'mute') last_player_line_at = Date.now();
-  else last_agent_line_at = Date.now();
+  const entry = entries.get(li);
   // A mute player's gesture arrives as *Pixel does something.*: show it as an italic line without the asterisks
   const shown = role === 'mute' ? text.replace(/^\s*\*+\s*|\s*\*+\s*$/g, '') : text;
-  li.innerHTML = `<span class="badge badge--mono speaker">${esc(who)}</span> <span class="line-text">${esc(shown)}</span>`;
+  entry.segments.set(id, { text: shown, final });
+  const segments = [...entry.segments.values()];
+  li.className = segments.every((seg) => seg.final) ? '' : 'interim';
+  if (role === 'player' || role === 'mute') last_player_line_at = Date.now();
+  else last_agent_line_at = Date.now();
+  const joined = segments.map((seg) => seg.text.trim()).filter(Boolean).join(' ');
+  li.innerHTML = `<span class="badge badge--mono speaker">${esc(who)}</span> <span class="line-text">${esc(joined)}</span>`;
   box.scrollTop = 0;
 }
 
@@ -332,7 +346,7 @@ if (demo_state) {
   say_copy('status_connected', 'Connected to story-demo as web-1, microphone on.', { name: 'Priya' });
   renderPeople();
   showLine('a', 'Hester Pennywhistle', 'Ah, Priya, we\'ve been expecting you, and your quiet friend, Pixel.', true, 'innkeeper');
-  showLine('b', 'Old Bram Tallow', 'The cave is dark and dripping. A stone ledge holds the Lantern. Priya, will you take it and leave by the tunnel, or row across the pool?', true, 'storyteller');
+  showLine('b', 'Old Bram Tallow', 'The cave is dark and dripping. On a stone ledge sits a brass lantern, its glass cracked, and a small boat knocks against the rocks below.', true, 'storyteller');
   showLine('c', 'Priya (you)', 'I take the Lantern and row across the pool.', true, 'player');
   showLine('d', 'Pixel', '*Pixel holds the lantern up to the cave wall and taps a carving.*', true, 'mute');
 }
