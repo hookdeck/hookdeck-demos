@@ -17,6 +17,9 @@ export const scenes = {
   'app-down-mobile': pc.createAppDownMobileScene,
 }
 
+/** The platform's name, shown in the square captures' eyebrow: "{ Hookdeck + ElevenLabs }". */
+export const brand = 'ElevenLabs'
+
 /** The scripted scenarios, in the order the page and the capture script list them. */
 export const scenarios = [
   { id: 'delivery', title: 'Delivery', captions: pc.deliveryCaptions },

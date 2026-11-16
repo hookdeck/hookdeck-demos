@@ -48,8 +48,6 @@ if (!['wide', 'square'].includes(aspect))
 if (!['light', 'dark'].includes(theme))
   throw new Error('THEME must be light or dark')
 const size = aspect === 'square' ? { width: 1080, height: 1080 } : { width: 1920, height: 1080 }
-const ALL = ['delivery', 'duplicate', 'bad-signature', 'app-down']
-const names = positionals.length ? positionals : ALL
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json' }
 
@@ -153,9 +151,16 @@ async function main() {
   const { base, close } = await serve()
   const browser = await launch()
   try {
+    // The scene ids come from the demo's bundle (HookdeckScenes.scenarios), so any demo's
+    // scenes can be captured without changing this script.
+    const lister = await browser.newPage()
+    await lister.goto(`${base}/capture?list=1`, { waitUntil: 'networkidle' })
+    const all: string[] = await lister.evaluate(() => (window as any).__scenarioIds)
+    await lister.close()
+    const names = positionals.length ? positionals : all
     for (const name of names) {
-      if (!ALL.includes(name))
-        throw new Error(`Unknown scene "${name}". Scenes: ${ALL.join(', ')}`)
+      if (!all.includes(name))
+        throw new Error(`Unknown scene "${name}". Scenes: ${all.join(', ')}`)
       await capture(browser, base, name)
     }
   }
