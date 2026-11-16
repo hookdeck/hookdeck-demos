@@ -87,4 +87,4 @@ $('chaosBtn').addEventListener('click', async () => {
 
 loadConfig();
 refresh();
-setInterval(() => { if ($('autoRefresh').checked) { refresh(); loadConfig(); } }, 2000);
+setInterval(() => { if ($('autoRefresh').checked) { refresh(); loadConfig(); } }, 1000);

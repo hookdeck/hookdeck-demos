@@ -4,10 +4,15 @@ import { randomUUID } from 'crypto';
 import { ENABLE_LIVE_INJECTION, PORT, RETELL_AGENT_ID, RETELL_PUBLIC_KEY, TEST_LEAD_PHONE_NUMBER, missingCallConfig, missingWebCallConfig } from './config';
 import { applyRetellEvent, RetellWebhook } from './events';
 import { createPhoneCall, updateLiveCall } from './retell';
+import { createFlowState } from './flow-drawer-server';
+import { createFlowExtras } from './flow-extras';
+import { listDeliveries, listOutbound, logDelivery, logOutbound, flow_entries } from './deliveries';
+import { EVENTS_CONNECTION, FUNCTION_CONNECTION } from './config';
 import { addLead, addTimeline, findLeadByCall, getLead, listLeads, updateLead } from './store';
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+// The raw body's length is the webhook's size, for the topology pane's packets
+app.use(express.json({ limit: '5mb', verify: (req: any, _res, buf) => { req.raw_bytes = buf.length; } }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Failure injection, to show Hookdeck absorbing a slow or failing app
@@ -66,6 +71,7 @@ app.post('/api/leads', async (req: Request, res: Response) => {
     });
     updateLead(lead_id, { call_id, status: 'calling' });
     addTimeline(lead_id, { event: 'call created (API)' });
+    logOutbound({ kind: 'start_call', lead_id, call_id, ok: true });
     res.status(201).json({ id: lead_id, call_id });
   } catch (error: any) {
     updateLead(lead_id, { status: 'failed', error: error.message });
@@ -114,6 +120,7 @@ app.post('/api/web-leads/:id/call', (req: Request, res: Response) => {
   const lead = getLead(id)!;
   updateLead(id, { call_id, ...(lead.status === 'new' ? { status: 'calling' as const } : {}) });
   addTimeline(id, { event: 'web call created (browser, public key)' });
+  logOutbound({ kind: 'start_call', lead_id: id, call_id, ok: true });
   res.json({ ok: true });
 });
 
@@ -134,6 +141,42 @@ app.post('/api/leads/demo', (_req, res) => {
   res.status(201).json({ id, call_id: `simulated_${id}` });
 });
 
+// Topology pane data. /api/deliveries and /api/outbound are the app's own record (fast); /api/flow is
+// Event Gateway's requests, events and delivery attempts, read with the project API key here on the
+// server and merged with what this app answered.
+app.get('/api/deliveries', (_req, res) => res.json(listDeliveries()));
+app.get('/api/outbound', (_req, res) => res.json(listOutbound()));
+const flow_sources = [{ name: EVENTS_CONNECTION, label: 'Retell' }, ...(ENABLE_LIVE_INJECTION ? [{ name: FUNCTION_CONNECTION, label: 'Retell function' }] : [])];
+const flow = createFlowState({
+  apiKey: process.env.HOOKDECK_API_KEY || '',
+  senderLabel: 'Retell',
+  appLabel: 'Demo app',
+  // RETELL sources are verified after ingestion: a bad signature still gets 200
+  rejectedStatus: 200,
+  sources: flow_sources,
+  appEntries: () => flow_entries,
+  describeRequest: ({ body, headers }) => ({
+    label: body?.event ?? body?.name ?? 'not a Retell event',
+    group: body?.call?.call_id,
+    // The request's size, for the pane's packets
+    detail: headers['content-length'],
+  }),
+});
+const flow_extras = createFlowExtras(process.env.HOOKDECK_API_KEY || '', EVENTS_CONNECTION);
+app.get('/api/flow', async (_req, res) => {
+  try {
+    const [state, ignored] = await Promise.all([flow.state(), flow_extras.ignoredCounts()]);
+    res.json({
+      ...state,
+      team_id: flow_extras.teamId(),
+      messages: state.messages.map((m) => ({ ...m, ignored_count: ignored.get(m.request_id) ?? 0, bytes: Number(m.detail) || null })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+app.get('/api/state', (_req, res) => res.json({ fail_next: chaos.fail_next, delay_seconds: chaos.delay_seconds, live_injection: ENABLE_LIVE_INJECTION }));
+
 // Chaos controls: the next N deliveries fail with 503, and/or each takes N seconds to answer
 app.post('/api/chaos', (req, res) => {
   chaos.fail_next = Math.max(0, Math.min(10, Number(req.body.fail_next) || 0));
@@ -147,6 +190,7 @@ app.post('/api/chaos', (req, res) => {
  * Hookdeck retry this delivery.
  */
 app.post('/webhooks/retell', async (req: Request, res: Response) => {
+  const started = Date.now();
   const body = req.body as RetellWebhook;
   const hookdeck_event_id = req.header('x-hookdeck-eventid');
   const attempt_info = `event=${hookdeck_event_id} retell_event=${body?.event} call=${body?.call?.call_id}`;
@@ -158,10 +202,12 @@ app.post('/webhooks/retell', async (req: Request, res: Response) => {
   if (chaos.fail_next > 0) {
     chaos.fail_next -= 1;
     console.log(`💥 Failing on purpose with 503 (${attempt_info}), ${chaos.fail_next} more to go`);
+    logDelivery({ type: body?.event || 'unknown', call_id: body?.call?.call_id, bytes: (req as any).raw_bytes || 0, status_code: 503, result: 'simulated_failure', hookdeck_event_id }, EVENTS_CONNECTION, started);
     return res.status(503).json({ error: 'simulated outage' });
   }
 
   const result = applyRetellEvent(body, { hookdeck_event_id });
+  logDelivery({ type: body?.event || 'unknown', call_id: body?.call?.call_id, bytes: (req as any).raw_bytes || 0, status_code: 200, result, hookdeck_event_id }, EVENTS_CONNECTION, started);
   console.log(`✅ ${body.event}: ${result} (${attempt_info})`);
   res.sendStatus(200);
 });
@@ -175,6 +221,7 @@ app.post('/webhooks/retell-function', (req: Request, res: Response) => {
   res.sendStatus(200);
 
   const { call, args } = req.body || {};
+  logDelivery({ type: String(req.body?.name || 'function'), call_id: call?.call_id, bytes: (req as any).raw_bytes || 0, status_code: 200, result: 'acknowledged', hookdeck_event_id: req.header('x-hookdeck-eventid') }, FUNCTION_CONNECTION, Date.now());
   const call_id: string | undefined = call?.call_id;
   if (!call_id) return;
   const lead = findLeadByCall(call_id);
@@ -191,9 +238,11 @@ app.post('/webhooks/retell-function', (req: Request, res: Response) => {
         `Viewing slots available on ${day}: ${slots}. Offer these to the caller and ask which one they prefer.`
       );
       if (lead) addTimeline(lead.id, { event: 'update-live-call: slots injected' });
+      logOutbound({ kind: 'update_live_call', lead_id: lead?.id, call_id, ok: true });
     } catch (error: any) {
       console.error(`❌ ${error.message}`);
       if (lead) addTimeline(lead.id, { event: 'update-live-call failed', note: error.message });
+      logOutbound({ kind: 'update_live_call', lead_id: lead?.id, call_id, ok: false });
     }
   }, 4000);
 });

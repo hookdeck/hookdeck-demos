@@ -10,3 +10,4 @@ data/
 # Hookdeck CLI config and temporary files written by the setup and listen scripts
 run/
 logs/
+public/scenes/

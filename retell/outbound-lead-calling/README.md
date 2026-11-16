@@ -63,6 +63,14 @@ If `RETELL_PUBLIC_KEY` is missing, the page says what to add and where to find i
 
 The webhook URL is set on the agent, so it overrides the account-level webhook and your other Retell agents are unaffected. To receive every agent's events instead, enter the Hookdeck source URL (`RETELL_EVENTS_URL` in `.env`) on the dashboard's Webhooks tab and remove `webhook_url` from the agent.
 
+## The Data flow pane
+
+The page has a **Data flow** pane at the bottom, open by default. **Live** shows the demo as it runs: starting a call sends a packet from the app to Retell's API, and each webhook travels from Retell through Event Gateway (verify, store, dedup, retry) and `hookdeck listen` to the app. Click a node or a packet for that message's details below the diagram: verified or rejected, each delivery attempt, what the app answered, and a **View in Hookdeck** link. The other tabs play scripted scenes with captions: **Call lifecycle**, **Duplicate dropped**, **Bad signature** and **App down, retry succeeds**. With `ENABLE_LIVE_INJECTION=true`, the live view also shows the agent's function request reaching the app and the app's `update-live-call` result going back to Retell.
+
+The pane is fed by the app's own record of what it handled (`/api/deliveries`, `/api/outbound`) for the fast path, and by `/api/flow` (Event Gateway's API, read with `HOOKDECK_API_KEY` on the server) for rejected requests and duplicates, which never reach the app. Event Gateway lists a request about 3 seconds after it arrives, so those two animate a few seconds late.
+
+The scenes live in `scenes/retell-calls.ts` (the kit in `scenes/kit/` is synced from `_shared/scenes`). MP4 captures of the four scenes, landscape and square, are in `scenes/captures/`. To render them again: `npm run capture -- retell-call-lifecycle`.
+
 ## Try the reliability features
 
 **Verification and deduplication, without a call.** With the app and `npm run listen` running:

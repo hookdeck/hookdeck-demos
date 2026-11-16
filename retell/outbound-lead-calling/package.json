@@ -4,13 +4,15 @@
   "private": true,
   "description": "Outbound lead calling with Retell AI and Hookdeck Event Gateway",
   "scripts": {
-    "start": "ts-node src/server.ts",
+    "start": "npm run build:scenes && ts-node src/server.ts",
     "setup": "ts-node scripts/setup.ts",
     "listen": "ts-node scripts/listen.ts",
     "simulate": "ts-node scripts/simulate.ts",
     "test": "node --require ts-node/register --test test/*.test.ts",
     "probe": "ts-node scripts/probe.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:scenes": "node scripts/build-scenes.mjs",
+    "capture": "ts-node scenes/kit/capture/capture.ts"
   },
   "license": "ISC",
   "dependencies": {
@@ -22,7 +24,11 @@
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@material-symbols/svg-400": "0.47.4",
+    "esbuild": "0.25.9",
+    "playwright": "1.55.0",
+    "gsap": "3.15.0"
   },
   "engines": {
     "node": ">=22"

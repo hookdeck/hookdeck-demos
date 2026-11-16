@@ -7,6 +7,8 @@
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
   <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/scenes/scenes.css">
+  <link rel="stylesheet" href="/topology-pane/topology-pane.css">
   <script src="/theme.js"></script>
 </head>
 <body>
@@ -18,7 +20,7 @@
         <p class="body-m">
           Start a call from the browser (or, optionally, from a phone number) and Retell's agent talks to the lead with the lead's details as dynamic variables. The call's
           <code>call_started</code>, <code>call_ended</code> and <code>call_analyzed</code> events come back through
-          Hookdeck, which verifies <code>x-retell-signature</code>, deduplicates and retries, and update the lead below.
+          Hookdeck, which verifies <code>x-retell-signature</code>, deduplicates and retries, and update the lead below. Watch it happen in the <strong>Data flow</strong> pane at the bottom of the page.
         </p>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
@@ -67,12 +69,15 @@
     <section class="card">
       <div class="section-head">
         <h2 class="title-l">Leads</h2>
-        <label class="check body-xs"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 2s</label>
+        <label class="check body-xs"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 1s</label>
       </div>
       <div id="leads" class="requests"></div>
     </section>
   </main>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>
+  <script src="/scenes/scenes.js"></script>
+  <script src="/topology-pane/topology-pane.js"></script>
+  <script src="/topology.js"></script>
 </body>
 </html>
