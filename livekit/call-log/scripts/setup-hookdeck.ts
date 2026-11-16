@@ -12,8 +12,8 @@
  * is WEBHOOK. The source type comes from LIVEKIT_SOURCE_TYPE in .env:
  *   WEBHOOK (default): a generic source. The app verifies each delivery with
  *                      LiveKit's WebhookReceiver.
- *   LIVEKIT:           Hookdeck verifies each delivery at the edge with your API
- *                      key and secret, and rejects forgeries before they are queued.
+ *   LIVEKIT:           Hookdeck verifies each delivery with your API key and
+ *                      secret, and rejects forgeries before they reach your app.
  */
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
@@ -67,7 +67,12 @@ function main(): void {
       console.error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in .env for the LIVEKIT source type.');
       process.exit(1);
     }
-    source_args.push('--config', JSON.stringify({ api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET }));
+    // Both fields go under config.auth. Flat keys don't work: the CLI moves a flat
+    // api_key into config.auth as a generic API key and leaves api_secret behind.
+    source_args.push(
+      '--config',
+      JSON.stringify({ auth: { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET } }),
+    );
   }
   const source = hookdeckJson(source_args);
 
