@@ -41,3 +41,6 @@ data/
 
 # Hookdeck CLI config written by the setup and listen scripts
 run/
+
+# Scene bundle built by npm run build:scenes
+public/scenes/

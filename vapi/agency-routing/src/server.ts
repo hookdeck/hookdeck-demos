@@ -5,6 +5,7 @@ import { CLIENTS, Client, clientBySlug, suggestedLine } from './clients';
 import { findCustomer } from './crm';
 import { sendToCall } from './live-call-control';
 import { createFlowState, AppFlowEntry } from './flow-drawer-server';
+import { createFlowExtras } from './flow-extras';
 
 export interface LogEntry {
   at: string;
@@ -22,8 +23,8 @@ const CONTROL_MODE = () => (process.env.CONTROL_MODE === 'say' ? 'say' : 'add-me
 export const logs: { [slug: string]: LogEntry[] } = Object.fromEntries(CLIENTS.map((c) => [c.slug, [] as LogEntry[]]));
 const seen_tool_calls = new Set<string>();
 
-// What this app did, for the data-flow drawer: one `result` per delivery it answered, and one
-// `outbound` per call it made back to Vapi. The drawer joins them to Event Gateway's events by ID.
+// What this app did, for the topology pane's detail strip: one `result` per delivery it answered, and one
+// `outbound` per call it made back to Vapi. The flow state joins them to Event Gateway's events by ID.
 const MAX_FLOW = 300;
 export const flow_entries: AppFlowEntry[] = [];
 function recordFlow(entry: Omit<AppFlowEntry, 'id' | 'at'>): void {
@@ -31,8 +32,34 @@ function recordFlow(entry: Omit<AppFlowEntry, 'id' | 'at'>): void {
   if (flow_entries.length > MAX_FLOW) flow_entries.splice(0, flow_entries.length - MAX_FLOW);
 }
 
+// The app's own record of each delivery it answered, for the topology pane: it is available about a
+// second after the answer, where Hookdeck's API lists a request after about 3 s and its event after up to 10 s.
+export interface DeliveryRecord {
+  id: string;
+  received_at: string;
+  /** Client slug: which source and endpoint the delivery came through. */
+  client: string;
+  /** The message, as the pane labels it: `tool-calls`, `status-update \u00b7 ended`, `end-of-call-report`. */
+  type: string;
+  call_id?: string;
+  bytes: number;
+  status_code: number;
+  hookdeck_event_id?: string;
+}
+const MAX_DELIVERIES = 200;
+export const deliveries: DeliveryRecord[] = [];
+let delivery_count = 0;
+
+/** How the pane names a Vapi server message. Shared with the flow state's labels. */
+export function describeMessage(message: any): string {
+  if (!message?.type) return 'not a Vapi message';
+  const tool = message.toolCallList?.[0]?.function?.name ?? message.toolCalls?.[0]?.function?.name;
+  const extra = message.type === 'tool-calls' ? tool : message.type === 'status-update' ? message.status : undefined;
+  return extra ? `${message.type} \u00b7 ${extra}` : message.type;
+}
+
 // Failure injection, per client: the next N deliveries get a 503 (and/or every answer is slow), so the
-// data-flow drawer can show Hookdeck retrying. Vapi is never affected: Event Gateway has already answered it.
+// topology pane can show Hookdeck retrying. Vapi is never affected: Event Gateway has already answered it.
 // tool-calls deliveries are spared unless include_tool_calls is on, because a failed one delays the CRM
 // lookup and the spoken answer with it.
 export interface ChaosState { fail_next: number; delay_seconds: number; include_tool_calls: boolean }
@@ -109,14 +136,18 @@ export function createApp() {
     app.post(client.path, async (req: Request & { raw_bytes?: number }, res: Response) => {
       const message = req.body?.message;
       const bytes = req.raw_bytes || 0;
-      // Event Gateway adds the event's ID to every delivery; the drawer joins on it
+      // Event Gateway adds the event's ID to every delivery; the pane joins on it
       const event_id = req.header('x-hookdeck-eventid');
       const started = Date.now();
-      res.on('finish', () => recordFlow({
-        source: client.source, kind: 'result', event_id,
-        label: `returned ${res.statusCode}`, detail: res.locals.flow_detail, status: res.statusCode,
-        ok: res.statusCode < 400, duration_ms: Date.now() - started,
-      }));
+      res.on('finish', () => {
+        recordFlow({
+          source: client.source, kind: 'result', event_id,
+          label: `returned ${res.statusCode}`, detail: res.locals.flow_detail, status: res.statusCode,
+          ok: res.statusCode < 400, duration_ms: Date.now() - started,
+        });
+        deliveries.push({ id: `d${++delivery_count}`, received_at: new Date().toISOString(), client: client.slug, type: describeMessage(message), call_id: message?.call?.id, bytes, status_code: res.statusCode, hookdeck_event_id: event_id });
+        if (deliveries.length > MAX_DELIVERIES) deliveries.splice(0, deliveries.length - MAX_DELIVERIES);
+      });
       if (!message?.type) return void res.status(400).json({ error: 'not a Vapi server message' });
 
       const got = assistant_id_of(message);
@@ -153,7 +184,7 @@ export function createApp() {
     });
   }
 
-  // Data-flow drawer: Event Gateway's requests, events and attempts for both sources (read with the
+  // Topology pane: Event Gateway's requests, events and attempts for both sources (read with the
   // project API key, here on the server) merged with this app's own record of what it did.
   const flow = createFlowState({
     apiKey: process.env.HOOKDECK_API_KEY || '',
@@ -161,15 +192,28 @@ export function createApp() {
     appLabel: 'Demo app',
     sources: CLIENTS.map((c) => ({ name: c.source, label: c.name })),
     appEntries: () => flow_entries,
-    describeRequest: ({ body }) => {
-      const message = body?.message;
-      if (!message?.type) return { label: 'not a Vapi message' };
-      const tool = message.toolCallList?.[0]?.function?.name ?? message.toolCalls?.[0]?.function?.name;
-      const extra = message.type === 'tool-calls' ? tool : message.type === 'status-update' ? message.status : undefined;
-      return { label: extra ? `${message.type} \u00b7 ${extra}` : message.type, group: message.call?.id };
-    },
+    // The request's size rides in `detail`, for the pane's packet labels
+    describeRequest: ({ body, headers }) => ({ label: describeMessage(body?.message), group: body?.message?.call?.id, detail: headers['content-length'] }),
   });
-  app.get('/api/flow', (req, res) => void flow.handler(req, res));
+  const flow_extras = createFlowExtras(process.env.HOOKDECK_API_KEY || '', CLIENTS.map((c) => c.source));
+  app.get('/api/flow', async (_req, res) => {
+    try {
+      const [state, ignored] = await Promise.all([flow.state(), flow_extras.ignoredCounts()]);
+      res.json({
+        ...state,
+        team_id: flow_extras.teamId(),
+        messages: state.messages.map((m) => ({ ...m, ignored_count: ignored.get(m.request_id) ?? 0, bytes: Number(m.detail) || null })),
+      });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+  // The app's own records, for the topology pane's fast path
+  app.get('/api/deliveries', (_req, res) => void res.json(deliveries));
+  // Results the app posted into live calls (each client's `controlUrl`)
+  app.get('/api/outbound', (_req, res) => void res.json(
+    flow_entries.filter((e) => e.kind === 'outbound').map((e) => ({ id: e.id, at: e.at, client: CLIENTS.find((c) => c.source === e.source)?.slug, ok: e.ok === true, label: e.label })),
+  ));
 
   app.get('/api/chaos', (_req, res) => void res.json(chaos));
   app.post('/api/chaos/:slug', (req, res) => {

@@ -1,19 +1,20 @@
 /**
  * Replays one call's webhooks through a client's Hookdeck source, signed with the demo's secret,
- * so you can watch the flow (and the data-flow drawer) without a microphone. A local stand-in
+ * so you can watch the flow (and the topology pane) without a microphone. A local stand-in
  * for Vapi's controlUrl receives the app's async-tool result.
  *
  * Sends: status-update (in-progress), tool-calls (lookup_customer), a badly signed copy of the
  * status-update (rejected with 401), status-update (ended), end-of-call-report.
  *
- * Usage: npm run simulate [-- acme|globex]
+ * Usage: npm run simulate [-- acme|globex] [--duplicate]
+ *   --duplicate  sends the end-of-call-report twice; Event Gateway drops the second one
  */
 import 'dotenv/config';
 import * as crypto from 'crypto';
 import * as http from 'http';
 import { CLIENTS, clientBySlug } from '../src/clients';
 
-const client = clientBySlug(process.argv[2] || 'acme') || CLIENTS[0];
+const client = clientBySlug(process.argv.slice(2).find((a) => !a.startsWith('--')) || 'acme') || CLIENTS[0];
 const secret = process.env.VAPI_WEBHOOK_SECRET!;
 const url = process.env[client.env_source_url]!;
 const assistant_id = process.env[client.env_assistant_id]!;
@@ -50,7 +51,12 @@ async function main() {
   await sleep(wait);
   await send('status-update ended', { type: 'status-update', status: 'ended', endedReason: 'customer-ended-call', call });
   await sleep(1000);
-  await send('end-of-call-report', { type: 'end-of-call-report', endedReason: 'customer-ended-call', call, artifact: { messages: [] } });
+  const report = { type: 'end-of-call-report', endedReason: 'customer-ended-call', call, artifact: { messages: [] } };
+  await send('end-of-call-report', report);
+  if (process.argv.includes('--duplicate')) {
+    await sleep(500);
+    await send('end-of-call-report (duplicate)', report);
+  }
   stub.close();
 }
 main().catch((error) => { console.error(error.message); process.exit(1); });

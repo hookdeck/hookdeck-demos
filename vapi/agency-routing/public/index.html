@@ -6,7 +6,8 @@
 <title>Vapi agency routing with Hookdeck</title>
 <link rel="icon" href="/ds/assets/brand/favicon.svg">
 <link rel="stylesheet" href="/ds/styles.css">
-<link rel="stylesheet" href="/flow-drawer/flow-drawer.css">
+<link rel="stylesheet" href="/scenes/scenes.css">
+<link rel="stylesheet" href="/topology-pane/topology-pane.css">
 <script src="/theme.js"></script>
 <style>
   body { background: var(--tan-bg); }
@@ -70,12 +71,13 @@
       <span class="eyebrow mono-xs">{ Vapi + Hookdeck Event Gateway }</span>
       <h1 class="title-2xl">Vapi agency routing <em>with Hookdeck</em></h1>
       <p class="body-m">
-        A voice AI agency runs one Vapi assistant for each of its clients. Each assistant sends its call webhooks to that client's own Hookdeck source,
-        which checks Vapi's signature and delivers them to that client's endpoint in this app.
+        A voice AI agency runs one Vapi assistant for each of its clients. Each assistant sends its call webhooks to that client's own Event Gateway source,
+        which verifies Vapi's signature and delivers them to that client's endpoint in this app.
       </p>
       <p class="body-m">
         Click <strong>Start call</strong> on a client's card and talk to its assistant. The card then lists every webhook that client's endpoint received
-        during the call. To see how each webhook got there, open <strong>Data flow</strong> at the bottom of the page.
+        during the call. The <strong>Data flow</strong> pane at the bottom of the page shows each webhook moving from Vapi through Event Gateway to the endpoint,
+        and the lookup result going back into the call.
       </p>
     </div>
     <span class="lined__dots lined__dots--top_left"></span>
@@ -88,7 +90,6 @@
   <p id="cfg-error" class="empty body-s"></p>
 </main>
 
-<script src="/flow-drawer/flow-drawer.js"></script>
 <script>
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const BADGE = { 'tool-calls': 'badge--primary', 'live-call-control': 'badge--success', misrouted: 'badge--danger', 'lookup-error': 'badge--danger', 'end-of-call-report': 'badge--mono' };
@@ -199,7 +200,9 @@ document.addEventListener('click', (ev) => {
 })();
 setInterval(async () => { try { await refresh(); renderCalls(); } catch (e) {} }, 1500);
 
-FlowDrawer.mount({ endpoint: '/api/flow', title: 'Data flow' });
 </script>
+<script src="/scenes/scenes.js"></script>
+<script src="/topology-pane/topology-pane.js"></script>
+<script src="/topology.js"></script>
 </body>
 </html>

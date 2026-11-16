@@ -81,6 +81,16 @@ async function main() {
   assert.equal((await post('/clients/acme/webhook', tool_calls('asst-acme', 'Priya Shah'))).status, 503);
   await set_chaos('acme', {});
 
+  // 7. the topology pane's feeds: each delivery the app answered, by client, and each result posted into a call
+  const delivered = await (await fetch(`${base}/api/deliveries`)).json();
+  assert.ok(delivered.some((d: any) => d.client === 'acme' && d.type === 'tool-calls \u00b7 lookup_customer' && d.status_code === 200));
+  assert.ok(delivered.some((d: any) => d.client === 'acme' && d.type === 'status-update \u00b7 in-progress'));
+  assert.ok(delivered.some((d: any) => d.client === 'globex' && d.type === 'end-of-call-report'));
+  assert.ok(delivered.some((d: any) => d.status_code === 503), 'failed attempts are recorded with their status');
+  const outbound = await (await fetch(`${base}/api/outbound`)).json();
+  assert.deepEqual([...new Set(outbound.map((o: any) => o.client))].sort(), ['acme', 'globex']);
+  assert.ok(outbound.every((o: any) => o.ok === true));
+
   console.log('All checks passed');
   app.close(); control.close();
 }
