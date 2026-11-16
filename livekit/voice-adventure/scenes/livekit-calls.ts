@@ -5,7 +5,7 @@ import { chipRow, connectorLabel, statusChip, type Tone, type ToneChip, toneTo }
 import { defineScene, type SceneBuild } from './kit/scene'
 import { type Canvas, connector, type Connector, node, type Node, type Point, type Stage } from './kit/stage'
 
-// The LiveKit call-log topology, defined once, run three ways:
+// The LiveKit voice-adventure topology, defined once, run three ways:
 //
 //   live      the demo page's bottom pane: `createLiveScene` builds the components and a live driver
 //             (`scene.live`) that the page feeds from the app's delivery log and /api/flow;

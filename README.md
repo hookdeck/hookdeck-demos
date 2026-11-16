@@ -73,7 +73,7 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 
 | Demo | Description |
 |------|-------------|
-| [call-log](livekit/call-log/) | LiveKit room, participant and egress webhooks through Hookdeck into a call log with start, end, duration, participants and recording links |
+| [voice-adventure](livekit/voice-adventure/) | A multiplayer LiveKit voice adventure with AI characters; room, participant and ingress webhooks through Hookdeck build a session chronicle |
 
 ## Shared Utilities
 

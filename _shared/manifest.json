@@ -24,7 +24,7 @@
     "hookdeck/mcp-events-forward-proxy": {
       "ds": "viz/ds"
     },
-    "livekit/call-log": {
+    "livekit/voice-adventure": {
       "ds": "public/ds",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",

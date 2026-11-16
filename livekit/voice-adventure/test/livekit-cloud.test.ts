@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findWebhook, resolveProjectId, resolveSession } from '../scripts/livekit-cloud';
+import { LEGACY_WEBHOOK_NAME, findWebhook, resolveProjectId, resolveSession } from '../scripts/livekit-cloud';
 
 const NOW = 1_800_000_000;
 const config = (expiry: number, extra = '') => `default_user: u2
@@ -53,4 +53,9 @@ test('finds the webhook that already points at the Hookdeck source', () => {
   const list = [{ id: 'w1', url: 'https://x.test' }, { id: 'w2', url: 'https://hkdk.events/abc' }];
   assert.equal(findWebhook(list, 'https://hkdk.events/abc')?.id, 'w2');
   assert.equal(findWebhook(list, 'https://hkdk.events/zzz'), undefined);
+});
+
+test('a webhook created under the old demo name is found even though its URL changed', () => {
+  const list: any[] = [{ id: 'w9', name: LEGACY_WEBHOOK_NAME, url: 'https://hkdk.events/old' }];
+  assert.equal(findWebhook(list, 'https://hkdk.events/new')?.id, 'w9');
 });

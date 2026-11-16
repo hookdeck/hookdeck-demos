@@ -14,7 +14,9 @@ import * as path from 'path';
 import { parse } from 'yaml';
 
 export const DEFAULT_API_URL = 'https://beta-api.livekit.cloud';
-export const WEBHOOK_NAME = 'Hookdeck: livekit-call-log';
+export const WEBHOOK_NAME = 'Hookdeck: livekit-voice-adventure';
+/** The name this demo used before it was renamed: that webhook is moved to the new source URL instead of a second one being created. */
+export const LEGACY_WEBHOOK_NAME = 'Hookdeck: livekit-call-log';
 
 export interface Session {
   token: string;
@@ -69,9 +71,9 @@ export function resolveProjectId(env: NodeJS.ProcessEnv, projects: CloudProject[
   return match?.id;
 }
 
-/** The webhook that already points at our Hookdeck source, if any. */
+/** The webhook that already points at our Hookdeck source, or one this demo created under its old name, if any. */
 export function findWebhook(webhooks: CloudWebhook[], url: string): CloudWebhook | undefined {
-  return webhooks.find((w) => w.url === url);
+  return webhooks.find((w) => w.url === url) ?? webhooks.find((w) => w.name === LEGACY_WEBHOOK_NAME);
 }
 
 async function call<T>(session: Session, method: string, route: string, body?: unknown): Promise<T> {
@@ -98,7 +100,7 @@ export async function ensureWebhook(session: Session, env: NodeJS.ProcessEnv, ur
     const created = await call<any>(session, 'POST', base, { name: WEBHOOK_NAME, url, signingKey: signing_key });
     return { action: 'created', project_id, webhook_id: created?.id ?? created?.webhook?.id ?? '' };
   }
-  if (existing.name === WEBHOOK_NAME && existing.signingKey === signing_key) return { action: 'unchanged', project_id, webhook_id: existing.id };
-  await call(session, 'PATCH', `${base}/${existing.id}`, { name: WEBHOOK_NAME, signingKey: signing_key });
+  if (existing.name === WEBHOOK_NAME && existing.url === url && existing.signingKey === signing_key) return { action: 'unchanged', project_id, webhook_id: existing.id };
+  await call(session, 'PATCH', `${base}/${existing.id}`, { name: WEBHOOK_NAME, url, signingKey: signing_key });
   return { action: 'updated', project_id, webhook_id: existing.id };
 }

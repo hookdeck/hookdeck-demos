@@ -2,7 +2,7 @@
  * Creates the Hookdeck connection for the LiveKit call log and writes its Source
  * URL into .env. Idempotent: safe to run multiple times.
  *
- *   source livekit-call-log -> destination local-livekit-call-log (CLI, /webhooks/livekit),
+ *   source livekit-voice-adventure -> destination local-livekit-voice-adventure (CLI, /webhooks/livekit),
  *   with a deduplicate rule (body.id) and an exponential retry rule
  *
  * Uses the project whose HOOKDECK_API_KEY is in .env, through the hookdeck-cli
@@ -25,8 +25,8 @@ const PROJECT_DIR = cli.projectDir;
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
 const ENV_EXAMPLE_FILE = path.join(PROJECT_DIR, '.env.example');
 
-const CONNECTION = 'livekit-call-log';
-const DESTINATION = 'local-livekit-call-log';
+const CONNECTION = 'livekit-voice-adventure';
+const DESTINATION = 'local-livekit-voice-adventure';
 const CLI_PATH = '/webhooks/livekit';
 
 function writeEnv(values: { [key: string]: string }): void {

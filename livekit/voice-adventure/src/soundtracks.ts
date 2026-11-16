@@ -7,7 +7,7 @@ export type SceneName = (typeof SCENES)[number];
  * default is this folder on the repository's main branch. Set SOUNDTRACK_BASE_URL to serve the files
  * from your own host, or SOUNDTRACK_URL_<SCENE> (for example SOUNDTRACK_URL_CAVE) for one scene.
  */
-const DEFAULT_BASE = 'https://raw.githubusercontent.com/hookdeck/hookdeck-demos/main/livekit/call-log/public/soundtracks';
+const DEFAULT_BASE = 'https://raw.githubusercontent.com/hookdeck/hookdeck-demos/main/livekit/voice-adventure/public/soundtracks';
 
 export function soundtrackUrl(scene: SceneName, env: NodeJS.ProcessEnv = process.env): string {
   const override = env[`SOUNDTRACK_URL_${scene.toUpperCase()}`];

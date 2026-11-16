@@ -55,7 +55,7 @@ cp .env.example .env
 npm run setup
 ```
 
-This creates a `livekit-call-log` source, a CLI destination that forwards to `/webhooks/livekit`, and the connection between them with a deduplicate rule and a retry rule. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It logs the bundled Hookdeck CLI in to the project for `HOOKDECK_API_KEY` with a config file of its own, so your interactive `hookdeck login` is untouched.
+This creates a `livekit-voice-adventure` source, a CLI destination that forwards to `/webhooks/livekit`, and the connection between them with a deduplicate rule and a retry rule. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It logs the bundled Hookdeck CLI in to the project for `HOOKDECK_API_KEY` with a config file of its own, so your interactive `hookdeck login` is untouched.
 
 ### 4. Add the webhook in LiveKit Cloud
 
@@ -63,8 +63,10 @@ This creates a `livekit-call-log` source, a CLI destination that forwards to `/w
 
 ```bash
 lk cloud auth --user-auth   # opens a browser sign-in once
-npm run setup               # also creates (or updates) the "Hookdeck: livekit-call-log" webhook
+npm run setup               # also creates (or updates) the "Hookdeck: livekit-voice-adventure" webhook
 ```
+**Renamed from "call log".** This demo used to be `livekit/call-log`, with a `livekit-call-log` source and connection, a `local-livekit-call-log` destination and a LiveKit Cloud webhook named "Hookdeck: livekit-call-log". `npm run setup` now creates the `livekit-voice-adventure` resources and moves an existing "Hookdeck: livekit-call-log" webhook to the new source URL instead of adding a second one. The old Hookdeck source, connection and destination are safe to delete in the dashboard.
+
 
 Setup finds your project by matching `LIVEKIT_URL` (set `LIVEKIT_PROJECT_ID` to choose one), signs the webhook with `LIVEKIT_API_KEY`, and updates the webhook instead of duplicating it when you run it again. To use a session token yourself, set `LIVEKIT_SESSION_TOKEN`.
 
@@ -116,7 +118,7 @@ The agent logs `LLM: LiveKit Inference openai/gpt-4.1-mini` at startup. Inferenc
 
 The four 3 minute soundtracks in `public/soundtracks/` are real ambience recordings that fit the scenes: cafe chatter for the tavern, a woodland morning chorus for the forest, a dripping cave, and wind and rigging in a harbour for the finale (Old Bram is a retired lighthouse keeper). They are public-domain or CC0 field recordings, trimmed to 3 minutes, loudness-normalized to a quiet level so the storyteller stays audible, and encoded as Ogg Vorbis. Sources, authors and licences are in [`public/soundtracks/CREDITS.md`](public/soundtracks/CREDITS.md), and [`scripts/make-soundtracks.sh`](scripts/make-soundtracks.sh) rebuilds them with ffmpeg. A soundtrack plays until the next scene replaces it, so each is longer than a scene usually runs. The page shows **Now playing** while one is in the room.
 
-LiveKit Cloud fetches the file itself, so the URL must be public: `localhost` doesn't work. By default the app points at this folder in the repository (`raw.githubusercontent.com/hookdeck/hookdeck-demos/main/livekit/call-log/public/soundtracks/<scene>.ogg`). To host the files yourself, set `SOUNDTRACK_BASE_URL` in `.env`, or `SOUNDTRACK_URL_TAVERN` (and `_FOREST`, `_CAVE`, `_FINALE`) for one scene. If a soundtrack can't be fetched, the story carries on without music. Each scene's ingress is deleted when the next scene starts, when the story ends and when the room finishes (the `room_finished` webhook), and the app deletes leftover `scene:*` ingresses from rooms that are gone when it starts, so nothing counts against your project's ingress limit.
+LiveKit Cloud fetches the file itself, so the URL must be public: `localhost` doesn't work. By default the app points at this folder in the repository (`raw.githubusercontent.com/hookdeck/hookdeck-demos/main/livekit/voice-adventure/public/soundtracks/<scene>.ogg`). To host the files yourself, set `SOUNDTRACK_BASE_URL` in `.env`, or `SOUNDTRACK_URL_TAVERN` (and `_FOREST`, `_CAVE`, `_FINALE`) for one scene. If a soundtrack can't be fetched, the story carries on without music. Each scene's ingress is deleted when the next scene starts, when the story ends and when the room finishes (the `room_finished` webhook), and the app deletes leftover `scene:*` ingresses from rooms that are gone when it starts, so nothing counts against your project's ingress limit.
 
 ## The webhooks it produces
 
@@ -199,7 +201,7 @@ Every request the app receives is appended to `data/deliveries.jsonl` with its h
 ## Project structure
 
 ```
-livekit/call-log/
+livekit/voice-adventure/
 ├── .env.example
 ├── package.json
 ├── agent/                   # `npm run agent`: Hester and Old Bram
