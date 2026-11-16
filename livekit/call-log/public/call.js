@@ -13,6 +13,25 @@ let room_name = null;
 const audio_box = document.createElement('div');
 audio_box.hidden = true;
 document.body.append(audio_box);
+// Soundtrack volume, 0 to 1. Defaults low so the characters stay clear; remembered per browser.
+const SOUNDTRACK_VOLUME_KEY = 'story.soundtrackVolume';
+function soundtrackVolume() {
+  try { const v = Number(localStorage.getItem(SOUNDTRACK_VOLUME_KEY)); return Number.isFinite(v) && localStorage.getItem(SOUNDTRACK_VOLUME_KEY) !== null ? v : 0.15; } catch { return 0.15; }
+}
+function soundtrackSlider() {
+  if ($('soundtrackVolume')) return;
+  const label = document.createElement('label');
+  label.className = 'body-xs muted';
+  label.textContent = 'Soundtrack volume ';
+  const input = Object.assign(document.createElement('input'), { id: 'soundtrackVolume', type: 'range', min: '0', max: '1', step: '0.05', value: String(soundtrackVolume()) });
+  input.addEventListener('input', () => {
+    try { localStorage.setItem(SOUNDTRACK_VOLUME_KEY, input.value); } catch { /* per-browser convenience only */ }
+    for (const el of audio_box.querySelectorAll('audio[data-soundtrack]')) el.volume = Number(input.value);
+  });
+  label.append(input);
+  $('storyBanner').after(label);
+}
+soundtrackSlider();
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function peopleList() {
@@ -143,8 +162,16 @@ function watchChat(r) {
 function watchRoom(r) {
   watchTranscription(r);
   watchChat(r);
-  r.on(RoomEvent.TrackSubscribed, (track) => {
-    if (track.kind === Track.Kind.Audio) audio_box.append(track.attach());
+  r.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+    if (track.kind === Track.Kind.Audio) {
+      const el = track.attach();
+      // The scene soundtrack plays under the voices: start it quiet, and let the slider change it.
+      if (participant.identity.startsWith('soundtrack-')) {
+        el.dataset.soundtrack = 'true';
+        el.volume = soundtrackVolume();
+      }
+      audio_box.append(el);
+    }
     renderPeople();
   });
   r.on(RoomEvent.TrackUnsubscribed, (track) => { track.detach().forEach((el) => el.remove()); renderPeople(); });
