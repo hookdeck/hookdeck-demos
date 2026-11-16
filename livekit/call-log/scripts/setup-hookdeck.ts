@@ -15,26 +15,17 @@
  *   LIVEKIT:           Hookdeck verifies each delivery with your API key and
  *                      secret, and rejects forgeries before they reach your app.
  */
-import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { HOOKDECK_CLI, SOURCE, login, withConfig } from './hookdeck-cli';
+import { SOURCE, cli } from './config';
 
-const PROJECT_DIR = path.join(__dirname, '..');
+const PROJECT_DIR = cli.projectDir;
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
 const ENV_EXAMPLE_FILE = path.join(PROJECT_DIR, '.env.example');
 
 const CONNECTION = 'livekit-call-log';
 const DESTINATION = 'local-livekit-call-log';
 const CLI_PATH = '/webhooks/livekit';
-
-function hookdeck(args: string[]): string {
-  return execFileSync(HOOKDECK_CLI, withConfig(args), { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
-}
-
-function hookdeckJson(args: string[]): any {
-  return JSON.parse(hookdeck([...args, '--output', 'json']));
-}
 
 function writeEnv(values: { [key: string]: string }): void {
   if (!fs.existsSync(ENV_FILE)) {
@@ -52,14 +43,13 @@ function writeEnv(values: { [key: string]: string }): void {
   console.log(`Wrote ${Object.keys(values).join(', ')} to .env`);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   require('dotenv').config({ path: ENV_FILE });
-  login();
-  const whoami = hookdeck(['whoami']).split('\n').find((line) => line.startsWith('Logged in as'));
-  console.log(whoami || 'Not logged in: check HOOKDECK_API_KEY in .env');
+  cli.login();
+  console.log(cli.whoami() || 'Not logged in: check HOOKDECK_API_KEY in .env');
 
   const source_type = (process.env.LIVEKIT_SOURCE_TYPE || 'WEBHOOK').toUpperCase();
-  const source_args = ['gateway', 'source', 'upsert', SOURCE, '--type', source_type];
+  let auth: Record<string, unknown> | undefined;
   if (source_type === 'LIVEKIT') {
     // The LiveKit source type verifies deliveries with your project's API key and secret
     const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
@@ -67,26 +57,12 @@ function main(): void {
       console.error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in .env for the LIVEKIT source type.');
       process.exit(1);
     }
-    // Both fields go under config.auth. Flat keys don't work: the CLI moves a flat
-    // api_key into config.auth as a generic API key and leaves api_secret behind.
-    source_args.push(
-      '--config',
-      JSON.stringify({ auth: { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET } }),
-    );
+    // Both fields live under the source's config.auth; upsertSource sets them through the API.
+    auth = { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET };
   }
-  const source = hookdeckJson(source_args);
-
-  const destination = hookdeckJson([
-    'gateway', 'destination', 'upsert', DESTINATION,
-    '--type', 'CLI',
-    '--cli-path', CLI_PATH,
-  ]);
-
-  const connection = hookdeckJson([
-    'gateway', 'connection', 'upsert', CONNECTION,
-    '--source-id', source.id,
-    '--destination-id', destination.id,
-  ]);
+  const source = await cli.upsertSource({ name: SOURCE, type: source_type, auth });
+  const destination = cli.upsertCliDestination({ name: DESTINATION, path: CLI_PATH });
+  const connection = cli.upsertConnection({ name: CONNECTION, sourceId: source.id, destinationId: destination.id });
 
   console.log(`${CONNECTION}: ${connection.source.url} (${source_type}) -> ${DESTINATION} (${CLI_PATH})`);
   console.log('');
@@ -99,9 +75,7 @@ function main(): void {
   console.log('  3. npm start');
 }
 
-try {
-  main();
-} catch (error: any) {
+main().catch((error: any) => {
   console.error('Setup failed:', error.stderr?.toString().trim() || error.message);
   process.exit(1);
-}
+});

@@ -1,3 +1,4 @@
+/* Generated from `_shared/ds/tokens/components.css`; edit there and run `npm run sync-shared`. */
 /* Hookdeck CSS component classes — buttons, cards, badges, lined boxes, tooltip.
    Compiled from global.site.scss + page.scss ($phone: 744px, $tablet_portrait: 1024px) */
 button,.button{font-family:var(--font-sans);cursor:pointer;display:flex;align-items:center;gap:var(--s2);font-size:var(--s3-5);font-weight:500!important;line-height:var(--s5);text-decoration:none;padding:calc(var(--s1-5) - 1px) var(--s3);border-radius:var(--radius);border:none;color:var(--on-hue-fg);background-color:var(--primary-blue-bg);box-shadow:var(--button-primary-shadow);transition:200ms ease-in-out background-color}
