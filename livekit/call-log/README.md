@@ -32,7 +32,7 @@ npm run agent    # Hester and Old Bram (installs agent/ on first run)
 ```
 
 1. Open <http://localhost:4000> (or the `PORT` in `.env`).
-2. Enter a name if you like, select **Join a call** and allow the microphone. Hester greets you and asks your first name, then says she will fetch Old Bram, who tells the story.
+2. Enter a name if you like (Hester then greets you by it and doesn't ask), select **Join a call** and allow the microphone. If you typed a name, Hester greets you by it, otherwise she asks for your first name. Then she says she will fetch Old Bram, who tells the story.
 3. To play with friends, open the page in a second tab or on another machine and select **Join a call** there. To play alone with company, select **Add a bot player**: Pixel is a silent bot, and Old Bram voices its turns.
 4. Play: Old Bram sets four scenes and gives each player a turn. The agent hears one player at a time, so wait until the page says **Your turn**. The page shows the **Transcript** (what the characters and players say), who the turn belongs to, and which soundtrack is playing.
 5. When Old Bram closes the story, the page says **The story has ended** and offers **Start a new story**. Select **Leave** any time to stop earlier. The **Session chronicle**, the call log and the **Data flow** pane fill in as the webhooks arrive. A session ends, and its chronicle closes, about a minute after the last person leaves, because LiveKit closes an empty room after its departure timeout.
@@ -94,7 +94,7 @@ Open <http://localhost:4000>.
 
 | Character | Role | Manner | Voice (LiveKit Inference) |
 |---|---|---|---|
-| **Hester Pennywhistle** | Innkeeper of the Drowned Bell. Greets travellers, writes each first name in the ledger (`write_in_ledger`), then announces that she is fetching Old Bram and hands over (`fetch_bram`, an `llm.handoff`). | Brisk, warm, a little nosy, dry humour, calls everyone "love" or "dear". | Cartesia Sonic 3, voice `f31cc6a7-c1e8-4764-980c-60a361443dd1` (Robyn, an Australian, mature voice from LiveKit's documented list) |
+| **Hester Pennywhistle** | Innkeeper of the Drowned Bell. Greets travellers by the name they typed on the page, or asks for a first name when there is none, writes each in the ledger (`write_in_ledger`), then announces that she is fetching Old Bram and hands over (`fetch_bram`, an `llm.handoff`). | Brisk, warm, a little nosy, dry humour, calls everyone "love" or "dear". | Cartesia Sonic 3, voice `f31cc6a7-c1e8-4764-980c-60a361443dd1` (Robyn, an Australian, mature voice from LiveKit's documented list) |
 | **Old Bram Tallow** | Retired lighthouse keeper who tells "The Lantern of Hollow Mere". Calls `next_scene` to start each scene's soundtrack, `give_turn` to listen to one player at a time, and `end_story` after his closing. | Slow, gravelly, kind, sea-worn turns of phrase, loves a pause. | Deepgram Aura 2, voice `draco` (a British male voice) |
 
 Hester and Bram are one agent participant in the room. The agent publishes what the page shows as participant attributes on itself: `story.character`, `story.turn` and `story.turn_name` (whose turn it is), `story.scene` and `story.state` (`ended` when the story is over). Bram's `give_turn` tool rotates through different ways to hand a turn over (an open question, two choices, a vivid detail with no question, an invitation to speak, a short challenge) so he does not end every reply the same way.

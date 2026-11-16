@@ -32,7 +32,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.post('/api/token', express.json(), async (req: Request, res: Response) => {
   const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || `story-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}`;
   const identity = `web-${randomBytes(3).toString('hex')}`;
-  const name = String(req.body?.name || '').replace(/[^\p{L}\p{N} '-]/gu, '').trim().slice(0, 24) || 'Player';
+  const name = String(req.body?.name || '').replace(/[^\p{L}\p{N} '-]/gu, '').trim().slice(0, 24) || undefined;
   res.json({ url: process.env.LIVEKIT_URL, token: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, identity, name), room, identity });
 });
 

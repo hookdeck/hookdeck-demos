@@ -17,6 +17,7 @@ import { ParticipantKind, type RemoteParticipant } from '@livekit/rtc-node';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { planLedger } from './names.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -52,6 +53,34 @@ const is_bot = (p: RemoteParticipant) => p.identity.startsWith('bot-');
 const is_player = (p: RemoteParticipant) => p.info.kind === ParticipantKind.STANDARD || p.info.kind === undefined;
 const humans = (ctx: JobContext) => [...ctx.room.remoteParticipants.values()].filter((p) => is_player(p) && !is_bot(p));
 
+/** Everyone at the door: players and silent bots, with the name the page's token gave them (if any). */
+const guests = (ctx: JobContext) =>
+  [...ctx.room.remoteParticipants.values()].filter(is_player).map((p) => ({ identity: p.identity, name: p.name, bot: is_bot(p) }));
+
+/**
+ * Writes the guests Hester already knows (a typed name on the page, or a bot) into the ledger without asking,
+ * and returns who she can greet by name and which humans she still has to ask.
+ */
+function registerKnown(data: StoryData): { greet: string[]; unnamed: string[] } {
+  const plan = planLedger(guests(data.ctx), new Set(data.players.map((p) => p.identity)));
+  const greet: string[] = [];
+  for (const g of plan.named) {
+    data.players.push({ identity: g.identity, name: g.name, bot: g.bot });
+    if (!g.bot) greet.push(g.name);
+  }
+  return { greet, unnamed: plan.unnamed };
+}
+
+/** What Hester should say next, given who she just wrote in and who is still unnamed. */
+function nextStep(greet: string[], unnamed: boolean, everyone: string): string {
+  const greeting = greet.length
+    ? `${greet.length === 1 ? greet[0] : greet.join(' and ')} told the page their name${greet.length === 1 ? '' : 's'}, so do not ask: greet ${greet.length === 1 ? 'them' : 'each'} by name in one short, in-character sentence (for example "Ah, ${greet[0]}, we've been expecting you") and they are already in the ledger. `
+    : '';
+  return unnamed
+    ? `${greeting}Another traveller at the door gave no name and you can hear them now: ask them for their first name.`
+    : `${greeting}Everyone is in the ledger (${everyone}). In this same reply, say aloud that you will fetch Old Bram, who has been waiting all evening for a crowd, and call fetch_bram.`;
+}
+
 const switchListener = (session: voice.AgentSession<StoryData>, identity: string | null) => (session as any)._roomIO?.setParticipant(identity);
 const listening_to = (session: voice.AgentSession<StoryData>): string | undefined => (session as any)._roomIO?.linkedParticipant?.identity;
 
@@ -79,17 +108,27 @@ const HANDOVERS = [
 const BREVITY = 'You speak aloud, so keep to two short sentences at a time, with no lists, no stage directions and no emoji.';
 
 class Hester extends voice.Agent<StoryData> {
-  async onEnter() {
-    publish(this.session.userData.ctx, { 'story.character': 'Hester Pennywhistle, innkeeper', 'story.state': 'playing', 'story.turn': '', 'story.turn_name': '' });
-    this.session.generateReply({
-      instructions: 'You are standing at the door of the inn, shaking the rain off your apron as travellers come in. Greet them in one short sentence, say it is a wild night and the ledger is open, and ask the traveller you can hear for their first name.',
+  /**
+   * Opens the evening. Called once the room is connected and the first guest is at the door, because
+   * who is there, and whether they gave a name, decides what Hester says first.
+   */
+  async open(session: voice.AgentSession<StoryData>) {
+    const data = session.userData;
+    const { greet, unnamed } = registerKnown(data);
+    const first_human = unnamed[0] ?? data.players.find((p) => !p.bot)?.identity;
+    if (first_human) switchListener(session, first_human);
+    const intro = 'You are standing at the door of the inn, shaking the rain off your apron as travellers come in. ';
+    session.generateReply({
+      instructions: greet.length || !unnamed.length
+        ? `${intro}${nextStep(greet, unnamed.length > 0, data.players.map((p) => p.name).join(', '))}`
+        : `${intro}Greet them in one short sentence, say it is a wild night and the ledger is open, and ask the traveller you can hear for their first name.`,
     });
   }
 
   static build() {
     return new Hester({
       instructions: `You are Hester Pennywhistle, innkeeper of the Drowned Bell, a crooked old inn on the shore of the Hollow Mere. You are brisk, warm and a little nosy, with a dry sense of humour, and you call everyone "love" or "dear". You are a fictional character in a spoken adventure. ${BREVITY}
-Travellers who come in out of the storm must sign your ledger. You can hear only one traveller at a time. Ask the one you can hear for their first name, then call write_in_ledger with it, and greet them by name. When the ledger tells you everyone is written in, say aloud, in one sentence and in your own words, that you will fetch Old Bram, who has been waiting all evening for a crowd to tell his tale to, and in that same reply call fetch_bram, so that the sentence and the call come together.`,
+Travellers who come in out of the storm must sign your ledger. A traveller who already gave their name at the door is written in for you: greet them by name and never ask for it again. You can hear only one traveller at a time. Ask the one you can hear for their first name, then call write_in_ledger with it, and greet them by name. When the ledger tells you everyone is written in, say aloud, in one sentence and in your own words, that you will fetch Old Bram, who has been waiting all evening for a crowd to tell his tale to, and in that same reply call fetch_bram, so that the sentence and the call come together.`,
       tts: new inference.TTS({ model: HESTER_VOICE as any }),
       // A player talking over her must not cancel the handoff
       allowInterruptions: false,
@@ -98,24 +137,21 @@ Travellers who come in out of the storm must sign your ledger. You can hear only
           description: 'Write the first name of the traveller you can hear in the inn ledger.',
           parameters: z.object({ name: z.string().describe('The traveller\'s first name') }),
           execute: async ({ name }, { ctx }: llm.ToolOptions<StoryData>) => {
-            const { ctx: job, players } = ctx.userData;
+            const { players } = ctx.userData;
             const session = ctx.session as voice.AgentSession<StoryData>;
             // Only a plausible first name goes in the ledger: not "I", "the" or a sentence
             if (!/^\p{L}[\p{L}'-]{1,19}$/u.test(name.trim()) || ['the', 'my', 'me', 'and', 'light', 'home', 'way'].includes(name.trim().toLowerCase())) return `That did not sound like a first name. Ask the traveller again, in your own words, for just their first name.`;
             const identity = listening_to(session);
             if (identity && !players.some((p) => p.identity === identity)) players.push({ identity, name, bot: false });
-            const next = humans(job).find((p) => !players.some((q) => q.identity === p.identity));
-            if (next) {
-              switchListener(session, next.identity);
-              return `${name} is in the ledger. Another traveller is at the door and you can hear them now: welcome them and ask for their first name.`;
-            }
-            // Silent test participants sit by the fire and join the story without speaking: Bram voices their turns
-            for (const p of job.room.remoteParticipants.values()) {
-              if (is_bot(p) && !players.some((q) => q.identity === p.identity)) players.push({ identity: p.identity, name: p.name || `${p.identity.slice(4, 5).toUpperCase()}${p.identity.slice(5)}`, bot: true });
+            // Anyone who came in with a name on the page, and any bot, goes in the ledger without being asked
+            const { greet, unnamed } = registerKnown(ctx.userData);
+            if (unnamed.length) {
+              switchListener(session, unnamed[0]);
+              return `${name} is in the ledger. ${nextStep(greet, true, '')}`;
             }
             const first = players.find((p) => !p.bot);
             if (first) switchListener(session, first.identity);
-            return `${name} is in the ledger, and so is everyone else (${players.map((p) => p.name).join(', ')}). In this same reply, say aloud that you will fetch Old Bram and call fetch_bram.`;
+            return `${name} is in the ledger. ${nextStep(greet, false, players.map((p) => p.name).join(', '))}`;
           },
         }),
         fetch_bram: llm.tool({
@@ -236,14 +272,18 @@ export default defineAgent({
       switchListener(session, next ? next.identity : null);
     });
 
+    const hester = Hester.build();
     await session.start({
-      agent: Hester.build(),
+      agent: hester,
       room: ctx.room,
       inputOptions: { closeOnDisconnect: false },
     });
     await ctx.connect();
     // onEnter ran before the room connected, so publish Hester's attributes again now
     await publish(ctx, { 'story.character': 'Hester Pennywhistle, innkeeper', 'story.state': 'playing', 'story.turn': '', 'story.turn_name': '' });
+    // Open once the first guest is at the door: whether they gave a name decides Hester's first words
+    await ctx.waitForParticipant();
+    await hester.open(session);
   },
 });
 

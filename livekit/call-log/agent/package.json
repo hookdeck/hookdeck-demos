@@ -6,7 +6,8 @@
   "description": "The voice agents for the LiveKit call log demo: an intro agent and a game master",
   "scripts": {
     "start": "node src/main.ts dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@livekit/agents": "1.10.0",

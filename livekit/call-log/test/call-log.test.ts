@@ -87,3 +87,13 @@ test('a minted token joins one room, can publish, expires and carries no secret'
   // The room configuration dispatches the story agent by name
   assert.equal((claims as any).roomConfig?.agents?.[0]?.agentName, 'story-gm');
 });
+
+test('a token carries the typed name, and no name when none was typed', async () => {
+  const { TokenVerifier } = await import('livekit-server-sdk');
+  const { mintToken } = await import('../src/token');
+  const key = 'APItest', secret = 'a-test-secret-that-is-long-enough-for-hs256';
+  const named = await new TokenVerifier(key, secret).verify(await mintToken(key, secret, 'r', 'web-abc', 'Priya'));
+  const unnamed = await new TokenVerifier(key, secret).verify(await mintToken(key, secret, 'r', 'web-def'));
+  assert.equal(named.name, 'Priya');
+  assert.equal(unnamed.name, undefined);
+});
