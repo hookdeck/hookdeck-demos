@@ -64,9 +64,11 @@ export function packet(stage: Stage, conn: Connector, o: PacketOptions = {}): Pa
   if (o.label) {
     const size = 20
     const w = o.label.length * size * 0.64 + 28
-    // A label wider than its connector can't fit between two nodes, so it draws above them
-    // (the overlay layer) instead of sliding under them.
-    const lg = el('g', {}, conn.dir === 'h' && w + 16 > conn.length ? stage.overlay : stage.labels)
+    // A label longer than its connector (its width on a horizontal one, its height on a vertical
+    // one) can't fit between two nodes, so it draws above them (the overlay layer) instead of
+    // sliding under them.
+    const span = conn.dir === 'h' ? w : 34
+    const lg = el('g', {}, span + 16 > conn.length ? stage.overlay : stage.labels)
     const rect = el('rect', { x: -w / 2, y: -17, width: w, height: 34, rx: 17, 'stroke-width': 1.5 }, lg)
     rect.style.fill = big ? color.blue : color.blueBadgeBg
     rect.style.stroke = big ? color.blue : color.blueBadgeOutline
@@ -104,8 +106,10 @@ export function travel(tl: Timeline, p: Packet, at: number, mode: 'into' | 'arri
       let front = Math.max(0, Math.min(p.conn.length, -p.width + (distance + p.width) * proxy.p))
       // A packet that stops at a node keeps its label whole on the connector: centered on the
       // head, half of it would sit under the node card.
-      if (mode === 'arrive' && p.conn.dir === 'h')
-        front = Math.min(front, Math.max(p.conn.length / 2, p.conn.length - label.width / 2 - 8))
+      if (mode === 'arrive') {
+        const half = p.conn.dir === 'h' ? label.width / 2 : 17
+        front = Math.min(front, Math.max(p.conn.length / 2, p.conn.length - half - 8))
+      }
       label.at(p.conn.path.getPointAtLength(front))
     }
     place()
