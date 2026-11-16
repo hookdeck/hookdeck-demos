@@ -30,6 +30,21 @@
     </section>
 
     <section class="card">
+      <h2 class="title-l">Join a call</h2>
+      <p class="body-s muted">
+        Joins a LiveKit room from this browser with your microphone. Joining, publishing and leaving each send webhooks,
+        and the call log below fills in as they arrive. No command to run.
+      </p>
+      <div class="actions">
+        <button class="button" id="joinBtn" type="button">Join a call</button>
+        <button class="button button--secondary" id="testBtn" type="button" disabled>Add a test participant</button>
+        <button class="button button--secondary" id="leaveBtn" type="button" disabled>Leave</button>
+        <span class="body-xs muted" id="callStatus">Allow the microphone when the browser asks.</span>
+      </div>
+      <div id="callMessage" class="message body-s" hidden></div>
+    </section>
+
+    <section class="card">
       <h2 class="title-l">Failure injection</h2>
       <p class="body-s muted">
         Make this app misbehave, then watch Hookdeck absorb it: the event stays queued and is retried until the app
@@ -58,6 +73,7 @@
     </section>
   </main>
   <script src="/app.js"></script>
+  <script type="module" src="/call.js"></script>
   <script src="/scenes/scenes.js"></script>
   <script src="/topology-pane/topology-pane.js"></script>
   <script src="/topology.js"></script>

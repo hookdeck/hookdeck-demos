@@ -2,6 +2,9 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import * as path from 'path';
 import { WebhookReceiver } from 'livekit-server-sdk';
+import { spawn, ChildProcess } from 'child_process';
+import { randomBytes } from 'crypto';
+import { mintToken } from './token';
 import { applyEvent, LiveKitEvent, summarise } from './call-log';
 import { loadLog, readDeliveries, recordDelivery, saveLog } from './store';
 import { CONNECTION, PORT, SOURCE_TYPE } from './config';
@@ -20,6 +23,38 @@ const log = loadLog();
 
 const app = express();
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Join a call from the browser. The API secret stays here: the page gets a short-lived token that
+// can join one room, never the key or the secret.
+app.post('/api/token', express.json(), async (req: Request, res: Response) => {
+  const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || `call-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}`;
+  const identity = `web-${randomBytes(3).toString('hex')}`;
+  res.json({ url: process.env.LIVEKIT_URL, token: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, identity), room, identity });
+});
+
+// Optional: a second participant that publishes demo media, so one person alone still gets a two-person call.
+// It is what `npm run activity` does for each participant, and needs the LiveKit CLI (`lk`) on the PATH.
+const test_participants = new Map<string, ChildProcess>();
+app.post('/api/test-participant', express.json(), (req: Request, res: Response) => {
+  const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  if (!room) return res.status(400).json({ error: 'Join a call first.' });
+  if (test_participants.has(room)) return res.json({ ok: true, already: true });
+  const child = spawn('lk', ['room', 'join', '--identity', 'test-participant', '--publish-demo', room], {
+    stdio: 'ignore',
+    env: { ...process.env, LK_NO_SKILLS_PROMPT: '1', LIVEKIT_URL: process.env.LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET },
+  });
+  child.on('error', () => { test_participants.delete(room); });
+  child.on('exit', () => { test_participants.delete(room); });
+  // A demo participant never outstays a demo
+  setTimeout(() => child.kill(), 10 * 60 * 1000).unref();
+  test_participants.set(room, child);
+  child.once('error', (error: any) => { if (!res.headersSent) res.status(501).json({ error: error.code === 'ENOENT' ? 'The LiveKit CLI (lk) is not installed: brew install livekit-cli.' : error.message }); });
+  setTimeout(() => { if (!res.headersSent) res.json({ ok: true }); }, 400);
+});
+app.post('/api/test-participant/stop', express.json(), (req: Request, res: Response) => {
+  test_participants.get(String(req.body?.room))?.kill();
+  res.json({ ok: true });
+});
 
 // Failure injection, to show Hookdeck absorbing a slow or failing app
 const chaos = { fail_next: 0, delay_seconds: 0 };

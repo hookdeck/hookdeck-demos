@@ -71,3 +71,17 @@ test('WebhookReceiver accepts a signed body and rejects a changed one', async ()
   assert.equal((await receiver.receive(body, jwt)).event, 'room_started');
   await assert.rejects(receiver.receive(body + ' ', jwt));
 });
+
+test('a minted token joins one room, can publish, expires and carries no secret', async () => {
+  const { TokenVerifier } = await import('livekit-server-sdk');
+  const { mintToken } = await import('../src/token');
+  const key = 'APItest', secret = 'a-test-secret-that-is-long-enough-for-hs256';
+  const jwt = await mintToken(key, secret, 'room-1', 'web-abc');
+  const claims = await new TokenVerifier(key, secret).verify(jwt);
+  assert.equal(claims.sub, 'web-abc');
+  assert.equal(claims.video?.room, 'room-1');
+  assert.equal(claims.video?.roomJoin, true);
+  assert.equal(claims.video?.canPublish, true);
+  assert.ok(claims.exp! - claims.nbf! <= 600 + 5);
+  assert.ok(!jwt.includes(secret));
+});

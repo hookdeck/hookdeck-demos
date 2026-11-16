@@ -13,8 +13,18 @@ The demo has three parts: this app, LiveKit Cloud and Hookdeck Event Gateway.
 - **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
 - **Idempotent call log.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
 - **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
+- **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. **Add a test participant** adds a second participant that publishes demo media, so one person alone gets a two-person call.
 - **Event Gateway rules.** The connection deduplicates on the LiveKit event id (`body.id`, 10 minutes) and retries failed deliveries with exponential backoff (8 attempts from 30 seconds).
 - **A data flow pane.** The page's bottom pane shows each webhook travelling from LiveKit Cloud through Event Gateway and `hookdeck listen` to the app, with scripted scenes for a call's lifecycle, a duplicate, a bad signature and an app that is down.
+
+## Quick start
+
+After [setup](#setup) (about five minutes, once):
+
+1. `npm run listen` in one terminal and `npm start` in another.
+2. Open <http://localhost:4000> (or the `PORT` in `.env`).
+3. Select **Join a call** and allow the microphone. Optionally select **Add a test participant**.
+4. Select **Leave**. The call log fills in as the webhooks arrive, and the **Data flow** pane shows each one. The call shows as ended about a minute after the last participant leaves, because LiveKit closes an empty room after its departure timeout.
 
 ## Setup
 
@@ -73,15 +83,15 @@ The page has a **Data flow** pane at the bottom, open by default. **Live** shows
 
 The scenes live in `scenes/livekit-calls.ts` (the kit in `scenes/kit/` is synced from `_shared/scenes`). MP4 captures of the four scenes, landscape and square, are in `scenes/captures/`. To render them again: `npm run capture -- livekit-call-lifecycle`.
 
-## Generate activity
+## Generate activity from the command line (optional)
 
-Install the [LiveKit CLI](https://docs.livekit.io/home/cli/) (`brew install livekit-cli`), then:
+The **Join a call** button is the way to try the demo. To generate a call without a browser, install the [LiveKit CLI](https://docs.livekit.io/home/cli/) (`brew install livekit-cli`), which **Add a test participant** also uses, then:
 
 ```bash
 npm run activity
 ```
 
-The script creates a room, joins two test participants with demo media, and lets them leave. The call log shows the room appear, the participants join and leave, and the room finish. Pass a room name and a duration in seconds: `npm run activity -- standup 30`.
+This path needs no browser. The script creates a room, joins two test participants with demo media, and lets them leave. The call log shows the room appear, the participants join and leave, and the room finish. Pass a room name and a duration in seconds: `npm run activity -- standup 30`.
 
 To end a call immediately, delete the room:
 
@@ -136,6 +146,7 @@ livekit/call-log/
 │   ├── listen.ts            # npm run listen
 │   └── setup-hookdeck.ts    # npm run setup
 ├── src/
+│   ├── token.ts             # Mints the short-lived browser token
 │   ├── call-log.ts          # Turns events into calls (idempotent, order-independent)
 │   ├── server.ts            # Express app and the verified webhook endpoint
 │   ├── deliveries.ts        # What the app answered, for the data flow pane
