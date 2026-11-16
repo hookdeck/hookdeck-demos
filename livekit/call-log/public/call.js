@@ -104,7 +104,8 @@ function renderBanner() {
   box.innerHTML = badges.filter(Boolean).join(' ') + story;
 }
 
-// Who is in the call, what each one is, and who is speaking right now.
+// Who is in the call, what each one is, and who is speaking right now. An agent's own state
+// (listening, thinking, speaking) already says when it is talking, so it gets no second badge.
 function renderPeople() {
   // Drop audio elements whose track has ended (a scene's soundtrack that has finished)
   audio_box.querySelectorAll('audio').forEach((a) => { if (!a.srcObject || a.srcObject.getTracks().every((t) => t.readyState === 'ended')) a.remove(); });
@@ -120,7 +121,7 @@ function renderPeople() {
     const name = p === room.localParticipant ? `${p.name || p.identity} (you)` : p.isAgent ? (character(p) || 'Story agent') : (p.name || p.identity);
     const role = p.isAgent ? (p.attributes['lk.agent.state'] || 'joining') : p.identity.startsWith('soundtrack-') ? 'scene soundtrack' : bot ? 'mute player' : 'player';
     const tone = p.isAgent ? 'badge--primary' : p.identity.startsWith('soundtrack-') ? '' : 'badge--success';
-    return `<li>${esc(name)} <span class="badge ${tone}">${esc(role)}</span>${speaking.has(p.identity) ? ' <span class="badge badge--bold_primary">speaking</span>' : ''}</li>`;
+    return `<li>${esc(name)} <span class="badge ${tone}">${esc(role)}</span>${speaking.has(p.identity) && !p.isAgent ? ' <span class="badge badge--bold_primary">speaking</span>' : ''}</li>`;
   }).join('');
 }
 
