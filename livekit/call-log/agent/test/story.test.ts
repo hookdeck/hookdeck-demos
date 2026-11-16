@@ -185,14 +185,15 @@ test('the scene data describes only: no scene text suggests an action', () => {
   for (const s of SCENES) assert.doesNotMatch([s.place, s.sights, s.onward, s.clue].join(' '), LEADING, s.scene);
 });
 
-test('the instructions describe, hand over openly, reveal clues on investigation, and keep bad examples apart', () => {
+test('the instructions describe, end without a tacked-on name, reveal clues on investigation, and keep bad examples apart', () => {
   const text = bramInstructions([{ name: 'Priya', bot: false }, { name: 'Pixel', bot: true }]);
   assert.match(text, /Describe, don't direct/);
   assert.match(text, /A small iron chest sits under the bench, its lock rusted shut\./);
   assert.match(text, /Reveal a clue only when a player investigates that thing/);
   assert.match(text, /one gentle nudge about something to look at, never the solution/);
   assert.match(text, /what the players actually try, including the unexpected/);
-  assert.match(text, /"Priya\?", "What do you do\?" or "The room is yours\."/);
+  assert.match(text, /Never tack a name or a question onto the end \("Priya\?", "What do you do\?"\)/);
+  assert.match(text, /only the names of the travellers listed above, never a name from an example/);
   // the leading lines appear only inside the marked block of examples
   assert.ok(LEADING.test(text) && text.includes(LEADING_BLOCK_START));
   assert.doesNotMatch(withoutLeadingExamples(text), LEADING);
