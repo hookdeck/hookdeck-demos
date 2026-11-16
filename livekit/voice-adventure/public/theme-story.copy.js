@@ -3,7 +3,7 @@ window.HookdeckThemeCopies = window.HookdeckThemeCopies || {};
 window.HookdeckThemeCopies.story = {
   "hero_title": "The Drowned Bell",
   "hero_body": "Come in from the storm, traveller. An innkeeper keeps the ledger and an old lighthouse keeper tells the tale. Every footstep in the room reaches this app as a webhook through Hookdeck.",
-  "join_title": "Join the Table",
+  "join_title": "Join the Tale",
   "join_hint": "Give your name at the door, allow the microphone, and wait for the storyteller to turn to you.",
   "transcript_title": "The Tale So Far",
   "chronicle_title": "The Ledger",
@@ -13,11 +13,11 @@ window.HookdeckThemeCopies.story = {
   "name_placeholder": "Hester will ask at the door",
   "join_btn": "Enter the inn",
   "pixel_add": "Bring Pixel along",
-  "pixel_here": "Pixel sits with you",
-  "leave_btn": "Leave the table",
+  "pixel_here": "Pixel travels with you",
+  "leave_btn": "Leave the tale",
   "continue_btn": "Call Old Bram back",
   "new_btn": "Begin a new tale",
-  "status_connected": "You're seated at the Drowned Bell, {name}.",
+  "status_connected": "You've joined the tale, {name}.",
   "turn_mine_title": "Your Turn",
   "turn_other_title": "{who}'s Turn",
   "turn_mine_sub": "Old Bram waits for you.",
@@ -26,6 +26,6 @@ window.HookdeckThemeCopies.story = {
   "listening_sub": "Old Bram is telling it.",
   "ended_title": "The End",
   "ended_sub": "The lantern is lit and Hollow Mere is quiet again.",
-  "quiet_title": "Old Bram has left the fire",
+  "quiet_title": "Old Bram has fallen silent",
   "quiet_sub": "The tale is waiting where it stopped."
 };

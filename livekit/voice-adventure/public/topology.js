@@ -28,7 +28,7 @@
         }, 1500);
       }
       last_fail = fail_next;
-    } catch { /* the next poll retries */ }
+    } catch (error) { console.warn(`topology: /api/state failed: ${error?.message || error} (the next poll retries)`); }
   }
 
   // The app's own record of calls it made to LiveKit's Ingress API.
@@ -47,7 +47,7 @@
             live.badge('agent', item.ok ? 'ingress created' : 'ingress failed', item.ok ? 'blue' : 'danger', 6);
           });
         }
-      } catch { /* the next poll retries */ }
+      } catch (error) { console.warn(`topology: /api/outbound failed: ${error?.message || error} (the next poll retries)`); }
       first = false;
     };
     poll();

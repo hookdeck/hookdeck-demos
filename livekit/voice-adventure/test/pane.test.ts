@@ -26,7 +26,8 @@ describe('topology pane', () => {
   before(async () => {
     const built = spawnSync('node', [path.join(root, 'scripts', 'build-scenes.mjs')], { cwd: root });
     assert.equal(built.status, 0, String(built.stderr));
-    browser = await chromium.launch();
+    // Playwright's own Chromium if it is installed, otherwise the system Chrome
+    browser = await chromium.launch().catch(() => chromium.launch({ channel: 'chrome' }));
     page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.route('**/api/flow', (route) => route.fulfill({ json: { now: new Date().toISOString(), team_id: 'tm_test', sender_label: 'LiveKit', app_label: 'Call log', messages: [message] } }));
     await page.route('**/api/deliveries', (route) => route.fulfill({ json: [] }));
@@ -67,5 +68,38 @@ describe('topology pane', () => {
     assert.ok((await page.locator('#tp-caption').innerText()).length > 10);
     await page.locator('#tp-next').click();
     assert.match(await page.locator('#tp-count').innerText(), /^2 \//);
+  });
+
+  it('a failing /api/flow is logged with its status, retried with backoff, and recovers', async () => {
+    await page.getByRole('tab', { name: 'Live' }).click();
+    const warnings: string[] = [];
+    page.on('console', (m) => { if (m.type() === 'warning') warnings.push(m.text()); });
+    let calls = 0;
+    await page.unroute('**/api/flow');
+    await page.route('**/api/flow', (route) => {
+      calls++;
+      if (calls <= 2) return route.fulfill({ status: 500, body: 'no' });
+      return route.fulfill({ json: { now: new Date().toISOString(), team_id: 'tm_test', sender_label: 'LiveKit', app_label: 'Call log', messages: [message] } });
+    });
+    await page.evaluate(() => (window as any).pane.feed.resume());
+    await page.waitForFunction(() => true);
+    await page.waitForTimeout(500);
+    assert.ok(warnings.some((w) => w.includes('/api/flow returned 500')), `warnings: ${warnings.join(' | ')}`);
+    // the loop is still alive: a later poll succeeds without anyone touching the page
+    const start = Date.now();
+    while (calls < 3 && Date.now() - start < 12000) await page.waitForTimeout(250);
+    assert.ok(calls >= 3, `polling continued after failures (calls=${calls})`);
+  });
+
+  it('reopening the pane polls straight away', async () => {
+    await page.locator('#tp-toggle').click(); // close
+    await page.waitForTimeout(200);
+    let polled = 0;
+    await page.unroute('**/api/flow');
+    await page.route('**/api/flow', (route) => { polled++; return route.fulfill({ json: { now: new Date().toISOString(), team_id: 'tm_test', sender_label: 'LiveKit', app_label: 'Call log', messages: [message] } }); });
+    await page.locator('#tp-toggle').click(); // reopen
+    await page.waitForTimeout(400);
+    assert.ok(polled >= 1, 'reopening resumed polling at once');
+    assert.ok(await page.evaluate(() => (window as any).pane.feed !== null));
   });
 });

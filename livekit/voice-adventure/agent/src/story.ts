@@ -243,7 +243,7 @@ export function sceneHint(scene_index: number, ending: boolean): string {
     ? 'The story is ending: speak your closing only.'
     : finale
       ? 'This is the finale. Let the players take their time and respond to what they try. When each has had their moment, or a player says they are done, call end_story, and after it answers speak your closing.'
-      : 'Let the players explore as long as they like. Respond to what they actually try, including the unexpected: say what happens and let consequences follow. Call next_scene only when a player clearly chooses to move on.';
+      : 'Let the players explore as long as they like. Respond to what they actually try, including the unexpected: say what happens and let consequences follow. Moving on is handled for you. Never narrate arriving somewhere new, or leaving this place, yourself: the place changes only when the scene note changes, so until then describe what happens here, and if the players head for the way out say only that they set off.';
   return `${where} ${phase}`;
 }
 
@@ -260,7 +260,7 @@ Good lines describe only: "A small iron chest sits under the bench, its lock rus
 Clues sit in the scene for the players to find. Reveal a clue only when a player investigates that thing. If a player says they are stuck or asks for a hint, give one gentle nudge about something to look at, never the solution.
 Respond to what the players actually try, including the unexpected: say what happens and let consequences follow.
 End each reply on the description or on what happens. Never tack a name or a question onto the end ("${example_name}?", "What do you do?"): the page already shows whose turn it is. Use a player's name only where it fits naturally inside a sentence, for example when reacting to what they did, and only the names of the travellers listed above, never a name from an example. Never point at an action. Then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players.${mute} Never ask two questions in one reply.
-Each reply to a player is preceded by a system note about the current scene: follow it. You have only two tools, next_scene and end_story. Call a tool only when the note says to, never to push the group on, and never write or say a tool name or function call in your speech.`;
+Each reply to a player is preceded by a system note about the current scene: follow it. You have only two tools, next_scene and end_story. Call a tool only when the note says to, and never write or say a tool name or function call in your speech.`;
 }
 
 /** What next_scene returns to Bram when a scene starts. */
@@ -294,3 +294,49 @@ export function createTurnRecovery(actions: { commit: () => void; say_again: () 
     get stage() { return stage; },
   };
 }
+
+
+// ---- Deciding, in code, that the players have left the scene ----
+
+/** The question for the small separate model call: has the player chosen to leave by the way out, now? */
+export function leavePrompt(scene_index: number, words: string): { system: string; user: string } | undefined {
+  if (scene_index < 1 || scene_index >= SCENES.length || !words.trim()) return undefined;
+  const scene = SCENES[scene_index - 1];
+  return {
+    system: 'You judge one thing in a spoken adventure. Answer with exactly one word: yes or no.',
+    user: `The players are in ${scene.place}. The way out is: ${scene.onward}. A player just said: "${words.trim().slice(0, 300)}". Has the player chosen to leave this place by that way out now? Answer no for exploring, asking questions, or only mentioning the way out. Answer yes only for a clear decision to go.`,
+  };
+}
+
+export const parseYesNo = (answer: string): boolean => /^\W*yes\b/i.test(answer.trim());
+
+/** Asks the small model whether the players leave. Any error, an empty answer or a missing question counts as no. */
+export async function decideLeave(ask: (prompt: { system: string; user: string }) => Promise<string>, scene_index: number, words: string, log: (line: string) => void = () => undefined): Promise<boolean> {
+  const prompt = leavePrompt(scene_index, words);
+  if (!prompt) return false;
+  try {
+    const answer = await ask(prompt);
+    const yes = parseYesNo(answer);
+    log(`leave check (scene ${scene_index}): "${words.trim().slice(0, 80)}" -> ${yes ? 'yes' : 'no'}`);
+    return yes;
+  } catch (error: any) {
+    log(`leave check failed (${error?.message ?? error}): treated as no`);
+    return false;
+  }
+}
+
+/**
+ * After a player's input and before Bram replies: if the check says the players leave, `move` runs the scene change once. A flag
+ * on the state stops the next_scene tool moving the scene a second time in the same turn.
+ */
+export async function maybeMoveScene(s: { scene_index: number; moved_turn: boolean }, words: string, ask: Parameters<typeof decideLeave>[0], move: () => Promise<void>, log?: (line: string) => void): Promise<boolean> {
+  s.moved_turn = false;
+  if (!(await decideLeave(ask, s.scene_index, words, log))) return false;
+  if (s.moved_turn) return false;
+  s.moved_turn = true;
+  await move();
+  return true;
+}
+
+/** What the next_scene tool answers when code already moved the scene this turn. */
+export const ALREADY_MOVED = 'The scene has already changed this turn. Do not call any tool: describe the new place as the scene note says.';

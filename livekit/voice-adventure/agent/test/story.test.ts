@@ -243,3 +243,44 @@ test('turn recovery: progress (the turn ended, or the agent started thinking or 
     assert.deepEqual(log, ['commit', 'commit']);
   } finally { mock.timers.reset(); }
 });
+
+import { ALREADY_MOVED, decideLeave, leavePrompt, maybeMoveScene, parseYesNo } from '../src/story.ts';
+
+test('leave check: the prompt carries the scene, its way out and the words; no prompt before the story or in the finale', () => {
+  const p = leavePrompt(1, 'We go through the north door')!;
+  assert.match(p.user, /north door/);
+  assert.match(p.user, /Drowned Bell/);
+  assert.equal(leavePrompt(0, 'x'), undefined);
+  assert.equal(leavePrompt(4, 'x'), undefined);
+  assert.equal(leavePrompt(1, '  '), undefined);
+});
+
+test('leave check: yes and no parse; anything else is no', () => {
+  assert.equal(parseYesNo('Yes'), true);
+  assert.equal(parseYesNo(' yes.'), true);
+  assert.equal(parseYesNo('No'), false);
+  assert.equal(parseYesNo('maybe yes'), false);
+  assert.equal(parseYesNo(''), false);
+});
+
+test('leave check: an error or a timeout falls back to no', async () => {
+  const logs: string[] = [];
+  assert.equal(await decideLeave(async () => { throw new Error('boom'); }, 1, 'we leave', (l) => logs.push(l)), false);
+  assert.match(logs[0], /treated as no/);
+});
+
+test('scene move: yes moves the scene once, no does not, and the tool cannot move it again this turn', async () => {
+  const state = { scene_index: 1, moved_turn: false };
+  let moves = 0;
+  const move = async () => { moves++; state.scene_index++; };
+  assert.equal(await maybeMoveScene(state, 'We go through the north door', async () => 'yes', move), true);
+  assert.equal(moves, 1);
+  assert.equal(state.moved_turn, true); // the next_scene tool returns ALREADY_MOVED while this is set
+  assert.match(ALREADY_MOVED, /already changed/);
+  // the next player turn starts clean, and a "no" leaves the scene alone
+  assert.equal(await maybeMoveScene(state, 'I look at the bridge', async () => 'no', move), false);
+  assert.equal(moves, 1);
+  assert.equal(state.moved_turn, false);
+  assert.equal(await maybeMoveScene(state, 'I leave', async () => { throw new Error('x'); }, move), false);
+  assert.equal(moves, 1);
+});

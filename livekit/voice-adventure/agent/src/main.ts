@@ -18,10 +18,10 @@ import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { describeLlm, makeLlm } from './llm.ts';
+import { askShort, describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
 import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
-import { SCENES, BREVITY, bramInstructions, createEndWatcher, moveOnVerdict, sceneHint, sceneStartNote, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
+import { SCENES, BREVITY, bramInstructions, createEndWatcher, moveOnVerdict, sceneHint, sceneStartNote, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, maybeMoveScene, ALREADY_MOVED, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -69,6 +69,8 @@ interface StoryData {
   handed_off: boolean;
   /** The last few exchanges, one line each, saved with the story state. */
   summary: string[];
+  /** The scene was changed by the leave check this turn: the next_scene tool must not move it again. */
+  moved_turn: boolean;
   /** This agent picked up a story another agent left. */
   resumed: boolean;
 }
@@ -161,6 +163,25 @@ async function fetchBram(session: voice.AgentSession<StoryData>, greet: string[]
   session.updateAgent(Bram.build(data.players));
 }
 
+/** Starts the next scene: state, saved story, the page's scene attribute, and the soundtrack through the app's Ingress call. Returns its start note. */
+async function changeScene(data: StoryData): Promise<string> {
+  const index = nextSceneIndex(data.scene_index, data.short_mode);
+  onSceneStart(data, index);
+  const { scene } = SCENES[index];
+  data.last_scene_at = Date.now();
+  saveState(data);
+  publish(data.ctx, { 'story.scene': scene, 'story.turn': '', 'story.turn_name': '' });
+  let music = 'with its soundtrack';
+  try {
+    const response = await fetch(`${APP_URL}/api/scene`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: data.ctx.room.name, scene }), signal: AbortSignal.timeout(15000) });
+    if (!response.ok) music = 'without music';
+  } catch {
+    music = 'without music';
+  }
+  console.log(`scene change accepted: scene ${index + 1} ${scene}`);
+  return sceneStartNote(index, music);
+}
+
 class Hester extends voice.Agent<StoryData> {
   /**
    * Opens the evening. Called once the room is connected and the first guest is at the door, because
@@ -249,7 +270,12 @@ class Bram extends voice.Agent<StoryData> {
     console.log(`player input counted: inputs=${data.inputs}`);
     data.summary = addSummaryLine(data.summary, data.players.find((p) => p.identity === listening_to(this.session))?.name ?? 'Player', new_message.textContent);
     saveState(data);
-    chat_ctx.addMessage({ role: 'system', content: sceneHint(data.scene_index, data.ending) });
+    // A small separate check decides whether the player has chosen to leave by the way out; the code then changes the scene itself
+    // and Bram describes arriving. Otherwise he stays in this scene.
+    const words = new_message.textContent;
+    let moved_note: string | undefined;
+    await maybeMoveScene(data, words, askShort, async () => { moved_note = await changeScene(data); }, (line) => console.log(line));
+    chat_ctx.addMessage({ role: 'system', content: moved_note ? `${moved_note} Do not call any tool.` : sceneHint(data.scene_index, data.ending) });
   }
 
   static build(players: Player[], resume?: StoryState) {
@@ -269,6 +295,7 @@ class Bram extends voice.Agent<StoryData> {
           parameters: z.object({}),
           execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
             const data = ctx.userData;
+            if (data.moved_turn) return ALREADY_MOVED;
             // Not chained after another call, and not before the scene has had its real player inputs. A refusal returns nothing, so Bram does not speak again.
             const verdict = data.scene_index === 0 ? 'ok' : moveOnVerdict(data.input_since_call);
             if (verdict !== 'ok' || data.scene_index >= SCENES.length) {
@@ -277,26 +304,7 @@ class Bram extends voice.Agent<StoryData> {
               ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
               return undefined;
             }
-            const index = nextSceneIndex(data.scene_index, data.short_mode);
-            onSceneStart(data, index);
-            const { scene } = SCENES[index];
-            data.last_scene_at = Date.now();
-            saveState(data);
-            publish(data.ctx, { 'story.scene': scene, 'story.turn': '', 'story.turn_name': '' });
-            let music = 'with its soundtrack';
-            try {
-              const response = await fetch(`${APP_URL}/api/scene`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ room: data.ctx.room.name, scene }),
-                signal: AbortSignal.timeout(15000),
-              });
-              if (!response.ok) music = 'without music';
-            } catch {
-              music = 'without music';
-            }
-            console.log(`next_scene accepted: scene ${index + 1} ${scene}`);
-            return sceneStartNote(index, music);
+            return changeScene(data);
           },
         }),
         end_story: llm.tool({
@@ -339,7 +347,7 @@ export default defineAgent({
         preemptiveGeneration: { enabled: false },
       },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, moved_turn: false },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {
