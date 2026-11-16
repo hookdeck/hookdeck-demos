@@ -1,6 +1,6 @@
 /**
  * Sends correctly signed Retell events to your Hookdeck source, without placing a call.
- * The signature uses RETELL_API_KEY, the same key Hookdeck verifies with.
+ * The signature uses RETELL_SECRET_KEY (or RETELL_API_KEY when that is the webhook-badged key), the same key Hookdeck verifies with.
  *
  * Usage:
  *   npm run simulate                      # call_started, call_ended, call_analyzed for the latest lead
@@ -15,10 +15,11 @@ import { signRetellBody } from '../src/retell-signature';
 
 const PORT = process.env.PORT || '4000';
 const URL_ = process.env.RETELL_EVENTS_URL;
-const KEY = process.env.RETELL_API_KEY;
+// Retell signs with the API key that carries the webhook badge; the Hookdeck source verifies with it
+const KEY = process.env.RETELL_SECRET_KEY || process.env.RETELL_API_KEY;
 
 if (!URL_ || !KEY) {
-  console.error('❌ RETELL_EVENTS_URL and RETELL_API_KEY must be set in .env (run npm run setup).');
+  console.error('❌ RETELL_EVENTS_URL and RETELL_SECRET_KEY (or RETELL_API_KEY) must be set in .env (run npm run setup).');
   process.exit(1);
 }
 
