@@ -21,15 +21,15 @@ function soundtrackVolume() {
 function soundtrackSlider() {
   if ($('soundtrackVolume')) return;
   const label = document.createElement('label');
-  label.className = 'body-xs muted';
-  label.textContent = 'Soundtrack volume ';
+  label.className = 'field inline volume';
+  label.innerHTML = '<span class="subtitle-xs">Soundtrack volume</span>';
   const input = Object.assign(document.createElement('input'), { id: 'soundtrackVolume', type: 'range', min: '0', max: '1', step: '0.05', value: String(soundtrackVolume()) });
   input.addEventListener('input', () => {
     try { localStorage.setItem(SOUNDTRACK_VOLUME_KEY, input.value); } catch { /* per-browser convenience only */ }
     for (const el of audio_box.querySelectorAll('audio[data-soundtrack]')) el.volume = Number(input.value);
   });
   label.append(input);
-  $('storyBanner').after(label);
+  $('callStatus').after(label);
 }
 soundtrackSlider();
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -39,8 +39,8 @@ function peopleList() {
   if (!list) {
     list = document.createElement('ul');
     list.id = 'callPeople';
-    list.className = 'body-s';
-    $('callStatus').after(list);
+    list.className = 'people-list body-s';
+    $('storyBanner').after(list);
   }
   return list;
 }
@@ -55,11 +55,10 @@ function renderBanner() {
   const agent = agent_of();
   if (agent?.attributes?.['story.state'] === 'ended') story_ended = true;
   if (!room && !story_ended) { box.hidden = true; return; }
-  const parts = [];
   if (story_ended) {
     box.hidden = false;
-    box.className = 'story-banner ended';
-    box.innerHTML = '<strong>The story has ended.</strong> <button class="button button--secondary" id="newStoryBtn" type="button">Start a new story</button>';
+    box.className = 'message success body-m story-banner';
+    box.innerHTML = '<span>The story has ended.</span> <button class="button" id="newStoryBtn" type="button">Start a new story</button>';
     $('newStoryBtn').addEventListener('click', async () => {
       story_ended = false;
       room?.disconnect();
@@ -70,16 +69,18 @@ function renderBanner() {
   }
   const attrs = agent?.attributes || {};
   const turn = attrs['story.turn'];
+  const badges = [];
+  let tone = 'info';
   if (turn && room) {
-    parts.push(turn === room.localParticipant.identity
-      ? '<strong class="your-turn">Your turn</strong>'
-      : `<strong>${esc(attrs['story.turn_name'] || 'Another player')}'s turn</strong>`);
-  } else if (agent) parts.push('Listening to the story');
+    const mine = turn === room.localParticipant.identity;
+    if (mine) tone = 'success';
+    badges.push(`<strong>${mine ? 'Your turn' : `${esc(attrs['story.turn_name'] || 'Another player')}'s turn`}</strong>`);
+  } else if (agent) badges.push('Listening to the story');
   const sound = [...(room?.remoteParticipants.values() || [])].find((p) => p.identity.startsWith('soundtrack-'));
-  if (sound) parts.push(`Now playing: ${esc(sound.identity.slice('soundtrack-'.length))} soundtrack`);
-  box.hidden = !parts.length;
-  box.className = 'story-banner';
-  box.innerHTML = parts.join(' · ');
+  if (sound) badges.push(`<span class="badge badge--primary">Now playing: ${esc(sound.identity.slice('soundtrack-'.length))}</span>`);
+  box.hidden = !badges.length;
+  box.className = `message ${tone} body-m story-banner`;
+  box.innerHTML = badges.join(' ');
 }
 
 // Who is in the call, what each one is, and who is speaking right now.
@@ -90,12 +91,15 @@ function renderPeople() {
   if (!room) { peopleList().innerHTML = ''; return; }
   const speaking = new Set(room.activeSpeakers.map((p) => p.identity));
   const everyone = [room.localParticipant, ...room.remoteParticipants.values()];
+  const pixel_here = everyone.some((p) => p.identity === 'bot-pixel');
+  $('testBtn').disabled = pixel_here || !room;
+  $('testBtn').textContent = pixel_here ? 'Pixel has joined' : 'Add Pixel, a mute player';
   peopleList().innerHTML = everyone.map((p) => {
+    const bot = p.identity.startsWith('bot-');
     const name = p === room.localParticipant ? `${p.name || p.identity} (you)` : p.isAgent ? (character(p) || 'Story agent') : (p.name || p.identity);
-    const role = p.isAgent
-      ? (p.attributes['lk.agent.state'] || 'joining')
-      : p.identity.startsWith('soundtrack-') ? 'scene soundtrack' : 'player';
-    return `<li>${speaking.has(p.identity) ? '<strong>speaking</strong> · ' : ''}${esc(name)} · ${esc(role)}</li>`;
+    const role = p.isAgent ? (p.attributes['lk.agent.state'] || 'joining') : p.identity.startsWith('soundtrack-') ? 'scene soundtrack' : bot ? 'mute player' : 'player';
+    const tone = p.isAgent ? 'badge--primary' : p.identity.startsWith('soundtrack-') ? '' : 'badge--success';
+    return `<li>${esc(name)} <span class="badge ${tone}">${esc(role)}</span>${speaking.has(p.identity) ? ' <span class="badge badge--bold_primary">speaking</span>' : ''}</li>`;
   }).join('');
 }
 
@@ -113,7 +117,7 @@ function showLine(id, who, text, final) {
     while (box.children.length > 80) box.firstChild.remove();
   }
   li.className = final ? '' : 'interim';
-  li.innerHTML = `<strong>${esc(who)}</strong> ${esc(text)}`;
+  li.innerHTML = `<span class="badge badge--mono">${esc(who)}</span> <span>${esc(text)}</span>`;
   box.scrollTop = box.scrollHeight;
 }
 
@@ -190,6 +194,7 @@ function set_state(connected) {
   $('joinBtn').disabled = connected;
   $('leaveBtn').disabled = !connected;
   $('testBtn').disabled = !connected;
+  if (!connected) $('testBtn').textContent = 'Add Pixel, a mute player';
 }
 
 $('joinBtn').addEventListener('click', async () => {
@@ -227,8 +232,25 @@ $('leaveBtn').addEventListener('click', async () => {
 
 $('testBtn').addEventListener('click', async () => {
   fail('');
+  $('testBtn').disabled = true;
   const response = await fetch('/api/test-participant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: room_name }) });
   const data = await response.json();
-  if (!response.ok) return fail(data.error);
+  if (!response.ok) { $('testBtn').disabled = false; return fail(data.error); }
   say(`Connected to ${room_name}. Pixel, a mute traveller, has joined.`);
 });
+
+// Test-only: ?demo=mine|other|ended renders the story UI from sample participants, with no call, so the
+// layout can be checked in light and dark without spending anything.
+const demo_state = new URLSearchParams(location.search).get('demo');
+if (demo_state) {
+  const person = (identity, name, extra = {}) => ({ identity, name, isAgent: false, attributes: {}, ...extra });
+  const agent = person('agent-1', '', { isAgent: true, attributes: { 'story.character': 'Old Bram Tallow, storyteller', 'lk.agent.state': 'listening', 'story.turn': demo_state === 'mine' ? 'web-1' : demo_state === 'other' ? 'bot-pixel' : '', 'story.turn_name': 'Pixel', 'story.state': demo_state === 'ended' ? 'ended' : 'playing' } });
+  const remotes = [agent, person('bot-pixel', 'Pixel'), person('soundtrack-cave', 'Soundtrack: cave')];
+  room = { localParticipant: person('web-1', 'Priya'), remoteParticipants: new Map(remotes.map((p) => [p.identity, p])), activeSpeakers: [agent] };
+  $('callStatus').textContent = 'Connected to story-demo as web-1, microphone on.';
+  renderPeople();
+  showLine('a', 'Hester Pennywhistle', 'Ah, Priya, we\'ve been expecting you, and your quiet friend, Pixel.', true);
+  showLine('b', 'Old Bram Tallow', 'The cave is dark and dripping. A stone ledge holds the Lantern. Priya, will you take it and leave by the tunnel, or row across the pool?', true);
+  showLine('c', 'Priya (you)', 'I take the Lantern and row across the pool.', true);
+  showLine('d', 'Pixel', '*Pixel holds the lantern up to the cave wall and taps a carving.*', false);
+}

@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
+import { SCENES, canStartNext, createEndWatcher, guidanceFor, nextSceneIndex } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -46,8 +47,13 @@ interface StoryData {
   last_scene_at: number;
   /** Turns handed over so far, to vary how Bram hands them over. */
   turns: number;
-  /** Players who have had their turn in the current scene: each gets exactly one. */
+  /** Players who have had a turn in the current scene (to rotate fairly), and how many exchanges the scene has had. */
   turn_taken: Set<string>;
+  exchanges: number;
+  /** Test only (STORY_SHORT=1): jump to the finale after the first scene. */
+  short_mode: boolean;
+  /** Finishes the story once the last speech has played out and a short pause has passed. */
+  end_watcher: ReturnType<typeof createEndWatcher> | undefined;
   /** Everyone is in the ledger: once Hester has finished speaking, she fetches Bram. */
   handoff_pending: boolean;
   pending_bots: string[];
@@ -93,14 +99,6 @@ const listening_to = (session: voice.AgentSession<StoryData>): string | undefine
 
 /** What the page shows, published as attributes on the agent's own participant. */
 const publish = (ctx: JobContext, attributes: Record<string, string>) => ctx.room.localParticipant?.setAttributes(attributes).catch(() => undefined);
-
-/** The four scenes, in order. `scene` is the soundtrack the app pulls into the room. */
-const SCENES = [
-  { scene: 'tavern', text: 'the common room of the Drowned Bell on a stormy night, where a hooded stranger slides a salt-stained map across the table' },
-  { scene: 'forest', text: 'the whispering path through the Hollow Wood to the Hollow Mere, where the trees seem to lean in and listen' },
-  { scene: 'cave', text: 'the cave beneath the Mere, dark and dripping, where the Lantern of Hollow Mere is kept and something is breathing' },
-  { scene: 'finale', text: 'the way home with the Lantern, and the one thing the players did that decides how the story ends' },
-] as const;
 
 /** How Bram hands a turn over. The tool rotates through these so he does not end every reply the same way. */
 const HANDOVERS = [
@@ -150,7 +148,7 @@ class Hester extends voice.Agent<StoryData> {
 
   static build() {
     return new Hester({
-      instructions: `You are Hester Pennywhistle, innkeeper of the Drowned Bell, a crooked old inn on the shore of the Hollow Mere. You are brisk, warm and a little nosy, with a dry sense of humour, and you call everyone "love" or "dear". You are a fictional character in a spoken adventure. ${BREVITY}
+      instructions: `You are Hester Pennywhistle, innkeeper of the Drowned Bell, a crooked old inn on the shore of the Hollow Mere. You are brisk, warm and a little nosy, with a dry sense of humour, and you call everyone "love" or "dear". You are a fictional character in a spoken adventure. ${BREVITY} Speak plainly: at most one "love" or "dear" per reply, and no riddles.
 Travellers who come in out of the storm must sign your ledger. A traveller who already gave their name at the door is written in for you: never ask for it and never call write_in_ledger for them. You can hear only one traveller at a time: ask the one you can hear for their first name. When you hear it, call write_in_ledger with it as the whole of your reply, with no words before it, then greet them by name in one short sentence once it returns. Never write or say a tool name or function call. Never mention fetching Old Bram: that is done for you.`,
       tts: new inference.TTS({ model: HESTER_VOICE as any }),
       // A player talking over her must not cut her off
@@ -190,17 +188,19 @@ class Bram extends voice.Agent<StoryData> {
   async onEnter() {
     publish(this.session.userData.ctx, { 'story.character': 'Old Bram Tallow, storyteller' });
     this.session.generateReply({
-      instructions: 'You have just come in from the fire at Hester\'s call. Introduce yourself in one sentence as Old Bram, retired keeper of the Hollow Light, glad of a crowd, and greet the travellers by name. Then call next_scene, set the first scene in two short sentences, and call give_turn for the first player.',
+      instructions: 'You have just come in from the fire at Hester\'s call. Introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, and greet the travellers by name. Then call next_scene, describe the first scene in two short plain sentences, and call give_turn for the first player.',
     });
   }
 
   static build(players: Player[]) {
-    const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak and answers with gestures, which arrive as short text lines like "*Pixel taps the map.*" when you give it the turn)` : p.name)).join(', ');
+    const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak and answers with gestures, which come back to you as short text lines like "*Pixel taps the map.*" when you give it the turn)` : p.name)).join(', ');
     return new Bram({
-      instructions: `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell. You are slow, gravelly and kind, with dry humour and sea-worn turns of phrase, and you love a pause. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers: ${roster}. ${BREVITY} Call tools silently: when you need a tool, call it first in your reply, before you speak, and never write or say a tool name or function call in your speech.
-The story has four scenes. Call next_scene to start each one: it plays that scene's soundtrack and tells you what the scene is. Never call it twice in a row, and never name the scenes in advance.
-For each scene: call next_scene, set the scene in two short sentences, then call give_turn for each player in turn. give_turn tells you how to hand that turn over; follow it. Hand over once per reply and never ask two questions in one reply. React to each answer in one sentence that builds on what the player said, then move to the next player. Never repeat the way you handed over the turn before. A mute traveller such as Pixel never speaks: when you give it the turn, hand it the moment in one short sentence with no question, then stop and wait for its gesture, and weave that gesture into your reaction. Now and then, without being asked, mention what the mute traveller is doing in the corner of the scene. After the last player's turn in a scene, call next_scene again.
-The finale is the last scene: give every player a turn, then speak a closing of up to four sentences that gathers up what each player did and ends the story with a memorable last line. Only after that, call end_story. Do not rush the ending. Keep the whole story to about six minutes.`,
+      instructions: `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell: warm, gravelly and kind. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers: ${roster}. ${BREVITY}
+Speak plainly. Describe in simple words what the players see, hear and can do. Use at most one sea-worn phrase per reply, and none is fine. No riddles, no vague hints and no spooky foreshadowing unless a player asks for a clue. Every reply makes it obvious what just happened and what the players can do next. Every choice you offer names concrete options a player can act on, such as "the north door or the rope bridge".
+Call tools silently: when you need a tool, call it first in your reply, before you speak, and never write or say a tool name or function call in your speech.
+The story has four scenes, and the players decide when each one ends. Call next_scene to start a scene: it plays the soundtrack and tells you the place, what is there and the ways onward. Describe the scene in two short plain sentences that mention one or two of those things. Then call give_turn for a player and rotate between the players. give_turn tells you how to hand that turn over; follow it, once per reply, and never ask two questions in one reply. React to each answer in one or two plain sentences that use what the player said.
+Aim for two or three exchanges per scene. A scene ends when the players' choices take them somewhere new, or when you offer a clear choice to move on that names concrete options and they take it: then call next_scene. Never move on unprompted. A mute traveller such as Pixel never decides: its gestures can hint at the way forward, but only a spoken choice from a player moves the group on. When you give a mute traveller the turn, the gesture comes back as the tool's result: weave it into your reaction.
+The finale is the last scene. Give each player a turn there, then call end_story, and only after the tool answers, speak your closing: at most three sentences that say what the players did and end the story. Do not say anything after the closing.`,
       tts: new inference.TTS({ model: BRAM_VOICE as any }),
       allowInterruptions: false,
       tools: {
@@ -210,11 +210,15 @@ The finale is the last scene: give every player a turn, then speak a closing of 
           execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
             const data = ctx.userData;
             // The model sometimes repeats a call: ignore a second one within 20 seconds
-            if (Date.now() - data.last_scene_at < 20000) return `Scene ${data.scene_index} is already under way: set it in two short sentences.`;
-            if (data.scene_index >= SCENES.length) return 'The story is over: speak your closing, then call end_story.';
-            const { scene, text } = SCENES[data.scene_index++];
+            if (Date.now() - data.last_scene_at < 20000) return `Scene ${data.scene_index} is already under way: describe it in two short plain sentences.`;
+            if (data.scene_index >= SCENES.length) return 'The story is over: call end_story and speak your closing.';
+            if (data.scene_index > 0 && !canStartNext(data.exchanges, data.short_mode)) return `The players have only just begun this scene. Give them another turn first, and offer the way onward only after at least two exchanges.`;
+            const index = nextSceneIndex(data.scene_index, data.short_mode);
+            data.scene_index = index + 1;
+            const { scene, place, sights, onward } = SCENES[index];
             data.last_scene_at = Date.now();
             data.turn_taken.clear();
+            data.exchanges = 0;
             publish(data.ctx, { 'story.scene': scene, 'story.turn': '', 'story.turn_name': '' });
             let music = 'with its soundtrack';
             try {
@@ -228,8 +232,8 @@ The finale is the last scene: give every player a turn, then speak a closing of 
             } catch {
               music = 'without music';
             }
-            const last = data.scene_index === SCENES.length ? ' This is the finale: every player gets a turn, then your closing.' : '';
-            return `Scene ${data.scene_index} of ${SCENES.length} has started ${music}: ${text}. Set it in two short sentences, then call give_turn for the first player.${last}`;
+            const finale = index === SCENES.length - 1;
+            return `Scene ${index + 1} of ${SCENES.length} has started ${music}. Place: ${place}. What is here: ${sights}. ${finale ? 'This is the finale: give each player a turn, then call end_story and speak your closing.' : `Ways onward, to offer later as one clear choice: ${onward}.`} Describe it in two short plain sentences that mention one or two of these things, then call give_turn for a player.`;
           },
         }),
         give_turn: llm.tool({
@@ -239,18 +243,17 @@ The finale is the last scene: give every player a turn, then speak a closing of 
             const data = ctx.userData;
             const match = data.players.find((p) => p.name.toLowerCase() === player.toLowerCase());
             if (!match) return `No player called ${player}.`;
-            // Exactly one turn per player per scene, so the story keeps moving
-            if (data.turn_taken.has(match.identity)) {
-              const unturned = data.players.find((p) => !data.turn_taken.has(p.identity));
-              if (unturned) return `${match.name} has had a turn in this scene. Give the turn to ${unturned.name} instead.`;
-            }
-            if (data.players.every((p) => data.turn_taken.has(p.identity))) {
-              return data.scene_index >= SCENES.length
-                ? 'Every player has had a turn in the finale. Do not give another turn: speak your closing now (up to four sentences, ending on a memorable last line), then call end_story.'
-                : 'Every player has had a turn in this scene. Do not give another turn: bring the scene to a close in one sentence and call next_scene.';
-            }
+            const guidance = guidanceFor(data.exchanges);
+            const finale = data.scene_index >= SCENES.length;
+            const scene = SCENES[Math.min(data.scene_index, SCENES.length) - 1];
+            if (guidance === 'nudge' && !finale) return `The scene has gone on long enough. Do not give another open turn: say in one plain sentence that it is time to move on, offer the way onward as one clear choice (${scene?.onward}), and when a player picks, call next_scene.`;
+            if (guidance === 'nudge' && finale) return 'The finale has had enough turns. Call end_story now, then speak your closing.';
+            data.exchanges += 1;
             data.turn_taken.add(match.identity);
+            const waiting = data.players.filter((p) => !data.turn_taken.has(p.identity)).map((p) => p.name);
             const how = HANDOVERS[data.turns++ % HANDOVERS.length];
+            const choice = guidance === 'offer_choice' && !finale && scene ? ` The scene has had enough exploring, so make this hand-over the choice to move on: name the concrete options (${scene.onward}) and ask which the group takes. Only call next_scene once a player has chosen.` : '';
+            const next = waiting.length ? ` Players who have not had a turn in this scene yet: ${waiting.join(', ')}.` : '';
             publish(data.ctx, { 'story.turn': match.identity, 'story.turn_name': match.name, 'story.turn_seq': String(data.turns) });
             if (match.bot) {
               // A mute player answers with a gesture, sent as a chat message. Wait for it here, so it comes back as this
@@ -262,26 +265,21 @@ The finale is the last scene: give every player a turn, then speak a closing of 
                 switchListener(ctx.session as voice.AgentSession<StoryData>, match.identity);
               });
               return gesture
-                ? `${match.name} is mute and answers with a gesture: ${gesture} Hand-over done: now react to it in one or two sentences, weaving it into the story, then go straight on to the next player or the next scene. Do not ask ${match.name} anything.`
-                : `${match.name} is mute and does nothing you can see this turn: describe one small silent gesture of ${match.name}'s yourself in one sentence, then go on to the next player or the next scene.`;
+                ? `${match.name} is mute and answers with a gesture: ${gesture} React to it in one or two plain sentences, then give the turn to a player who can speak. ${match.name}'s gesture can hint at the way forward but never decides it. Do not ask ${match.name} anything.${next}`
+                : `${match.name} is mute and does nothing you can see this turn: say in one plain sentence what ${match.name} is doing, then give the turn to a player who can speak.${next}`;
             }
             switchListener(ctx.session as voice.AgentSession<StoryData>, match.identity);
-            return `You can hear ${match.name} now. Hand the turn to ${match.name}: ${how}. Once, in this reply only.`;
+            return `You can hear ${match.name} now. Hand the turn to ${match.name}: ${how}. Once, in this reply only.${choice}${next}`;
           },
         }),
         end_story: llm.tool({
-          description: 'End the story after your closing. The room closes shortly.',
+          description: 'End the story. Call it before your closing; it tells you when to speak the closing.',
           parameters: z.object({}),
           execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
-            const job = ctx.userData.ctx;
-            publish(job, { 'story.state': 'ended', 'story.turn': '', 'story.turn_name': '' });
-            // Let the farewell finish playing, then leave the room
-            setTimeout(async () => {
-              // The last soundtrack stops with the story
-              await fetch(`${APP_URL}/api/scene/end`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: job.room.name }), signal: AbortSignal.timeout(10000) }).catch(() => undefined);
-              job.shutdown('the story is over');
-            }, 14000);
-            return 'The story has ended. Say one last short farewell line to the travellers now.';
+            // The story is marked ended, and the agent leaves, only after the closing has played out in full and a short pause
+            ctx.userData.end_watcher?.arm();
+            console.log(`end_story called at ${new Date().toISOString()}`);
+            return 'Speak your closing now: at most three plain sentences that say what the players did and end the story. Do not call any tool afterwards and do not say anything after it.';
           },
         }),
       },
@@ -294,8 +292,18 @@ export default defineAgent({
     const session = new voice.AgentSession<StoryData>({
       stt: new inference.STT({ model: 'deepgram/nova-3', language: 'en' }),
       llm: makeLlm(),
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set(), handoff_pending: false, pending_bots: [], handed_off: false, gesture_waiters: new Map() },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set(), exchanges: 0, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, handoff_pending: false, pending_bots: [], handed_off: false, gesture_waiters: new Map() },
     });
+    const job_ctx = ctx;
+    session.userData.end_watcher = createEndWatcher(() => {
+      // The closing has played out and the pause has passed: mark the story ended, stop the soundtrack, leave
+      console.log(`story ended at ${new Date().toISOString()}: closing played out, pause done`);
+      publish(job_ctx, { 'story.state': 'ended', 'story.turn': '', 'story.turn_name': '' });
+      fetch(`${APP_URL}/api/scene/end`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: job_ctx.room.name }), signal: AbortSignal.timeout(10000) })
+        .catch(() => undefined)
+        .finally(() => setTimeout(() => job_ctx.shutdown('the story is over'), 3000));
+    });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => session.userData.end_watcher?.onAgentState(e.oldState, e.newState));
     // Once Hester has finished the sentence that follows the last name in the ledger, she fetches Old Bram
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => {
       const data = session.userData;

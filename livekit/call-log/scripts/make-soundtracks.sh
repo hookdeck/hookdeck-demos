@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Generates the four scene soundtracks in public/soundtracks/ with ffmpeg: synthesized tones and
-# filtered noise, 3 minutes each, quiet (mean about -36 dB) so the storyteller stays audible. A
-# soundtrack keeps playing until the next scene replaces it, so each is longer than a scene usually is.
-# Nothing here is sampled from anyone else's audio, so there is nothing to license.
-# Ogg Vorbis, because LiveKit's URL ingress plays it in real time.
+# Makes the four scene soundtracks in public/soundtracks/ from public-domain and CC0 field recordings
+# (sources and authors: public/soundtracks/CREDITS.md). Each is a 3 minute excerpt, loudness-normalized to a
+# quiet level (about -35 dB mean) so the storyteller stays audible, with fades, as Ogg Vorbis (LiveKit's URL
+# ingress plays it in real time). Download the originals into ./src first, with the names below.
+#
+#   mkdir src && cd src
+#   curl -LO https://upload.wikimedia.org/wikipedia/commons/5/54/Cafe_ambiance.ogg
+#   curl -L -o forest-src.ogg https://archive.org/download/aporee_45368_51521/EveshamMorningChorus.ogg
+#   curl -L -o cave-src.mp3 https://archive.org/download/aporee_53174_60761/Day1Caves.mp3
+#   curl -L -o finale-src.mp3 https://archive.org/download/aporee_58337_66923/StruerHarborsoundofheaveywindandsailboats.mp3
 set -euo pipefail
-cd "$(dirname "$0")/../public/soundtracks"
-D=180
-OUT=(-ac 2 -ar 44100 -c:a vorbis -strict -2 -q:a 2)
-FADE="afade=t=in:d=3,afade=t=out:st=$((D - 4)):d=4"
+cd "$(dirname "$0")/.."
+SRC="${1:-src}"
+OUT=public/soundtracks
 
-# tavern: a warm A minor pad with slow swells, and a low hum like a crowd in the next room
-ffmpeg -v error -y -f lavfi -i "sine=f=110:d=$D" -f lavfi -i "sine=f=165:d=$D" -f lavfi -i "sine=f=220:d=$D" -f lavfi -i "sine=f=261.63:d=$D" -f lavfi -i "anoisesrc=d=$D:c=brown:a=0.3" \
-  -filter_complex "[0][1][2][3]amix=inputs=4:normalize=0,tremolo=f=0.35:d=0.45,vibrato=f=0.2:d=0.15,lowpass=f=900,volume=0.18[p];[4]bandpass=f=250:w=200,tremolo=f=0.11:d=0.5,volume=9dB[h];[p][h]amix=inputs=2:normalize=0,$FADE" "${OUT[@]}" tavern.ogg
+# make <source file> <start seconds> <name> <target loudness LUFS>
+make() {
+  ffmpeg -v error -y -ss "$2" -t 180 -i "$SRC/$1" \
+    -af "loudnorm=I=$4:TP=-8:LRA=7,afade=t=in:d=3,afade=t=out:st=176:d=4" \
+    -ac 2 -ar 32000 -c:a vorbis -strict -2 -q:a 1 "$OUT/$3.ogg"
+}
 
-# forest: wind (band-passed pink noise) that rises and falls, with a faint shimmer
-ffmpeg -v error -y -f lavfi -i "anoisesrc=d=$D:c=pink:a=0.5" -f lavfi -i "sine=f=1318:d=$D" -f lavfi -i "sine=f=1760:d=$D" \
-  -filter_complex "[0]bandpass=f=500:w=400,tremolo=f=0.1:d=0.7,tremolo=f=0.23:d=0.4[w];[1][2]amix=inputs=2:normalize=0,tremolo=f=5:d=0.6,tremolo=f=0.12:d=0.9,volume=0.03[s];[w][s]amix=inputs=2:normalize=0,volume=18dB,$FADE" "${OUT[@]}" forest.ogg
-
-# cave: a low drone with slow beating and dark noise
-ffmpeg -v error -y -f lavfi -i "sine=f=55:d=$D" -f lavfi -i "sine=f=58:d=$D" -f lavfi -i "sine=f=82.4:d=$D" -f lavfi -i "anoisesrc=d=$D:c=brown:a=0.4" \
-  -filter_complex "[0][1][2]amix=inputs=3:normalize=0,tremolo=f=0.1:d=0.35,volume=0.4[d];[3]lowpass=f=300,tremolo=f=0.13:d=0.4,volume=0.5[n];[d][n]amix=inputs=2:normalize=0,volume=0.35,$FADE" "${OUT[@]}" cave.ogg
-
-# finale: a rising C major pad
-ffmpeg -v error -y -f lavfi -i "sine=f=130.81:d=$D" -f lavfi -i "sine=f=164.81:d=$D" -f lavfi -i "sine=f=196:d=$D" -f lavfi -i "sine=f=261.63:d=$D" -f lavfi -i "sine=f=329.63:d=$D" \
-  -filter_complex "[0][1][2][3][4]amix=inputs=5:normalize=0,tremolo=f=0.18:d=0.3,vibrato=f=0.15:d=0.1,lowpass=f=1200,volume=0.2,afade=t=in:d=20,afade=t=out:st=$((D - 4)):d=4" "${OUT[@]}" finale.ogg
+make Cafe_ambiance.ogg 300 tavern -34
+make forest-src.ogg 400 forest -31
+make cave-src.mp3 200 cave -34
+make finale-src.mp3 150 finale -34

@@ -95,14 +95,16 @@ body.no-verify .tp-pill.tp-ok { display: none; }
 .timeline li { color: var(--neutral-fg-2); display: flex; gap: var(--s2); flex-wrap: wrap; }
 .timeline .dup { color: var(--color-danger); }
 
-/* Story banner and transcript */
-.story-banner { margin-top: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--neutral-outline-3); border-radius: var(--s2); }
-.story-banner.ended { border-color: var(--color-success, #16a34a); }
-.your-turn { color: var(--color-success, #16a34a); }
-.transcript { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; display: grid; gap: var(--s1); }
-.transcript li { color: var(--neutral-fg-1); }
+/* Story banner, people, transcript and volume: ds tokens and the page's own .message, .badge and .request styles */
+.story-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
+.people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); color: var(--neutral-fg-1); }
+.people-list li { display: inline-flex; align-items: center; gap: var(--s2); }
+.volume input[type="range"] { accent-color: var(--primary-fg); width: 140px; }
+.transcript { list-style: none; margin: 0; padding: var(--s4); max-height: 240px; overflow-y: auto; display: grid; gap: var(--s2); border-radius: var(--radius); background: var(--bg-1); border: 1px dashed var(--neutral-outline-3); }
+.transcript:empty { display: none; }
+.transcript li { color: var(--neutral-fg-1); display: flex; gap: var(--s2); align-items: baseline; }
 .transcript li.interim { color: var(--neutral-fg-3); }
-.transcript strong { margin-right: var(--s1); }
+.transcript .badge { flex: none; }
 
 /* "How it works": the explanations, out of the way of the controls */
 .how-dialog { max-width: 640px; width: calc(100% - 32px); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); padding: var(--s6); background: var(--bg-0); color: inherit; }
