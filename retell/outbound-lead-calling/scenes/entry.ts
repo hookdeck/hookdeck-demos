@@ -17,6 +17,9 @@ export const scenes = {
   'retell-app-down-mobile': rc.createAppDownMobileScene,
 }
 
+/** The platform's name, shown in the square captures' eyebrow: "{ Hookdeck + Retell }". */
+export const brand = 'Retell'
+
 /** The scripted scenarios, in the order the page and the capture script list them. */
 export const scenarios = [
   { id: 'retell-call-lifecycle', title: 'Call lifecycle', captions: rc.callLifecycleCaptions },

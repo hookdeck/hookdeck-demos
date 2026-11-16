@@ -37,7 +37,7 @@
   <div id="frame">
     <div id="host"></div>
     <aside id="side">
-      <div class="eyebrow">{ Hookdeck + ElevenLabs }</div>
+      <div class="eyebrow" id="eyebrow">{ Hookdeck }</div>
       <h1 class="title" id="title"></h1>
       <div class="step" id="step"></div>
       <div class="text" id="text"></div>
@@ -52,7 +52,13 @@
       const name = q.get('scene') || 'delivery';
       document.body.dataset.aspect = aspect;
       document.documentElement.classList.toggle('dark', q.get('theme') === 'dark');
-      const { scenes, scenarios } = window.HookdeckScenes;
+      const { scenes, scenarios, brand } = window.HookdeckScenes;
+      if (q.get('list')) {
+        window.__scenarioIds = scenarios.map((s) => s.id);
+        return;
+      }
+      // The platform's name for the square captures' eyebrow, from the demo's scenes/entry.ts.
+      if (brand) document.getElementById('eyebrow').textContent = '{ Hookdeck + ' + brand + ' }';
       const info = scenarios.find((s) => s.id === name);
       const create = scenes[aspect === 'square' ? name + '-mobile' : name];
       if (!create) throw new Error('Unknown scene ' + name);
