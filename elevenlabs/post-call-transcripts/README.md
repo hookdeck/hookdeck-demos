@@ -13,7 +13,7 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 
 | Feature | Where to look |
 |---|---|
-| **Signature verification** at the edge with Hookdeck's `ELEVENLABS` source type | `scripts/setup.ts` creates the source and sets the secret |
+| **Signature verification** in Event Gateway with Hookdeck's `ELEVENLABS` source type | `scripts/setup.ts` creates the source and sets the secret |
 | **Deduplication** on `body.type` + `body.data.conversation_id` | the `RULES` in `scripts/setup.ts`; `npm run send -- --duplicate` |
 | **Retries**: make the app fail, watch Hookdeck retry, then replay | the "Retry demo" card in the UI |
 | **Large payloads**: transcripts and base64 MP3 audio | the Size column in the UI; `npm run send -- --large 8` |

@@ -4,8 +4,8 @@
  * with rejection_cause VERIFICATION_FAILED and no event). The request records come from the
  * Hookdeck API, so the check does not rely on the HTTP status alone.
  *
- * ELEVENLABS sources are verified after ingestion, not at the edge: a bad signature still
- * gets HTTP 200 and is recorded as rejected (VERIFICATION_FAILED, no event). Observed 15 minutes
+ * For ELEVENLABS sources, Event Gateway answers a bad signature with HTTP 200 and records
+ * the request as rejected (VERIFICATION_FAILED, no event). Observed 15 minutes
  * after source creation, so this is not config propagation.
  *
  * Usage: npm run probe
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
     const ok = good
       ? res.status === 200 && record?.verified === true
       
-      // The edge may answer 401 or 200 here; the request record is what proves the rejection.
+      // Event Gateway answers 401 or 200 here, depending on the source type; the request record proves the rejection.
       : (res.status === 401 || res.status === 200) && record?.verified === false && record?.rejection_cause === 'VERIFICATION_FAILED';
     all_ok = all_ok && ok;
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${good ? 'correctly signed' : 'badly signed    '} HTTP ${res.status}, verified=${record?.verified}, rejection_cause=${record?.rejection_cause ?? 'none'}`);
