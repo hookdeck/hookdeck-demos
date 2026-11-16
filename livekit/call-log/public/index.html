@@ -17,13 +17,8 @@
       <div class="lined__box">
         <span class="eyebrow mono-xs">{ LiveKit call log }</span>
         <h1 class="title-2xl">A spoken adventure, told by <em>room webhooks</em></h1>
-        <p class="body-m">
-          Join a call, and an AI innkeeper and storyteller run a short adventure for you and any friends. At each new scene this server pulls a
-          soundtrack into the room with LiveKit's Ingress API. LiveKit reports everything that happens (people joining, dropping,
-          soundtracks starting and ending) as webhooks to a Hookdeck source, and Hookdeck delivers them to this server, which builds a
-          call log and a session chronicle from them.
-          Watch each webhook arrive in the <strong>Data flow</strong> pane at the bottom of the page.
-        </p>
+        <p class="body-m">An AI innkeeper and storyteller run a short adventure. Every room event reaches this app as a webhook through Hookdeck.</p>
+        <p><button class="button button--secondary" id="howBtn" type="button">How it works</button></p>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
       <span class="lined__dots lined__dots--top_right"></span>
@@ -33,16 +28,13 @@
 
     <section class="card">
       <h2 class="title-l">Join a call</h2>
-      <p class="body-s muted">
-        Joins a LiveKit room from this browser with your microphone. Hester, the innkeeper, greets you by the name you type (or asks for it), then fetches Old Bram, who tells the story. Open this page in a second tab to play with two voices, or add Pixel, a mute scripted player whose gestures Old Bram weaves into the story. Only one player is heard at a
-        time: the storyteller gives each a turn. Allow the microphone when the browser asks, and start the agent with <code>npm run agent</code>.
-      </p>
+      <p class="body-s muted">Type a name, join, and allow the microphone. Wait for your turn.</p>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Your name</span><input class="input" id="playerName" maxlength="24" placeholder="optional" style="width:140px"></label>
         <button class="button" id="joinBtn" type="button">Join a call</button>
         <button class="button button--secondary" id="testBtn" type="button" disabled>Add Pixel, a mute player</button>
         <button class="button button--secondary" id="leaveBtn" type="button" disabled>Leave</button>
-        <span class="body-xs muted" id="callStatus">Allow the microphone when the browser asks.</span>
+        <span class="body-xs muted" id="callStatus"></span>
       </div>
       <div id="callMessage" class="message body-s" hidden></div>
       <div id="storyBanner" class="story-banner body-m" hidden></div>
@@ -50,22 +42,18 @@
 
     <section class="card">
       <h2 class="title-l">Transcript</h2>
-      <p class="body-s muted">What the innkeeper, the storyteller and the players say, as the agents' speech-to-text hears it.</p>
       <ul id="transcript" class="transcript body-s"></ul>
     </section>
 
     <section class="card">
       <h2 class="title-l">Session chronicle</h2>
-      <p class="body-s muted">Built only from the webhooks this server receives. Players, the story agent and soundtracks are told apart by the participant <code>kind</code> in each payload.</p>
+      <p class="body-s muted">Built from webhooks only.</p>
       <div id="chronicle" class="requests"></div>
     </section>
 
     <section class="card">
       <h2 class="title-l">Failure injection</h2>
-      <p class="body-s muted">
-        Make this app misbehave, then watch Hookdeck absorb it: the event stays queued and is retried until the app
-        answers 2xx. LiveKit itself is never kept waiting.
-      </p>
+      <p class="body-s muted">Make the app fail or slow down; Hookdeck retries.</p>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Fail the next</span><input class="input narrow" id="failNext" type="number" min="0" max="10" value="2"></label>
         <label class="field inline"><span class="subtitle-xs">Delay each answer (s)</span><input class="input narrow" id="delay" type="number" min="0" max="60" value="0"></label>
@@ -84,10 +72,32 @@
 
     <section class="card">
       <h2 class="title-l">Webhook deliveries</h2>
-      <p class="body-s">Every request that reached this server, newest first. A repeated event id is a duplicate delivery and doesn't change the log.</p>
       <div style="overflow-x: auto"><table class="deliveries body-s"><thead><tr><th>Received</th><th>Event</th><th>Event id</th><th>Result</th></tr></thead><tbody id="deliveries"></tbody></table></div>
     </section>
   </main>
+  <dialog id="howDialog" class="how-dialog">
+    <div class="section-head">
+      <h2 class="title-l">How it works</h2>
+      <button class="button button--secondary" id="howClose" type="button">Close</button>
+    </div>
+    <h3 class="subtitle-m">The story</h3>
+    <p class="body-s">Hester, the innkeeper, greets you by the name you typed (or asks for it) and writes it in her ledger, then fetches Old Bram, who tells the story. Both are LiveKit agents (<code>npm run agent</code>) using LiveKit Inference for speech and the LLM. Only one player is heard at a time: Old Bram gives each a turn. Open a second tab to play with two voices, or add Pixel, a mute scripted player whose gestures Old Bram weaves into the story.</p>
+    <h3 class="subtitle-m">Soundtracks</h3>
+    <p class="body-s">At each new scene this app pulls a soundtrack into the room with LiveKit's Ingress API. The soundtrack's volume slider only changes what you hear.</p>
+    <h3 class="subtitle-m">Webhooks</h3>
+    <p class="body-s">LiveKit sends every room event (people joining and dropping, tracks, soundtracks starting and ending, the room finishing) to a Hookdeck source. Hookdeck delivers them to this app through <code>hookdeck listen</code>, deduplicates repeats on the event <code>id</code> and retries failed deliveries. The app verifies each webhook's signed token with LiveKit's <code>WebhookReceiver</code>.</p>
+    <h3 class="subtitle-m">Session chronicle and calls</h3>
+    <p class="body-s">Both are built only from the webhooks this app receives. Players, the story agent and soundtracks are told apart by the participant <code>kind</code> in each payload.</p>
+    <h3 class="subtitle-m">Failure injection</h3>
+    <p class="body-s">Make this app fail or answer slowly. Hookdeck keeps each event and retries it until the app answers 2xx, so LiveKit is never kept waiting.</p>
+    <h3 class="subtitle-m">Webhook deliveries</h3>
+    <p class="body-s">Every request that reached this app, newest first. A repeated event <code>id</code> is a duplicate delivery and doesn't change the log. Watch each one arrive in the <strong>Data flow</strong> pane at the bottom of the page.</p>
+  </dialog>
+  <script>
+    document.getElementById('howBtn').addEventListener('click', () => document.getElementById('howDialog').showModal());
+    document.getElementById('howClose').addEventListener('click', () => document.getElementById('howDialog').close());
+    document.getElementById('howDialog').addEventListener('click', (e) => { if (e.target.id === 'howDialog') e.target.close(); });
+  </script>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>
   <script src="/scenes/scenes.js"></script>

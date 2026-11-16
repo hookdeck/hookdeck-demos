@@ -103,3 +103,8 @@ body.no-verify .tp-pill.tp-ok { display: none; }
 .transcript li { color: var(--neutral-fg-1); }
 .transcript li.interim { color: var(--neutral-fg-3); }
 .transcript strong { margin-right: var(--s1); }
+
+/* "How it works": the explanations, out of the way of the controls */
+.how-dialog { max-width: 640px; width: calc(100% - 32px); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); padding: var(--s6); background: var(--bg-0); color: inherit; }
+.how-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+.how-dialog h3 { margin: 16px 0 4px; }
