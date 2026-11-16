@@ -151,7 +151,7 @@ const flow = createFlowState({
   apiKey: process.env.HOOKDECK_API_KEY || '',
   senderLabel: 'Retell',
   appLabel: 'Demo app',
-  // RETELL sources are verified after ingestion: a bad signature still gets 200
+  // For RETELL sources, Event Gateway answers a bad signature with 200
   rejectedStatus: 200,
   sources: flow_sources,
   appEntries: () => flow_entries,

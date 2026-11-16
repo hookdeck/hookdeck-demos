@@ -102,7 +102,7 @@
         ${isRejected(m)
           ? `<span class="badge badge--danger">Rejected &middot; ${m.sender_status}</span>
              <div class="fd-sub">${esc((m.rejection_cause || 'VERIFICATION_FAILED').toLowerCase().replace(/_/g, ' '))}; ${m.sender_status === 200
-               ? 'the sender still gets 200, because this source type is verified after ingestion'
+               ? 'the sender still gets 200 for this source type'
                : `the sender gets ${m.sender_status}`}</div>`
           : m.verified
             ? `<span class="badge badge--success">Verified &middot; 200</span>

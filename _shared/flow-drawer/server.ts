@@ -75,9 +75,9 @@ export interface FlowStateOptions {
   /** Most recent requests to show per source. Default 15. */
   limit?: number;
   /**
-   * What Event Gateway answers the sender when verification fails. 401 (default) for source
-   * types verified at the edge, such as VAPI and HMAC; 200 for source types verified after
-   * ingestion, such as ELEVENLABS, where the request is still recorded as VERIFICATION_FAILED.
+   * What Event Gateway answers the sender when verification fails, which depends on the source
+   * type: 401 (default) for types such as VAPI and HMAC, 200 for types such as ELEVENLABS and
+   * RETELL. Either way the request is recorded as VERIFICATION_FAILED and no event is created.
    */
   rejectedStatus?: 401 | 200;
 }
