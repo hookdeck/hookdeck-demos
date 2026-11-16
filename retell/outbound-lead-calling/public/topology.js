@@ -46,7 +46,7 @@
           const start_call = item.kind === 'start_call';
           live.badge('app', start_call ? 'Calling' : 'adding context', 'blue', 6);
           live.send('start', { data: { outbound: item.kind } }).then(() => {
-            live.badge('agent', start_call ? 'call created' : 'context added', item.ok ? 'blue' : 'danger', 6);
+            live.badge('agent', start_call ? 'call created' : item.ok ? 'context added' : 'update failed', item.ok ? 'blue' : 'danger', 6);
           });
         }
       } catch { /* the next poll retries */ }
