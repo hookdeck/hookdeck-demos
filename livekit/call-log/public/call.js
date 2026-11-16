@@ -20,9 +20,9 @@ $('joinBtn').addEventListener('click', async () => {
   $('joinBtn').disabled = true;
   say('Getting a token…');
   try {
-    const { url, token, room: name, identity } = await (await fetch('/api/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).json();
+    const { url, token, room: name, identity } = await (await fetch('/api/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: $('playerName').value }) })).json();
     room = new Room();
-    room.on(RoomEvent.Disconnected, () => { say('Left the call. The room closes a few seconds later; room_finished can take up to a minute.'); set_state(false); room = null; });
+    room.on(RoomEvent.Disconnected, () => { say('Left the call. The session ends, and the chronicle closes, about a minute after the last person leaves.'); set_state(false); room = null; });
     await room.connect(url, token);
     await room.localParticipant.setMicrophoneEnabled(true);
     room_name = name;
@@ -46,5 +46,5 @@ $('testBtn').addEventListener('click', async () => {
   const response = await fetch('/api/test-participant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: room_name }) });
   const data = await response.json();
   if (!response.ok) return fail(data.error);
-  say(`Connected to ${room_name}. A test participant is publishing demo media.`);
+  say(`Connected to ${room_name}. A silent bot player, Pixel, has joined.`);
 });

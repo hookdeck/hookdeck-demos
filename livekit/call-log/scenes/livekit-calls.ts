@@ -3,7 +3,7 @@ import { accepted, bounce, captions, down, draw, drawable, dropAt, packet, pulse
 import { createLive } from './kit/live'
 import { chipRow, connectorLabel, statusChip, type Tone, type ToneChip, toneTo } from './kit/parts'
 import { defineScene, type SceneBuild } from './kit/scene'
-import { type Canvas, connector, type Connector, node, type Node, type Point } from './kit/stage'
+import { type Canvas, connector, type Connector, node, type Node, type Point, type Stage } from './kit/stage'
 
 // The LiveKit call-log topology, defined once, run three ways:
 //
@@ -16,8 +16,10 @@ import { type Canvas, connector, type Connector, node, type Node, type Point } f
 //             renders them to MP4;
 //   detail    clicking a node or packet fills the pane's detail strip (host code, not here).
 //
-// LiveKit only sends webhooks to this app, so the topology is one way: LiveKit Cloud, Event Gateway,
-// `hookdeck listen`, the app. LiveKit signs each webhook with a JWT in the `Authorization` header
+// LiveKit sends webhooks to this app: LiveKit Cloud, Event Gateway, `hookdeck listen`, the app. The
+// live view adds one outbound edge, `start`: when the game master starts a scene, the app calls
+// LiveKit's Ingress API to pull that scene's soundtrack into the room, and the ingress webhooks come
+// back through the same path. The scripted scenes show the webhook path only. LiveKit signs each webhook with a JWT in the `Authorization` header
 // and the app verifies it with `WebhookReceiver`, so the first chip is `Receive`, not `Verify`: the
 // source is a generic webhook source, and the bad-signature scene shows the app doing the check.
 // (The chip keeps the id `verify` because the kit's live feed addresses it by that id.)
@@ -88,7 +90,9 @@ interface Layout {
   /** Where each node's status chip sits, relative to the node's center. */
   status: { agent: Point, gateway: Point, listen: Point, app: Point }
   chips: Point
-  edgeLabels: { in: Point, out: Point, local: Point }
+  edgeLabels: { in: Point, out: Point, local: Point, start: Point }
+  /** How far the app-to-LiveKit connector bulges out of the row (down on desktop, right on phones). Live view only. */
+  startBulge: number
   caption: { x: number, y: number, max: number, size: number }
   /** The part of the canvas the diagram uses, for a page that crops to it (SVG viewBox). */
   crop: string
@@ -109,7 +113,8 @@ const DESKTOP: Layout = {
     app: { x: 0, y: 118 },
   },
   chips: { x: 690, y: 624 },
-  edgeLabels: { in: { x: 425, y: 512 }, out: { x: 957, y: 512 }, local: { x: 1475, y: 512 } },
+  edgeLabels: { in: { x: 425, y: 512 }, out: { x: 957, y: 512 }, local: { x: 1475, y: 512 }, start: { x: 960, y: 717 } },
+  startBulge: 230,
   caption: { x: 60, y: 870, max: 78, size: 38 },
   crop: '30 270 1860 420',
 }
@@ -129,9 +134,25 @@ const PHONE: Layout = {
     app: { x: 0, y: 85 },
   },
   chips: { x: 320, y: 540 },
-  edgeLabels: { in: { x: 320, y: 262 }, out: { x: 320, y: 650 }, local: { x: 320, y: 888 } },
+  edgeLabels: { in: { x: 320, y: 262 }, out: { x: 320, y: 650 }, local: { x: 320, y: 888 }, start: { x: 596, y: 532 } },
+  startBulge: 110,
   caption: { x: 0, y: 0, max: 0, size: 0 },
   crop: '0 0 640 1090',
+}
+
+/** The live view's layouts: room for the outbound `start` edge, so LiveKit's status chip sits above its node. */
+const LIVE_DESKTOP: Layout = {
+  ...DESKTOP,
+  status: { agent: { x: 0, y: -118 }, gateway: { x: 0, y: -150 }, listen: { x: 0, y: 118 }, app: { x: 0, y: -118 } },
+  crop: '30 270 1860 520',
+}
+const LIVE_PHONE: Layout = {
+  ...PHONE,
+  agent: { x: 300, y: 90, w: 440, h: 120 },
+  gateway: { x: 300, y: 410, w: 460, h: 170 },
+  listen: { x: 300, y: 745, w: 440, h: 120 },
+  app: { x: 300, y: 975, w: 440, h: 120 },
+  edgeLabels: { in: { x: 300, y: 262 }, out: { x: 300, y: 650 }, local: { x: 300, y: 888 }, start: { x: 596, y: 532 } },
 }
 
 // ---- Components ----
@@ -144,16 +165,31 @@ const CAPABILITIES = [
 ] as const
 
 type NodeId = 'agent' | 'gateway' | 'listen' | 'app'
-type EdgeId = 'in' | 'out' | 'local'
+type EdgeId = 'in' | 'out' | 'local' | 'start'
 
 interface Parts {
   nodes: Record<NodeId, Node>
-  edges: Record<EdgeId, Connector>
-  edgeLabels: Record<EdgeId, SVGGElement>
+  /** `start` exists only in the live view. */
+  edges: Partial<Record<EdgeId, Connector>> & Record<'in' | 'out' | 'local', Connector>
+  edgeLabels: Partial<Record<EdgeId, SVGGElement>> & Record<'in' | 'out' | 'local', SVGGElement>
   chips: Record<string, ToneChip>
 }
 
-function buildParts(build: Pick<SceneBuild, 'stage'>, layout: Layout): Parts {
+/**
+ * The connector from the app back to LiveKit: it leaves the app, loops around the row (under it on
+ * desktop, to its right on phones) and arrives at LiveKit. `connector()` styles the path; the loop
+ * replaces its geometry.
+ */
+function loopConnector(stage: Stage, from: Point, to: Point, dir: 'h' | 'v', bulge: number): Connector {
+  const base = connector(stage, from, to, dir)
+  const d = dir === 'h'
+    ? `M ${from.x} ${from.y} C ${from.x} ${from.y + bulge}, ${to.x} ${to.y + bulge}, ${to.x} ${to.y}`
+    : `M ${from.x} ${from.y} C ${from.x + bulge} ${from.y}, ${to.x + bulge} ${to.y}, ${to.x} ${to.y}`
+  base.path.setAttribute('d', d)
+  return { path: base.path, d, length: base.path.getTotalLength(), dir: 'h' }
+}
+
+function buildParts(build: Pick<SceneBuild, 'stage'>, layout: Layout, with_start = false): Parts {
   const { stage } = build
   const L = layout
   const nodes: Record<NodeId, Node> = {
@@ -165,15 +201,19 @@ function buildParts(build: Pick<SceneBuild, 'stage'>, layout: Layout): Parts {
   const ends = L.dir === 'h'
     ? { from: ['right', 'right', 'right'], to: ['left', 'left', 'left'] } as const
     : { from: ['bottom', 'bottom', 'bottom'], to: ['top', 'top', 'top'] } as const
-  const edges: Record<EdgeId, Connector> = {
+  const edges: Parts['edges'] = {
     in: connector(stage, nodes.agent[ends.from[0]], nodes.gateway[ends.to[0]], L.dir),
     out: connector(stage, nodes.gateway[ends.from[1]], nodes.listen[ends.to[1]], L.dir),
     local: connector(stage, nodes.listen[ends.from[2]], nodes.app[ends.to[2]], L.dir),
   }
-  const edgeLabels: Record<EdgeId, SVGGElement> = {
+  const edgeLabels: Parts['edgeLabels'] = {
     in: connectorLabel(stage, { ...L.edgeLabels.in, label: 'POST' }),
     out: connectorLabel(stage, { ...L.edgeLabels.out, label: 'WSS' }),
     local: connectorLabel(stage, { ...L.edgeLabels.local, label: 'HTTP' }),
+  }
+  if (with_start) {
+    edges.start = loopConnector(stage, L.dir === 'h' ? nodes.app.bottom : nodes.app.right, L.dir === 'h' ? nodes.agent.bottom : nodes.agent.right, L.dir, L.startBulge)
+    edgeLabels.start = connectorLabel(stage, { ...L.edgeLabels.start, label: 'INGRESS' })
   }
   const chips = chipRow(stage.overlay, { ...L.chips, items: [...CAPABILITIES], size: L.dir === 'h' ? 20 : 17, gap: L.dir === 'h' ? 14 : 8 })
   return { nodes, edges, edgeLabels, chips }
@@ -232,7 +272,7 @@ function makeCtx(b: SceneBuild, parts: Parts, layout: Layout, id: ScenarioId): C
 }
 
 /** Sends a packet along an edge. Returns the time it arrives. */
-function send(c: Ctx, edge: EdgeId, at: number, o: { label?: string, big?: boolean, end?: 'into' | 'arrive' }): number {
+function send(c: Ctx, edge: 'in' | 'out' | 'local', at: number, o: { label?: string, big?: boolean, end?: 'into' | 'arrive' }): number {
   const p = packet(c.stage, c.parts.edges[edge], { big: o.big, label: o.label })
   return travel(c.tl, p, at, o.end ?? 'into', o.big ? 1.9 : 1.2)
 }
@@ -434,17 +474,17 @@ export const badSignatureCaptions = captionsBy['livekit-bad-signature']
 export const appDownCaptions = captionsBy['livekit-app-down']
 
 /** Per-scene crop of the desktop canvas (SVG viewBox), for a page that shows the diagram without the empty slide around it. */
-export const desktopCrop = DESKTOP.crop
+export const desktopCrop = LIVE_DESKTOP.crop
 
 /**
  * The live scene: the same components, no steps. Everything is on stage from the start, and
  * `scene.live` (a LiveDriver) launches packets and sets badges as the page's feeds report events.
- * Node ids: agent, gateway, listen, app. Edge ids: in, out, local. Chip ids: verify (labelled Receive), store, dedup, retry.
+ * Node ids: agent, gateway, listen, app. Edge ids: in, out, local, start (app to LiveKit's Ingress API). Chip ids: verify (labelled Receive), store, dedup, retry.
  */
 function live(layout: Layout, name: string) {
   return defineScene(name, (b) => {
-    const parts = buildParts(b, layout)
-    b.live(createLive({ stage: b.stage, nodes: parts.nodes, edges: parts.edges, chips: parts.chips }))
+    const parts = buildParts(b, layout, true)
+    b.live(createLive({ stage: b.stage, nodes: parts.nodes, edges: parts.edges as Record<string, Connector>, chips: parts.chips }))
     for (const l of Object.values(parts.edgeLabels))
       gsap.set(l, { autoAlpha: 1 })
     for (const c of Object.values(parts.chips))
@@ -452,5 +492,5 @@ function live(layout: Layout, name: string) {
   }, { canvas: layout.canvas })
 }
 
-export const createLiveScene = live(DESKTOP, 'live')
-export const createLiveMobileScene = live(PHONE, 'live-mobile')
+export const createLiveScene = live(LIVE_DESKTOP, 'live')
+export const createLiveMobileScene = live(LIVE_PHONE, 'live-mobile')

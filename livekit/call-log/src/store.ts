@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { CallLog, emptyLog } from './call-log';
+import { Chronicle, emptyChronicle } from './chronicle';
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const LOG_FILE = path.join(DATA_DIR, 'call-log.json');
@@ -17,6 +18,21 @@ export function loadLog(): CallLog {
 export function saveLog(log: CallLog): void {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(LOG_FILE, JSON.stringify(log, null, 2));
+}
+
+const CHRONICLE_FILE = path.join(DATA_DIR, 'chronicle.json');
+
+export function loadChronicle(): Chronicle {
+  try {
+    return JSON.parse(fs.readFileSync(CHRONICLE_FILE, 'utf-8'));
+  } catch {
+    return emptyChronicle();
+  }
+}
+
+export function saveChronicle(chronicle: Chronicle): void {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(CHRONICLE_FILE, JSON.stringify(chronicle, null, 2));
 }
 
 export interface Delivery {

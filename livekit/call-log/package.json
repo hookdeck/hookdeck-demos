@@ -11,9 +11,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --require ts-node/register --test test/*.test.ts",
     "build:scenes": "node scripts/build-scenes.mjs",
-    "capture": "ts-node scenes/kit/capture/capture.ts"
+    "capture": "ts-node scenes/kit/capture/capture.ts",
+    "agent": "npm install --prefix agent --no-audit --no-fund --silent && npm start --prefix agent"
   },
-  "description": "Hookdeck + LiveKit: a call log built from room, participant and egress webhooks",
+  "description": "Hookdeck + LiveKit: a spoken adventure with an AI game master, with a call log and session chronicle built from room, participant and ingress webhooks",
   "license": "ISC",
   "dependencies": {
     "dotenv": "^16.3.1",

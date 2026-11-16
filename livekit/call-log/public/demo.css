@@ -89,3 +89,8 @@ footer { color: var(--neutral-fg-3); }
 .input.narrow { width: 72px; }
 /* The default WEBHOOK source verifies nothing, so the detail strip's "Verified" pill would overclaim */
 body.no-verify .tp-pill.tp-ok { display: none; }
+
+/* Chronicle */
+.timeline { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.timeline li { color: var(--neutral-fg-2); display: flex; gap: var(--s2); flex-wrap: wrap; }
+.timeline .dup { color: var(--color-danger); }

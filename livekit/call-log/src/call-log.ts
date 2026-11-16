@@ -11,7 +11,7 @@ export interface LiveKitEvent {
   createdAt: number | string;
   event: string;
   room?: { sid?: string; name?: string; creationTime?: number | string; creationTimeMs?: number | string };
-  participant?: { sid?: string; identity?: string; name?: string; joinedAt?: number | string; joinedAtMs?: number | string; disconnectReason?: string };
+  participant?: { sid?: string; identity?: string; name?: string; kind?: string; joinedAt?: number | string; joinedAtMs?: number | string; disconnectReason?: string };
   egressInfo?: EgressInfo;
   [key: string]: unknown;
 }
@@ -44,6 +44,8 @@ export interface ParticipantEntry {
   joined_at?: number; // ms
   left_at?: number; // ms
   disconnect_reason?: string;
+  /** AGENT for the game master, INGRESS for a soundtrack; absent for a player */
+  kind?: string;
 }
 
 export interface RecordingLink {
@@ -145,6 +147,7 @@ export function applyEvent(log: CallLog, event: LiveKitEvent): ApplyResult {
       if (!p?.identity) break;
       const entry = (session.participants[p.identity] ||= { identity: p.identity });
       entry.name = p.name || entry.name;
+      entry.kind = p.kind || entry.kind;
       if (event.event === 'participant_joined') {
         entry.joined_at = min(entry.joined_at, toMs(p.joinedAtMs) ?? toMs(p.joinedAt) ?? created_ms);
       } else {

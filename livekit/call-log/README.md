@@ -1,30 +1,41 @@
-# LiveKit call log with Hookdeck
+# LiveKit story night with Hookdeck
 
-A call log built from LiveKit webhooks. LiveKit Cloud sends room, participant and egress (recording) events to a Hookdeck source. Hookdeck delivers them to this app, which builds one entry per room session: start, end, duration, participants and recording links.
+A short spoken adventure for one or more players, told by an AI game master, with everything that happens in the room reported back as webhooks. Players join a LiveKit room from the page. A host agent asks each player's name, then hands over to a game master that runs a four-scene story. At each scene the app pulls a soundtrack into the room with LiveKit's Ingress API. LiveKit Cloud sends the room, participant, track and ingress events to a Hookdeck source, Hookdeck delivers them to this app, and the app builds a call log and a session chronicle from them.
 
 ```
-LiveKit Cloud --webhook--> Hookdeck source --> hookdeck listen --> this app (:4000)
+players ──► LiveKit room ◄── agent (intro, then game master) ──► this app: POST /api/scene
+               │                                                      │ Ingress API: soundtrack
+               └──webhooks──► Hookdeck source ──► hookdeck listen ──► this app (:4000)
 ```
 
-The demo has three parts: this app, LiveKit Cloud and Hookdeck Event Gateway.
+The demo has three parts: this app (and its agent), LiveKit Cloud and Hookdeck Event Gateway. The agent uses LiveKit Inference for speech-to-text, the language model and text-to-speech, so the only credentials are your LiveKit project's API key and secret.
 
 ## What it shows
 
 - **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
 - **Idempotent call log.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
 - **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
-- **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. **Add a test participant** adds a second participant that publishes demo media, so one person alone gets a two-person call.
+- **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get a game master.
+- **A soundtrack per scene.** At each new scene the game master calls a function tool. The tool posts to the app (`POST /api/scene`, local only), and the app asks LiveKit's Ingress API to pull that scene's soundtrack from a URL into the room. LiveKit reports `ingress_started`, `ingress_ended` and the track events back through Event Gateway.
+- **A session chronicle.** The page builds a timeline of the session from the webhooks it receives: who joined and when, who dropped (`participant_connection_aborted`), each scene's soundtrack starting and ending, and the session length. It tells players, the game master and soundtracks apart with `participant.kind` in the payload (`AGENT` for the agent, `INGRESS` for a soundtrack, absent for a player). See [`src/chronicle.ts`](src/chronicle.ts).
 - **Event Gateway rules.** The connection deduplicates on the LiveKit event id (`body.id`, 10 minutes) and retries failed deliveries with exponential backoff (8 attempts from 30 seconds).
 - **A data flow pane.** The page's bottom pane shows each webhook travelling from LiveKit Cloud through Event Gateway and `hookdeck listen` to the app, with scripted scenes for a call's lifecycle, a duplicate, a bad signature and an app that is down.
 
 ## Quick start
 
-After [setup](#setup) (about five minutes, once):
+After [setup](#setup) (about five minutes, once), run three things in three terminals:
 
-1. `npm run listen` in one terminal and `npm start` in another.
-2. Open <http://localhost:4000> (or the `PORT` in `.env`).
-3. Select **Join a call** and allow the microphone. Optionally select **Add a test participant**.
-4. Select **Leave**. The call log fills in as the webhooks arrive, and the **Data flow** pane shows each one. The call shows as ended about a minute after the last participant leaves, because LiveKit closes an empty room after its departure timeout.
+```bash
+npm run listen   # Hookdeck forwards the webhooks to the app
+npm start        # the app
+npm run agent    # the game master (installs agent/ on first run)
+```
+
+1. Open <http://localhost:4000> (or the `PORT` in `.env`).
+2. Enter a name if you like, select **Join a call** and allow the microphone. Marla, the host, greets you and asks your first name, then the game master takes over.
+3. To play with friends, open the page in a second tab or on another machine and select **Join a call** there. To play alone with company, select **Add a bot player**: Pixel is a silent bot, and the game master voices its turns.
+4. Play: the game master sets four scenes and gives each player a turn. The agent hears one player at a time, so wait for your turn.
+5. Select **Leave** when you're done. The **Session chronicle**, the call log and the **Data flow** pane fill in as the webhooks arrive. A session ends, and its chronicle closes, about a minute after the last person leaves, because LiveKit closes an empty room after its departure timeout.
 
 ## Setup
 
@@ -77,15 +88,31 @@ npm start        # the app
 
 Open <http://localhost:4000>.
 
+## The story and the agent
+
+`npm run agent` starts a worker (`agent/src/main.ts`, built with [`@livekit/agents`](https://docs.livekit.io/agents/) for Node.js) that registers with your LiveKit project as `story-gm`. It needs Node.js 22.18 or later. The page's token dispatches it when the first player joins, so there is nothing to configure in the LiveKit dashboard.
+
+1. **Marla**, the intro agent, asks each player's first name and calls `register_player`. It switches which player it listens to after each name.
+2. The game master takes over through `llm.handoff`. It runs four scenes (a tavern, a forest, a cave and a finale), calls `next_scene` at each one to start the soundtrack, and calls `give_turn` to listen to one player at a time. It keeps each turn to a couple of short sentences.
+3. After the finale it calls `end_story` and leaves the room.
+
+Speech-to-text (Deepgram Nova 3), the language model (OpenAI GPT-4.1 mini) and text-to-speech (Cartesia Sonic 3) all run on [LiveKit Inference](https://docs.livekit.io/agents/models/), billed to your LiveKit project, so there are no other keys. The agent calls the app at `http://localhost:4000` (set `STORY_APP_URL` if the app runs elsewhere).
+
+## Soundtracks
+
+The four 14 second soundtracks in `public/soundtracks/` (`tavern.ogg`, `forest.ogg`, `cave.ogg`, `finale.ogg`) are generated by [`scripts/make-soundtracks.sh`](scripts/make-soundtracks.sh) with ffmpeg from synthesized tones and filtered noise, kept quiet so the game master stays audible. They contain no one else's audio, so there is nothing to license. Run the script to change them.
+
+LiveKit Cloud fetches the file itself, so the URL must be public: `localhost` doesn't work. By default the app points at this folder in the repository (`raw.githubusercontent.com/hookdeck/hookdeck-demos/main/livekit/call-log/public/soundtracks/<scene>.ogg`). To host the files yourself, set `SOUNDTRACK_BASE_URL` in `.env`, or `SOUNDTRACK_URL_TAVERN` (and `_FOREST`, `_CAVE`, `_FINALE`) for one scene. If a soundtrack can't be fetched, the story carries on without music.
+
 ## The data flow pane
 
-The page has a **Data flow** pane at the bottom, open by default. **Live** shows the demo as it runs: each webhook travels from LiveKit Cloud through Event Gateway (receive, store, dedup, retry) and `hookdeck listen` to the app. Click a node or a packet for that webhook's details below the diagram: each delivery attempt, what the app answered and a **View in Hookdeck** link. The other tabs play scripted scenes with captions: **Call lifecycle**, **Duplicate dropped**, **Bad signature** and **App down, retry succeeds**.
+The page has a **Data flow** pane at the bottom, open by default. **Live** shows the demo as it runs: each webhook travels from LiveKit Cloud through Event Gateway (receive, store, dedup, retry) and `hookdeck listen` to the app. Click a node or a packet for that webhook's details below the diagram: each delivery attempt, what the app answered and a **View in Hookdeck** link. When the game master starts a scene, a packet travels from the app to LiveKit's Ingress API along the outbound **INGRESS** edge, and the ingress webhooks come back through Event Gateway. The other tabs play scripted scenes with captions: **Call lifecycle**, **Duplicate dropped**, **Bad signature** and **App down, retry succeeds**.
 
 The scenes live in `scenes/livekit-calls.ts` (the kit in `scenes/kit/` is synced from `_shared/scenes`). MP4 captures of the four scenes, landscape and square, are in `scenes/captures/`. To render them again: `npm run capture -- livekit-call-lifecycle`.
 
 ## Generate activity from the command line (optional)
 
-The **Join a call** button is the way to try the demo. To generate a call without a browser, install the [LiveKit CLI](https://docs.livekit.io/home/cli/) (`brew install livekit-cli`), which **Add a test participant** also uses, then:
+The **Join a call** button is the way to try the demo. To generate a call without a browser or the agent, install the [LiveKit CLI](https://docs.livekit.io/home/cli/) (`brew install livekit-cli`), which **Add a bot player** also uses, then:
 
 ```bash
 npm run activity
@@ -133,12 +160,14 @@ Every request the app receives is appended to `data/deliveries.jsonl` with its h
 livekit/call-log/
 ├── .env.example
 ├── package.json
+├── agent/                   # `npm run agent`: the intro agent and the game master
 ├── scenes/
 │   ├── livekit-calls.ts     # The topology: live scene and four scripted scenes
 │   ├── entry.ts             # What the page's bundle exposes
 │   ├── captures/            # MP4s, landscape and square
 │   └── kit/                 # Synced from _shared/scenes
 ├── scripts/
+│   ├── make-soundtracks.sh  # Generates public/soundtracks/*.ogg with ffmpeg
 │   ├── activity.sh          # Creates a room and joins test participants with the lk CLI
 │   ├── simulate.ts          # Sends signed events (or a bad signature, or a duplicate) to the source
 │   ├── livekit-cloud.ts     # Creates the LiveKit Cloud webhook through the management API
@@ -146,7 +175,9 @@ livekit/call-log/
 │   ├── listen.ts            # npm run listen
 │   └── setup-hookdeck.ts    # npm run setup
 ├── src/
-│   ├── token.ts             # Mints the short-lived browser token
+│   ├── token.ts             # Mints the short-lived browser token and dispatches the agent
+│   ├── chronicle.ts         # Builds the session chronicle from webhooks
+│   ├── soundtracks.ts       # Scene names and soundtrack URLs
 │   ├── call-log.ts          # Turns events into calls (idempotent, order-independent)
 │   ├── server.ts            # Express app and the verified webhook endpoint
 │   ├── deliveries.ts        # What the app answered, for the data flow pane

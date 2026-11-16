@@ -43,3 +43,19 @@ export function logDelivery(record: Omit<DeliveryRecord, 'id' | 'received_at'>, 
 }
 
 export const listDeliveries = (): DeliveryRecord[] => [...deliveries];
+
+/** Calls this app made to LiveKit's Ingress API (a scene's soundtrack), for the topology pane's outbound edge. */
+export interface OutboundRecord {
+  id: string;
+  at: string;
+  kind: 'start_ingress';
+  room: string;
+  scene: string;
+  ok: boolean;
+}
+const outbound: OutboundRecord[] = [];
+export function logOutbound(record: Omit<OutboundRecord, 'id' | 'at'>): void {
+  outbound.push({ id: randomUUID(), at: new Date().toISOString(), ...record });
+  trim(outbound);
+}
+export const listOutbound = (): OutboundRecord[] => [...outbound];

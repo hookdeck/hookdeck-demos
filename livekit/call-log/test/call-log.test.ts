@@ -84,4 +84,6 @@ test('a minted token joins one room, can publish, expires and carries no secret'
   assert.equal(claims.video?.canPublish, true);
   assert.ok(claims.exp! - claims.nbf! <= 600 + 5);
   assert.ok(!jwt.includes(secret));
+  // The room configuration dispatches the story agent by name
+  assert.equal((claims as any).roomConfig?.agents?.[0]?.agentName, 'story-gm');
 });

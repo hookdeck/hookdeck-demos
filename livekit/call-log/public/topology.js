@@ -3,11 +3,13 @@
 //
 // Webhooks come from the shared feed: the app's /api/answered (fast: the app's own record of what
 // it answered) and /api/flow (Event Gateway's requests, events and attempts, for duplicates and
-// anything the app never saw). LiveKit only sends to this app, so there is no outbound edge.
+// anything the app never saw). The one outbound edge, `start`, is the app asking LiveKit's Ingress API to
+// pull a scene's soundtrack into the room (the game master triggers it); it comes from the app's /api/outbound.
 (function () {
   let last_fail = 0;
   let state_timer = null;
   let feed_ref = null;
+  let outbound_timer = null;
 
   // "Fail the next N deliveries" (the failure injection card) shows on the app node before any delivery arrives.
   async function pollState(live) {
@@ -29,11 +31,34 @@
     } catch { /* the next poll retries */ }
   }
 
+  // The app's own record of calls it made to LiveKit's Ingress API.
+  function watchOutbound(live) {
+    const seen = new Set();
+    let first = true;
+    const poll = async () => {
+      try {
+        const list = await (await fetch('/api/outbound', { cache: 'no-store' })).json();
+        for (const item of list) {
+          if (seen.has(item.id)) continue;
+          seen.add(item.id);
+          if (first) continue; // history is not replayed
+          live.badge('app', `soundtrack: ${item.scene}`, 'blue', 6);
+          live.send('start', { data: { outbound: item.kind } }).then(() => {
+            live.badge('agent', item.ok ? 'ingress created' : 'ingress failed', item.ok ? 'blue' : 'danger', 6);
+          });
+        }
+      } catch { /* the next poll retries */ }
+      first = false;
+    };
+    poll();
+    return setInterval(poll, 700);
+  }
+
   const pane = TopologyPane.mount({
     kit: window.HookdeckScenes,
     title: 'Data flow',
     endpoint: '/api/flow',
-    idleCaption: 'Waiting for a webhook. Run npm run activity in a terminal, or create a room in LiveKit.',
+    idleCaption: 'Waiting for a webhook. Join a call above and the webhooks start to arrive.',
     activeCaption: 'Click a packet or a node to see the details of that webhook below.',
     deliveries: {
       endpoint: '/api/answered',
@@ -43,12 +68,14 @@
       feed_ref = feed;
       last_fail = 0;
       clearInterval(state_timer);
+      clearInterval(outbound_timer);
       // The default source verifies nothing in Event Gateway, so the first chip says Receive and the
       // feed's "verified · stored" badge reads "stored".
       const badge = live.badge;
       live.badge = (node, label, tone, ttl) => badge(node, label === 'verified · stored' ? 'stored' : label, tone, ttl);
       pollState(live);
       state_timer = setInterval(() => pollState(live), 1000);
+      outbound_timer = watchOutbound(live);
     },
   });
   window.__topology = pane;

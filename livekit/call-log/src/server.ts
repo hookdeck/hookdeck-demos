@@ -1,16 +1,18 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import * as path from 'path';
-import { WebhookReceiver } from 'livekit-server-sdk';
+import { IngressClient, IngressInput, RoomAgentDispatch, RoomConfiguration, WebhookReceiver } from 'livekit-server-sdk';
 import { spawn, ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
 import { mintToken } from './token';
 import { applyEvent, LiveKitEvent, summarise } from './call-log';
-import { loadLog, readDeliveries, recordDelivery, saveLog } from './store';
+import { loadChronicle, loadLog, readDeliveries, recordDelivery, saveChronicle, saveLog } from './store';
+import { applyChronicle, viewChronicle } from './chronicle';
+import { isScene, soundtrackUrl } from './soundtracks';
 import { CONNECTION, PORT, SOURCE_TYPE } from './config';
 import { createFlowState } from './flow-drawer-server';
 import { createFlowExtras } from './flow-extras';
-import { flow_entries, listDeliveries, logDelivery } from './deliveries';
+import { flow_entries, listDeliveries, listOutbound, logDelivery, logOutbound } from './deliveries';
 
 const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
 if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || LIVEKIT_API_KEY.startsWith('your_')) {
@@ -20,6 +22,7 @@ if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || LIVEKIT_API_KEY.startsWith('your_
 
 const receiver = new WebhookReceiver(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
 const log = loadLog();
+const chronicle = loadChronicle();
 
 const app = express();
 app.use(express.static(path.join(__dirname, '../public')));
@@ -27,9 +30,10 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Join a call from the browser. The API secret stays here: the page gets a short-lived token that
 // can join one room, never the key or the secret.
 app.post('/api/token', express.json(), async (req: Request, res: Response) => {
-  const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || `call-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}`;
+  const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || `story-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}`;
   const identity = `web-${randomBytes(3).toString('hex')}`;
-  res.json({ url: process.env.LIVEKIT_URL, token: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, identity), room, identity });
+  const name = String(req.body?.name || '').replace(/[^\p{L}\p{N} '-]/gu, '').trim().slice(0, 24) || 'Player';
+  res.json({ url: process.env.LIVEKIT_URL, token: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, identity, name), room, identity });
 });
 
 // Optional: a second participant that publishes demo media, so one person alone still gets a two-person call.
@@ -39,7 +43,7 @@ app.post('/api/test-participant', express.json(), (req: Request, res: Response) 
   const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
   if (!room) return res.status(400).json({ error: 'Join a call first.' });
   if (test_participants.has(room)) return res.json({ ok: true, already: true });
-  const child = spawn('lk', ['room', 'join', '--identity', 'test-participant', '--publish-demo', room], {
+  const child = spawn('lk', ['room', 'join', '--identity', 'bot-pixel', '--publish-demo', room], {
     stdio: 'ignore',
     env: { ...process.env, LK_NO_SKILLS_PROMPT: '1', LIVEKIT_URL: process.env.LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET },
   });
@@ -54,6 +58,41 @@ app.post('/api/test-participant', express.json(), (req: Request, res: Response) 
 app.post('/api/test-participant/stop', express.json(), (req: Request, res: Response) => {
   test_participants.get(String(req.body?.room))?.kill();
   res.json({ ok: true });
+});
+
+// The game master agent (`npm run agent`) calls this at each new scene. The app pulls that scene's
+// soundtrack into the room with LiveKit's Ingress API (a URL input), which produces ingress_started
+// and ingress_ended webhooks that come back through Event Gateway like every other event.
+const ingress_client = new IngressClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+const last_ingress = new Map<string, string>();
+app.post('/api/scene', express.json(), async (req: Request, res: Response) => {
+  // Only the agent on this machine calls this: it spends LiveKit Cloud ingress minutes
+  const from = req.socket.remoteAddress || '';
+  if (!/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(from)) return res.status(403).json({ error: 'local only' });
+  const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  const scene = req.body?.scene;
+  if (!room || !isScene(scene)) return res.status(400).json({ error: 'room and a known scene are required' });
+  const started = Date.now();
+  try {
+    // One soundtrack at a time: stop the previous scene's before the next starts
+    const previous = last_ingress.get(room);
+    if (previous) await ingress_client.deleteIngress(previous).catch(() => undefined);
+    const ingress = await ingress_client.createIngress(IngressInput.URL_INPUT, {
+      name: `scene:${scene}`,
+      roomName: room,
+      participantIdentity: `soundtrack-${scene}`,
+      participantName: `Soundtrack: ${scene}`,
+      url: soundtrackUrl(scene),
+    });
+    last_ingress.set(room, ingress.ingressId);
+    logOutbound({ kind: 'start_ingress', room, scene, ok: true });
+    console.log(`Scene ${scene} in ${room}: ingress ${ingress.ingressId} (${Date.now() - started} ms)`);
+    res.json({ ok: true, ingress_id: ingress.ingressId });
+  } catch (error: any) {
+    logOutbound({ kind: 'start_ingress', room, scene, ok: false });
+    console.warn(`Scene ${scene} in ${room}: ingress failed: ${error.message}`);
+    res.status(502).json({ ok: false, error: error.message });
+  }
 });
 
 // Failure injection, to show Hookdeck absorbing a slow or failing app
@@ -105,13 +144,17 @@ app.post('/webhooks/livekit', express.raw({ type: '*/*', limit: '1mb' }), async 
   // Use the plain JSON for the call log (the SDK parses it into protobuf types)
   const event = JSON.parse(raw_body.toString('utf-8')) as LiveKitEvent;
   const { duplicate } = applyEvent(log, event);
+  applyChronicle(chronicle, event);
   saveLog(log);
+  saveChronicle(chronicle);
   recordDelivery({ ...delivery, event_id: event.id, event: event.event, verified: true, duplicate });
   answered(200, duplicate ? 'duplicate' : 'applied');
   console.log(`${duplicate ? 'Duplicate' : 'Applied'} ${event.event} ${event.id} (${event.room?.name ?? event.egressInfo?.roomName ?? ''})`);
   res.json({ ok: true });
 });
 
+app.get('/api/chronicle', (_req, res) => res.json(viewChronicle(chronicle)));
+app.get('/api/outbound', (_req, res) => res.json(listOutbound()));
 app.get('/api/calls', (_req, res) => res.json(summarise(log)));
 app.get('/api/deliveries', (_req, res) => res.json(readDeliveries()));
 // Topology pane data. /api/deliveries is the app's own record (fast); /api/flow is Event Gateway's
