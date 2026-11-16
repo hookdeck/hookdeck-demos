@@ -58,3 +58,86 @@ test('after the mute player\'s turn the listener goes back to the first player w
   assert.equal(speakerAfterMute(players)?.name, 'Priya');
   assert.equal(speakerAfterMute([{ name: 'Pixel', bot: true }]), undefined);
 });
+
+import { addressedPlayer, cleanSpeech, moveOnVerdict, nextSpeakerIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, type TurnState } from '../src/story.ts';
+
+const crew = [
+  { name: 'Priya', identity: 'web-1', bot: false },
+  { name: 'Sam', identity: 'web-2', bot: false },
+  { name: 'Pixel', identity: 'bot-pixel', bot: true },
+];
+
+test('the next speaker is the player Bram names last, else the next in rotation', () => {
+  assert.equal(addressedPlayer('The door is open. Priya, will you go through, or does Sam want to look first?', crew)?.name, 'Sam');
+  assert.equal(addressedPlayer('Nobody is named here.', crew), undefined);
+  assert.equal(addressedPlayer('Samuel the stranger waves.', crew), undefined); // a longer word is not Sam
+  assert.equal(nextSpeakerIndex(crew, 0, 'Sam, which way?'), 1);
+  assert.equal(nextSpeakerIndex(crew, 1, 'Which way do you go?'), 2);
+  assert.equal(nextSpeakerIndex(crew, 2, 'Which way do you go?'), 0);
+  assert.equal(nextSpeakerIndex([], 0, 'x'), -1);
+});
+
+test('next_scene is refused with no new player input, and before the minimum inputs, and a refusal is a verdict, not speech', () => {
+  assert.equal(moveOnVerdict(3, false, false), 'no_new_input');
+  assert.equal(moveOnVerdict(1, true, false), 'too_early');
+  assert.equal(moveOnVerdict(2, true, false), 'ok');
+  assert.equal(moveOnVerdict(0, true, true), 'ok'); // short mode, but still only answering an input
+});
+
+test('the speech filter removes spoken tool calls and tool names', () => {
+  assert.deepEqual(cleanSpeech('We step out. functions.next_scene()'), { text: 'We step out. ', removed: true });
+  assert.equal(cleanSpeech('Time for next_scene now').text, 'Time for now');
+  assert.equal(cleanSpeech('functions.give_turn({player: "Sam"}) Sam, go on.').text, ' Sam, go on.');
+  assert.deepEqual(cleanSpeech('Plain words only.'), { text: 'Plain words only.', removed: false });
+  assert.equal(cleanSpeech('end_story, write_in_ledger and fetch_bram').text.trim(), ', and');
+});
+
+test('the speech filter works on a stream, with a tool name split across chunks', async () => {
+  const removed: string[] = [];
+  const chunks = ['The cave opens. ', 'functions.', 'next_', 'scene()', ' You see a ledge.'];
+  const stream = new ReadableStream<string>({ start(c) { for (const x of chunks) c.enqueue(x); c.close(); } });
+  const out: string[] = [];
+  for await (const part of speechFilter((what) => removed.push(what))(stream)) out.push(part);
+  const spoken = out.join('');
+  assert.ok(!/next_scene|functions/.test(spoken), spoken);
+  assert.ok(spoken.includes('The cave opens.') && spoken.includes('You see a ledge.'));
+  assert.ok(removed.length >= 1);
+});
+
+const fresh = (): TurnState => ({ scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false, short_mode: false });
+
+test('simulation: Bram asks, nothing is heard, and then nothing happens: no turn change, no scene, no new reply', () => {
+  const s = fresh();
+  onBramReply(s, 'The map lies open. Priya, which way do you take?');
+  assert.equal(onPlayout(s, crew)?.name, 'Priya'); // turn given after playout, to the player he named
+  // ... silence: no player input arrives. The guard says no move on is possible,
+  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'no_new_input');
+  assert.equal(s.inputs, 0);
+  // and a second playout with no new reply keeps the same speaker's turn logic stable (rotation moves only on a new playout)
+  assert.equal(s.rotation, 0);
+});
+
+test('simulation: only real player input counts, a scene needs two, and a call consumes the input', () => {
+  const s = fresh();
+  onBramReply(s, 'Priya, which way?');
+  onPlayout(s, crew);
+  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'no_new_input');
+  onPlayerInput(s); // Priya answers
+  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'too_early'); // one input is not enough
+  onBramReply(s, 'Sam, what about you?');
+  assert.equal(onPlayout(s, crew)?.name, 'Sam');
+  onPlayerInput(s); // Sam answers
+  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'ok');
+  s.input_since_call = false; // next_scene consumed it
+  assert.equal(moveOnVerdict(s.inputs, s.input_since_call, false), 'no_new_input'); // a chained call is refused
+  onSceneStart(s, 1);
+  assert.deepEqual([s.scene_index, s.inputs, s.input_since_call], [2, 0, false]);
+});
+
+test('simulation: no turn is given before the first scene or while the story is ending', () => {
+  const s = fresh();
+  s.scene_index = 0;
+  assert.equal(onPlayout(s, crew), undefined);
+  s.scene_index = 1; s.ending = true;
+  assert.equal(onPlayout(s, crew), undefined);
+});

@@ -1,3 +1,5 @@
+import { ReadableStream, TransformStream, type TransformStreamDefaultController } from 'node:stream/web';
+
 /**
  * The story's shape and pacing, as plain functions so they can be tested without a model.
  *
@@ -90,3 +92,118 @@ export function createEndWatcher(finish: () => void, pause_ms = 2000, timers = {
 
 /** After a mute player's turn the listener goes back to a player who can speak (the first one), so their answer is heard. */
 export const speakerAfterMute = <T extends { bot: boolean }>(players: T[]): T | undefined => players.find((p) => !p.bot);
+
+// ---- Turns are code, not a model tool ----
+
+export interface Addressable {
+  name: string;
+  identity: string;
+  bot: boolean;
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The player Bram names last in his reply (he ends a reply by naming who answers next), if he names one. */
+export function addressedPlayer<T extends Addressable>(text: string, players: T[]): T | undefined {
+  let best: { player: T; at: number } | undefined;
+  for (const player of players) {
+    const re = new RegExp(`(?<![\\p{L}])${escapeRegExp(player.name)}(?![\\p{L}])`, 'giu');
+    for (const m of text.matchAll(re)) if (!best || m.index! >= best.at) best = { player, at: m.index! };
+  }
+  return best?.player;
+}
+
+/** Who has the next turn: the player Bram named, or else the next one in the rotation. Returns the index into `players`. */
+export function nextSpeakerIndex<T extends Addressable>(players: T[], last_index: number, reply: string): number {
+  if (!players.length) return -1;
+  const named = addressedPlayer(reply, players);
+  return named ? players.indexOf(named) : (last_index + 1) % players.length;
+}
+
+export type MoveOnVerdict = 'ok' | 'too_early' | 'no_new_input';
+
+/**
+ * next_scene (and end_story) are allowed only in the reply that answers a player's input (not chained after another
+ * call), and only once the scene has had its minimum real player inputs. A refusal returns nothing, so Bram does not speak again.
+ */
+export function moveOnVerdict(inputs_in_scene: number, input_since_last_call: boolean, short_mode: boolean): MoveOnVerdict {
+  if (!input_since_last_call) return 'no_new_input';
+  if (!short_mode && inputs_in_scene < MIN_EXCHANGES) return 'too_early';
+  return 'ok';
+}
+
+// ---- A backstop so the model never speaks a tool name ----
+
+export const TOOL_NAMES = ['next_scene', 'end_story', 'write_in_ledger', 'fetch_bram', 'give_turn'];
+const SPOKEN_CALL = new RegExp(`(?:functions\\.)?(?:${TOOL_NAMES.join('|')})(?:\\s*\\([^)]*\\)?)?|functions\\.\\w*(?:\\s*\\([^)]*\\)?)?`, 'gi');
+
+/** Removes tool calls and tool names from text that is about to be spoken. Returns the cleaned text and whether it removed anything. */
+export function cleanSpeech(text: string): { text: string; removed: boolean } {
+  const removed = new RegExp(SPOKEN_CALL.source, 'i').test(text);
+  return { text: removed ? text.replace(SPOKEN_CALL, '').replace(/ {2,}/g, ' ') : text, removed };
+}
+
+/**
+ * A stream transform for the session's `ttsTextTransforms`. Text arrives in small pieces ("next_" then "scene"), so it
+ * holds back the end of what it has seen until a word boundary or the end of the stream, and cleans what it releases.
+ */
+export function speechFilter(on_removed: (what: string) => void = () => undefined) {
+  return (input: ReadableStream<string>): ReadableStream<string> => {
+    let held = '';
+    const release = (controller: TransformStreamDefaultController<string>, all: boolean) => {
+      // Hold back from the last space, and from an open "functions." or tool-name-length tail, unless it is the end
+      const cut = all ? held.length : Math.max(held.lastIndexOf(' '), held.lastIndexOf('\n'), held.lastIndexOf('.') >= 0 && !/functions\.?\w*$/i.test(held) ? held.lastIndexOf('.') : -1) + 1;
+      if (cut <= 0) return;
+      const { text, removed } = cleanSpeech(held.slice(0, cut));
+      if (removed) on_removed(held.slice(0, cut).trim());
+      held = held.slice(cut);
+      if (text) controller.enqueue(text);
+    };
+    return input.pipeThrough(new TransformStream<string, string>({
+      transform(chunk, controller) { held += chunk; release(controller, false); },
+      flush(controller) { release(controller, true); },
+    }));
+  };
+}
+
+// ---- The turn state machine ----
+
+/** The fields of the story's state that turns and move-on guards depend on. */
+export interface TurnState {
+  scene_index: number;
+  /** Real player inputs in the current scene. */
+  inputs: number;
+  /** A player has spoken or gestured since the last tool call. */
+  input_since_call: boolean;
+  last_reply: string;
+  /** Index of the player who had the last turn. */
+  rotation: number;
+  ending: boolean;
+  short_mode: boolean;
+}
+
+/** A final transcript from the linked player, or Pixel's chat gesture. The only thing that counts as an exchange. */
+export function onPlayerInput(s: TurnState) {
+  s.inputs += 1;
+  s.input_since_call = true;
+}
+
+export function onBramReply(s: TurnState, text: string) {
+  s.last_reply = text;
+}
+
+/** Bram has finished speaking: who gets the turn now (the player he named, or the next in rotation), or nobody. */
+export function onPlayout<T extends Addressable>(s: TurnState, players: T[]): T | undefined {
+  if (s.ending || s.scene_index === 0) return undefined;
+  const index = nextSpeakerIndex(players, s.rotation, s.last_reply);
+  if (index < 0) return undefined;
+  s.rotation = index;
+  return players[index];
+}
+
+/** Starts a scene: the scene's own count of inputs starts over. */
+export function onSceneStart(s: TurnState, index: number) {
+  s.scene_index = index + 1;
+  s.inputs = 0;
+  s.input_since_call = false;
+}
