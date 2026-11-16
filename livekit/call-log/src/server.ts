@@ -105,7 +105,14 @@ app.get('/api/flow', async (_req, res) => {
     res.json({
       ...state,
       team_id: flow_extras.teamId(),
-      messages: state.messages.map((m) => ({ ...m, ignored_count: ignored.get(m.request_id) ?? 0, bytes: Number(m.detail) || null })),
+      messages: state.messages.map((m) => ({
+        ...m,
+        // A WEBHOOK source verifies nothing, and Event Gateway records its requests as `verified: false`.
+        // That is "not checked here", not a rejection, so only a VERIFICATION_FAILED cause counts as one.
+        ...(SOURCE_TYPE === 'LIVEKIT' ? {} : { rejected: m.rejection_cause === 'VERIFICATION_FAILED', verified: null }),
+        ignored_count: ignored.get(m.request_id) ?? 0,
+        bytes: Number(m.detail) || null,
+      })),
     });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
