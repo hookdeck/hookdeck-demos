@@ -33,7 +33,7 @@ npm run agent    # Hester and Old Bram (installs agent/ on first run)
 
 1. Open <http://localhost:4000> (or the `PORT` in `.env`).
 2. Enter a name if you like (Hester then greets you by it and doesn't ask), select **Join a call** and allow the microphone. If you typed a name, Hester greets you by it, otherwise she asks for your first name. Then she says she will fetch Old Bram, who tells the story.
-3. To play with friends, open the page in a second tab or on another machine and select **Join a call** there. To play alone with company, select **Add a bot player**: Pixel is a silent bot, and Old Bram voices its turns.
+3. To play with friends, open the page in a second tab or on another machine and select **Join a call** there. To play alone with company, select **Add Pixel, a mute player**: Pixel is a scripted traveller who cannot speak. When Old Bram gives Pixel the turn, it sends one short gesture line (for example "*Pixel holds the lantern up to the cave wall and taps a carving.*") as a chat message, which appears in the Transcript, and Old Bram weaves it into the story. Pixel uses no language model of its own.
 4. Play: Old Bram sets four scenes and gives each player a turn. The agent hears one player at a time, so wait until the page says **Your turn**. The page shows the **Transcript** (what the characters and players say), who the turn belongs to, and which soundtrack is playing.
 5. When Old Bram closes the story, the page says **The story has ended** and offers **Start a new story**. Select **Leave** any time to stop earlier. The **Session chronicle**, the call log and the **Data flow** pane fill in as the webhooks arrive. A session ends, and its chronicle closes, about a minute after the last person leaves, because LiveKit closes an empty room after its departure timeout.
 
@@ -97,9 +97,14 @@ Open <http://localhost:4000>.
 | **Hester Pennywhistle** | Innkeeper of the Drowned Bell. Greets travellers by the name they typed on the page, or asks for a first name when there is none, writes each in the ledger (`write_in_ledger`), then announces that she is fetching Old Bram and hands over (`fetch_bram`, an `llm.handoff`). | Brisk, warm, a little nosy, dry humour, calls everyone "love" or "dear". | Cartesia Sonic 3, voice `f31cc6a7-c1e8-4764-980c-60a361443dd1` (Robyn, an Australian, mature voice from LiveKit's documented list) |
 | **Old Bram Tallow** | Retired lighthouse keeper who tells "The Lantern of Hollow Mere". Calls `next_scene` to start each scene's soundtrack, `give_turn` to listen to one player at a time, and `end_story` after his closing. | Slow, gravelly, kind, sea-worn turns of phrase, loves a pause. | Deepgram Aura 2, voice `draco` (a British male voice) |
 
-Hester and Bram are one agent participant in the room. The agent publishes what the page shows as participant attributes on itself: `story.character`, `story.turn` and `story.turn_name` (whose turn it is), `story.scene` and `story.state` (`ended` when the story is over). Bram's `give_turn` tool rotates through different ways to hand a turn over (an open question, two choices, a vivid detail with no question, an invitation to speak, a short challenge) so he does not end every reply the same way.
+Hester and Bram are one agent participant in the room. The agent publishes what the page shows as participant attributes on itself: `story.character`, `story.turn`, `story.turn_name` and `story.turn_seq` (whose turn it is), `story.scene` and `story.state` (`ended` when the story is over). Bram's `give_turn` tool rotates through different ways to hand a turn over (an open question, two choices, a vivid detail with no question, an invitation to speak, a short challenge) so he does not end every reply the same way.
 
-Speech-to-text (Deepgram Nova 3), the language model (OpenAI GPT-4.1 mini) and text-to-speech all run on [LiveKit Inference](https://docs.livekit.io/agents/models/), billed to your LiveKit project, so there are no other keys. The agent calls the app at `http://localhost:4000` (set `STORY_APP_URL` if the app runs elsewhere). The story runs about six minutes, and the page's **Transcript** shows what is said, from the `lk.transcription` text streams the agent publishes.
+Speech-to-text (Deepgram Nova 3), the language model (OpenAI GPT-4.1 mini) and text-to-speech all run on [LiveKit Inference](https://docs.livekit.io/agents/models/) by default, billed to your LiveKit project, so the only credentials are your LiveKit key and secret.
+
+**Optional: your own OpenAI key for the language model.** If your Inference allowance runs out, set `OPENAI_API_KEY` in `.env` and the agents call `gpt-4.1-mini` directly through `@livekit/agents-plugin-openai`. Only the language model changes: speech-to-text and the voices stay on LiveKit Inference. The agent logs which path it uses at startup (`LLM: LiveKit Inference ...` or `LLM: OpenAI ...`) and never prints the key.
+
+**Pixel**, the mute player, is a small Node participant (`agent/src/pixel.ts`, `@livekit/rtc-node`) that the app starts when you select **Add Pixel**. It joins as `bot-pixel`, publishes no media, and when `story.turn` is its identity (and the storyteller is listening) it waits one to three seconds and sends one scripted gesture line on the `lk.chat` topic, which an agent session accepts as text input. It needs no LiveKit CLI. Its webhooks are `participant_joined` and `participant_left` as a standard participant, so the chronicle lists it as a player.
+ The agent calls the app at `http://localhost:4000` (set `STORY_APP_URL` if the app runs elsewhere). The story runs about six minutes, and the page's **Transcript** shows what is said, from the `lk.transcription` text streams the agent publishes.
 
 ## Soundtracks
 
@@ -115,7 +120,7 @@ The scenes live in `scenes/livekit-calls.ts` (the kit in `scenes/kit/` is synced
 
 ## Generate activity from the command line (optional)
 
-The **Join a call** button is the way to try the demo. To generate a call without a browser or the agent, install the [LiveKit CLI](https://docs.livekit.io/home/cli/) (`brew install livekit-cli`), which **Add a bot player** also uses, then:
+The **Join a call** button is the way to try the demo. To generate a call without a browser or the agent, install the [LiveKit CLI](https://docs.livekit.io/home/cli/) (`brew install livekit-cli`), then:
 
 ```bash
 npm run activity

@@ -36,24 +36,28 @@ app.post('/api/token', express.json(), async (req: Request, res: Response) => {
   res.json({ url: process.env.LIVEKIT_URL, token: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, identity, name), room, identity });
 });
 
-// Optional: a second participant that publishes demo media, so one person alone still gets a two-person call.
-// It is what `npm run activity` does for each participant, and needs the LiveKit CLI (`lk`) on the PATH.
+// "Add a bot player": Pixel, a mute scripted traveller (agent/src/pixel.ts). It joins the room as a standard
+// participant with no audio or video, and when the storyteller gives it the turn it sends one gesture line as
+// a chat message. It needs `agent/` installed (`npm run agent` does that) and no LiveKit CLI.
 const test_participants = new Map<string, ChildProcess>();
-app.post('/api/test-participant', express.json(), (req: Request, res: Response) => {
+app.post('/api/test-participant', express.json(), async (req: Request, res: Response) => {
   const room = String(req.body?.room || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
   if (!room) return res.status(400).json({ error: 'Join a call first.' });
   if (test_participants.has(room)) return res.json({ ok: true, already: true });
-  const child = spawn('lk', ['room', 'join', '--identity', 'bot-pixel', '--publish-demo', room], {
+  const script = path.join(__dirname, '../agent/src/pixel.ts');
+  const child = spawn(process.execPath, [script], {
     stdio: 'ignore',
-    env: { ...process.env, LK_NO_SKILLS_PROMPT: '1', LIVEKIT_URL: process.env.LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET },
+    env: { PATH: process.env.PATH, PIXEL_URL: process.env.LIVEKIT_URL, PIXEL_TOKEN: await mintToken(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!, room, 'bot-pixel', 'Pixel') },
   });
-  child.on('error', () => { test_participants.delete(room); });
-  child.on('exit', () => { test_participants.delete(room); });
-  // A demo participant never outstays a demo
-  setTimeout(() => child.kill(), 10 * 60 * 1000).unref();
   test_participants.set(room, child);
-  child.once('error', (error: any) => { if (!res.headersSent) res.status(501).json({ error: error.code === 'ENOENT' ? 'The LiveKit CLI (lk) is not installed: brew install livekit-cli.' : error.message }); });
-  setTimeout(() => { if (!res.headersSent) res.json({ ok: true }); }, 400);
+  child.on('exit', () => { test_participants.delete(room); });
+  // A bot that exits straight away didn't start: most likely agent/ isn't installed yet
+  const failed = await new Promise<boolean>((resolve) => {
+    child.once('exit', () => resolve(true));
+    setTimeout(() => resolve(false), 2500);
+  });
+  if (failed) return res.status(501).json({ error: 'The bot could not start. Run `npm run agent` once to install agent/, and use Node.js 22.18 or later.' });
+  res.json({ ok: true });
 });
 app.post('/api/test-participant/stop', express.json(), (req: Request, res: Response) => {
   test_participants.get(String(req.body?.room))?.kill();

@@ -132,8 +132,17 @@ function watchTranscription(r) {
   });
 }
 
+// Gestures from a mute player such as Pixel arrive as chat messages on the standard `lk.chat` topic
+function watchChat(r) {
+  r.registerTextStreamHandler('lk.chat', async (reader, participant) => {
+    const text = await reader.readAll();
+    showLine(`chat-${reader.info.id}`, speakerName(participant.identity), text, true);
+  });
+}
+
 function watchRoom(r) {
   watchTranscription(r);
+  watchChat(r);
   r.on(RoomEvent.TrackSubscribed, (track) => {
     if (track.kind === Track.Kind.Audio) audio_box.append(track.attach());
     renderPeople();
@@ -194,5 +203,5 @@ $('testBtn').addEventListener('click', async () => {
   const response = await fetch('/api/test-participant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: room_name }) });
   const data = await response.json();
   if (!response.ok) return fail(data.error);
-  say(`Connected to ${room_name}. A silent bot player, Pixel, has joined.`);
+  say(`Connected to ${room_name}. Pixel, a mute traveller, has joined.`);
 });

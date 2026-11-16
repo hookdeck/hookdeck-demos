@@ -34,13 +34,13 @@
     <section class="card">
       <h2 class="title-l">Join a call</h2>
       <p class="body-s muted">
-        Joins a LiveKit room from this browser with your microphone. Hester, the innkeeper, asks for your name, then fetches Old Bram, who tells the story. Open this page in a second tab to play with two voices, or add a silent bot player. Only one player is heard at a
+        Joins a LiveKit room from this browser with your microphone. Hester, the innkeeper, greets you by the name you type (or asks for it), then fetches Old Bram, who tells the story. Open this page in a second tab to play with two voices, or add Pixel, a mute scripted player whose gestures Old Bram weaves into the story. Only one player is heard at a
         time: the storyteller gives each a turn. Allow the microphone when the browser asks, and start the agent with <code>npm run agent</code>.
       </p>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Your name</span><input class="input" id="playerName" maxlength="24" placeholder="optional" style="width:140px"></label>
         <button class="button" id="joinBtn" type="button">Join a call</button>
-        <button class="button button--secondary" id="testBtn" type="button" disabled>Add a bot player</button>
+        <button class="button button--secondary" id="testBtn" type="button" disabled>Add Pixel, a mute player</button>
         <button class="button button--secondary" id="leaveBtn" type="button" disabled>Leave</button>
         <span class="body-xs muted" id="callStatus">Allow the microphone when the browser asks.</span>
       </div>

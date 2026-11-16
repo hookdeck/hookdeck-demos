@@ -17,6 +17,7 @@ import { ParticipantKind, type RemoteParticipant } from '@livekit/rtc-node';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { describeLlm, chooseLlm, makeLlm } from './llm.ts';
 import { planLedger } from './names.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
@@ -61,24 +62,27 @@ const guests = (ctx: JobContext) =>
  * Writes the guests Hester already knows (a typed name on the page, or a bot) into the ledger without asking,
  * and returns who she can greet by name and which humans she still has to ask.
  */
-function registerKnown(data: StoryData): { greet: string[]; unnamed: string[] } {
+function registerKnown(data: StoryData): { greet: string[]; bots: string[]; unnamed: string[] } {
   const plan = planLedger(guests(data.ctx), new Set(data.players.map((p) => p.identity)));
   const greet: string[] = [];
+  const bots: string[] = [];
   for (const g of plan.named) {
     data.players.push({ identity: g.identity, name: g.name, bot: g.bot });
-    if (!g.bot) greet.push(g.name);
+    (g.bot ? bots : greet).push(g.name);
   }
-  return { greet, unnamed: plan.unnamed };
+  return { greet, bots, unnamed: plan.unnamed };
 }
 
 /** What Hester should say next, given who she just wrote in and who is still unnamed. */
-function nextStep(greet: string[], unnamed: boolean, everyone: string): string {
+function nextStep(greet: string[], bots: string[], unnamed: boolean, everyone: string): string {
   const greeting = greet.length
     ? `${greet.length === 1 ? greet[0] : greet.join(' and ')} told the page their name${greet.length === 1 ? '' : 's'}, so do not ask: greet ${greet.length === 1 ? 'them' : 'each'} by name in one short, in-character sentence (for example "Ah, ${greet[0]}, we've been expecting you") and they are already in the ledger. `
     : '';
+  const mute = bots.length ? `${bots.join(' and ')} cannot speak, so do not ask: greet ${bots.length === 1 ? 'them' : 'each'} warmly too, in the same sentence or the next ("and your quiet friend, ${bots[0]}"), and write ${bots.length === 1 ? 'them' : 'each'} in the ledger. ` : '';
+  const hello = `${greeting}${mute}`;
   return unnamed
-    ? `${greeting}Another traveller at the door gave no name and you can hear them now: ask them for their first name.`
-    : `${greeting}Everyone is in the ledger (${everyone}). In this same reply, say aloud that you will fetch Old Bram, who has been waiting all evening for a crowd, and call fetch_bram.`;
+    ? `${hello}Another traveller at the door gave no name and you can hear them now: ask them for their first name.`
+    : `${hello}Everyone is in the ledger (${everyone}). In this same reply, say aloud that you will fetch Old Bram, who has been waiting all evening for a crowd, and call fetch_bram.`;
 }
 
 const switchListener = (session: voice.AgentSession<StoryData>, identity: string | null) => (session as any)._roomIO?.setParticipant(identity);
@@ -114,13 +118,13 @@ class Hester extends voice.Agent<StoryData> {
    */
   async open(session: voice.AgentSession<StoryData>) {
     const data = session.userData;
-    const { greet, unnamed } = registerKnown(data);
+    const { greet, bots, unnamed } = registerKnown(data);
     const first_human = unnamed[0] ?? data.players.find((p) => !p.bot)?.identity;
     if (first_human) switchListener(session, first_human);
     const intro = 'You are standing at the door of the inn, shaking the rain off your apron as travellers come in. ';
     session.generateReply({
-      instructions: greet.length || !unnamed.length
-        ? `${intro}${nextStep(greet, unnamed.length > 0, data.players.map((p) => p.name).join(', '))}`
+      instructions: greet.length || bots.length || !unnamed.length
+        ? `${intro}${nextStep(greet, bots, unnamed.length > 0, data.players.map((p) => p.name).join(', '))}`
         : `${intro}Greet them in one short sentence, say it is a wild night and the ledger is open, and ask the traveller you can hear for their first name.`,
     });
   }
@@ -144,21 +148,24 @@ Travellers who come in out of the storm must sign your ledger. A traveller who a
             const identity = listening_to(session);
             if (identity && !players.some((p) => p.identity === identity)) players.push({ identity, name, bot: false });
             // Anyone who came in with a name on the page, and any bot, goes in the ledger without being asked
-            const { greet, unnamed } = registerKnown(ctx.userData);
+            const { greet, bots, unnamed } = registerKnown(ctx.userData);
             if (unnamed.length) {
               switchListener(session, unnamed[0]);
-              return `${name} is in the ledger. ${nextStep(greet, true, '')}`;
+              return `${name} is in the ledger. ${nextStep(greet, bots, true, '')}`;
             }
             const first = players.find((p) => !p.bot);
             if (first) switchListener(session, first.identity);
-            return `${name} is in the ledger. ${nextStep(greet, false, players.map((p) => p.name).join(', '))}`;
+            return `${name} is in the ledger. ${nextStep(greet, bots, false, players.map((p) => p.name).join(', '))}`;
           },
         }),
         fetch_bram: llm.tool({
           description: 'Hand the table over to Old Bram, the storyteller. Call it right after you have said you will fetch him.',
           parameters: z.object({}),
-          execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) =>
-            llm.handoff({ agent: Bram.build(ctx.userData.players), returns: 'Hester goes to fetch Old Bram.' }),
+          execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
+            // Anyone who came in while Hester was talking (a bot, or a player who typed a name) is in the story too
+            registerKnown(ctx.userData);
+            return llm.handoff({ agent: Bram.build(ctx.userData.players), returns: 'Hester goes to fetch Old Bram.' });
+          },
         }),
       },
     });
@@ -174,11 +181,11 @@ class Bram extends voice.Agent<StoryData> {
   }
 
   static build(players: Player[]) {
-    const roster = players.map((p) => (p.bot ? `${p.name} (a silent traveller: speak its turns yourself in one sentence)` : p.name)).join(', ');
+    const roster = players.map((p) => (p.bot ? `${p.name} (a mute traveller who cannot speak and answers with gestures, which arrive as short text lines like "*Pixel taps the map.*" when you give it the turn)` : p.name)).join(', ');
     return new Bram({
       instructions: `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell. You are slow, gravelly and kind, with dry humour and sea-worn turns of phrase, and you love a pause. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers: ${roster}. ${BREVITY} Call tools silently: never write or say a tool name or function call in your speech.
 The story has four scenes. Call next_scene to start each one: it plays that scene's soundtrack and tells you what the scene is. Never call it twice in a row, and never name the scenes in advance.
-For each scene: call next_scene, set the scene in two short sentences, then call give_turn for each player in turn. give_turn tells you how to hand that turn over; follow it. Hand over once per reply and never ask two questions in one reply. React to each answer in one sentence that builds on what the player said, then move to the next player. Never repeat the way you handed over the turn before. After the last player's turn in a scene, call next_scene again.
+For each scene: call next_scene, set the scene in two short sentences, then call give_turn for each player in turn. give_turn tells you how to hand that turn over; follow it. Hand over once per reply and never ask two questions in one reply. React to each answer in one sentence that builds on what the player said, then move to the next player. Never repeat the way you handed over the turn before. A mute traveller such as Pixel never speaks: when you give it the turn, hand it the moment in one short sentence with no question, then stop and wait for its gesture, and weave that gesture into your reaction. Now and then, without being asked, mention what the mute traveller is doing in the corner of the scene. After the last player's turn in a scene, call next_scene again.
 The finale is the last scene: give every player a turn, then speak a closing of up to four sentences that gathers up what each player did and ends the story with a memorable last line. Only after that, call end_story. Do not rush the ending. Keep the whole story to about six minutes.`,
       tts: new inference.TTS({ model: BRAM_VOICE as any }),
       allowInterruptions: false,
@@ -230,9 +237,10 @@ The finale is the last scene: give every player a turn, then speak a closing of 
             }
             data.turn_taken.add(match.identity);
             const how = HANDOVERS[data.turns++ % HANDOVERS.length];
-            publish(data.ctx, { 'story.turn': match.identity, 'story.turn_name': match.name });
-            if (match.bot) return `${match.name} is a silent traveller and cannot answer, so ask it nothing: say in one sentence what ${match.name} does, then go straight on to the next player or the next scene.`;
+            publish(data.ctx, { 'story.turn': match.identity, 'story.turn_name': match.name, 'story.turn_seq': String(data.turns) });
+            // Text input is accepted only from the participant being listened to: a mute player's gesture arrives as chat
             switchListener(ctx.session as voice.AgentSession<StoryData>, match.identity);
+            if (match.bot) return `${match.name} is a mute traveller and cannot speak: hand ${match.name} the moment in one short sentence with no question, then stop and wait. ${match.name} will answer with a gesture, which you then weave into the story in your reaction.`;
             return `You can hear ${match.name} now. Hand the turn to ${match.name}: ${how}. Once, in this reply only.`;
           },
         }),
@@ -256,7 +264,7 @@ export default defineAgent({
   entry: async (ctx: JobContext) => {
     const session = new voice.AgentSession<StoryData>({
       stt: new inference.STT({ model: 'deepgram/nova-3', language: 'en' }),
-      llm: new inference.LLM({ model: 'openai/gpt-4.1-mini' }),
+      llm: makeLlm(process.env),
       userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, turns: 0, turn_taken: new Set() },
     });
     session.on(voice.AgentSessionEventTypes.Error, (e: any) => console.log('agent error:', e.error?.message ?? e));
@@ -287,4 +295,5 @@ export default defineAgent({
   },
 });
 
+console.log(describeLlm(chooseLlm(process.env)));
 cli.runApp(new ServerOptions({ agent: fileURLToPath(import.meta.url), agentName: AGENT_NAME }));
