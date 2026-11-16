@@ -86,7 +86,7 @@ async function call<T>(session: Session, method: string, route: string, body?: u
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-const asList = <T>(value: any, key: string): T[] => (Array.isArray(value) ? value : Array.isArray(value?.[key]) ? value[key] : []);
+const asList = <T>(value: any, key: string): T[] => (Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : Array.isArray(value?.[key]) ? value[key] : []);
 
 /** Creates or updates the webhook. Returns what happened; throws on an API failure (the caller falls back to the dashboard steps). */
 export async function ensureWebhook(session: Session, env: NodeJS.ProcessEnv, url: string, signing_key: string): Promise<{ action: 'created' | 'updated' | 'unchanged'; project_id: string; webhook_id: string }> {
