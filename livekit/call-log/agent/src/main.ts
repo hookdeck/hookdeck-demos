@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
-import { SCENES, canStartNext, createEndWatcher, guidanceFor, nextSceneIndex } from './story.ts';
+import { SCENES, canStartNext, createEndWatcher, guidanceFor, nextSceneIndex, speakerAfterMute } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -264,9 +264,17 @@ The finale is the last scene. Give each player a turn there, then call end_story
                 // Text input is accepted only from the participant being listened to
                 switchListener(ctx.session as voice.AgentSession<StoryData>, match.identity);
               });
+              // Pixel's turn is over: listen to a player who can speak again, so the group's answer to the next
+              // question is heard (the listener was switched to Pixel to receive its chat message)
+              const speaker = speakerAfterMute(data.players);
+              if (speaker) {
+                switchListener(ctx.session as voice.AgentSession<StoryData>, speaker.identity);
+                publish(data.ctx, { 'story.turn': speaker.identity, 'story.turn_name': speaker.name, 'story.turn_seq': String(data.turns) });
+              }
+              const to = speaker ? `${speaker.name} can answer now` : 'a player who can speak answers next';
               return gesture
-                ? `${match.name} is mute and answers with a gesture: ${gesture} React to it in one or two plain sentences, then give the turn to a player who can speak. ${match.name}'s gesture can hint at the way forward but never decides it. Do not ask ${match.name} anything.${next}`
-                : `${match.name} is mute and does nothing you can see this turn: say in one plain sentence what ${match.name} is doing, then give the turn to a player who can speak.${next}`;
+                ? `${match.name} is mute and answers with a gesture: ${gesture} React to it in one or two plain sentences, then hand the next question to ${speaker?.name ?? 'a player'} (${to}). ${match.name}'s gesture can hint at the way forward but never decides it. Do not ask ${match.name} anything.${next}`
+                : `${match.name} is mute and does nothing you can see this turn: say in one plain sentence what ${match.name} is doing, then hand the next question to ${speaker?.name ?? 'a player'} (${to}).${next}`;
             }
             switchListener(ctx.session as voice.AgentSession<StoryData>, match.identity);
             return `You can hear ${match.name} now. Hand the turn to ${match.name}: ${how}. Once, in this reply only.${choice}${next}`;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { MIN_EXCHANGES, SAFETY_EXCHANGES, SCENES, canStartNext, createEndWatcher, guidanceFor, nextSceneIndex } from '../src/story.ts';
+import { MIN_EXCHANGES, SAFETY_EXCHANGES, SCENES, canStartNext, createEndWatcher, guidanceFor, nextSceneIndex, speakerAfterMute } from '../src/story.ts';
 
 test('a scene has 2 or 3 open exchanges, then offers a way on, and nudges at the safety limit', () => {
   assert.equal(MIN_EXCHANGES, 2);
@@ -51,4 +51,10 @@ test('the ending waits for the last speech to finish and a 2 second pause, and a
   } finally {
     mock.timers.reset();
   }
+});
+
+test('after the mute player\'s turn the listener goes back to the first player who can speak', () => {
+  const players = [{ name: 'Pixel', bot: true }, { name: 'Priya', bot: false }, { name: 'Sam', bot: false }];
+  assert.equal(speakerAfterMute(players)?.name, 'Priya');
+  assert.equal(speakerAfterMute([{ name: 'Pixel', bot: true }]), undefined);
 });

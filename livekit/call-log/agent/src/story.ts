@@ -87,3 +87,6 @@ export function createEndWatcher(finish: () => void, pause_ms = 2000, timers = {
     },
   };
 }
+
+/** After a mute player's turn the listener goes back to a player who can speak (the first one), so their answer is heard. */
+export const speakerAfterMute = <T extends { bot: boolean }>(players: T[]): T | undefined => players.find((p) => !p.bot);
