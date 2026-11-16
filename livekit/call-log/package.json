@@ -14,7 +14,7 @@
     "capture": "ts-node scenes/kit/capture/capture.ts",
     "agent": "npm install --prefix agent --no-audit --no-fund --silent && npm start --prefix agent"
   },
-  "description": "Hookdeck + LiveKit: a spoken adventure with an AI game master, with a call log and session chronicle built from room, participant and ingress webhooks",
+  "description": "Hookdeck + LiveKit: a multiplayer voice adventure (story night) whose room events are recorded from webhooks delivered through Event Gateway",
   "license": "ISC",
   "dependencies": {
     "dotenv": "^16.3.1",

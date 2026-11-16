@@ -1,6 +1,12 @@
 # LiveKit story night with Hookdeck
 
-A short spoken adventure for one or more players, told by AI characters, with everything that happens in the room reported back as webhooks. Players join a LiveKit room from the page. Hester Pennywhistle, the innkeeper of the Drowned Bell, asks each player's name and writes it in her ledger, then fetches Old Bram Tallow, a retired lighthouse keeper who tells a four-scene story. Both characters are fictional. At each scene the app pulls a soundtrack into the room with LiveKit's Ingress API. LiveKit Cloud sends the room, participant, track and ingress events to a Hookdeck source, Hookdeck delivers them to this app, and the app builds a call log and a session chronicle from them.
+## The use case
+
+A backend that needs a reliable record of what happens in LiveKit rooms: who joined, who dropped, which tracks were published, when an ingress or egress started and ended, and how long the session ran. LiveKit reports all of it as webhooks. This demo builds that record from the room webhooks, delivered through [Hookdeck Event Gateway](https://hookdeck.com/event-gateway): the app verifies each webhook's signed token, Event Gateway deduplicates repeats on the event `id` and retries deliveries when the app fails, and every event can be replayed.
+
+## The scenario: story night
+
+To give every room event a visible purpose, the demo is a multiplayer voice adventure. Players join a LiveKit room from the page. Two LiveKit agents run the evening: Hester Pennywhistle, the innkeeper of the Drowned Bell, writes each name in her ledger and fetches Old Bram Tallow, a retired lighthouse keeper who tells a four-scene story. A mute bot player, Pixel, takes part with gestures. At each scene the app pulls a soundtrack into the room with LiveKit's Ingress API, so ingress events appear in the record too. The **session chronicle** on the page is the backend record: a timeline built only from the webhooks the app receives, and the call log beside it keeps one entry per room session. Both characters are fictional.
 
 ```
 players ──► LiveKit room ◄── agent (Hester, then Old Bram) ──► this app: POST /api/scene
@@ -8,18 +14,7 @@ players ──► LiveKit room ◄── agent (Hester, then Old Bram) ──►
                └──webhooks──► Hookdeck source ──► hookdeck listen ──► this app (:4000)
 ```
 
-The demo has three parts: this app (and its agent), LiveKit Cloud and Hookdeck Event Gateway. The agent uses LiveKit Inference for speech-to-text, the language model and text-to-speech, so the only credentials are your LiveKit project's API key and secret.
-
-## What it shows
-
-- **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
-- **Idempotent call log.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
-- **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
-- **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get the story agent.
-- **A soundtrack per scene.** At each new scene Old Bram calls a function tool. The tool posts to the app (`POST /api/scene`, local only), and the app asks LiveKit's Ingress API to pull that scene's soundtrack from a URL into the room. LiveKit reports `ingress_started`, `ingress_ended` and the track events back through Event Gateway.
-- **A session chronicle.** The page builds a timeline of the session from the webhooks it receives: who joined and when, who dropped (`participant_connection_aborted`), each scene's soundtrack starting and ending, and the session length. It tells players, the story agent and soundtracks apart with `participant.kind` in the payload (`AGENT` for the agent, `INGRESS` for a soundtrack, absent for a player). See [`src/chronicle.ts`](src/chronicle.ts).
-- **Event Gateway rules.** The connection deduplicates on the LiveKit event id (`body.id`, 10 minutes) and retries failed deliveries with exponential backoff (8 attempts from 30 seconds).
-- **A data flow pane.** The page's bottom pane shows each webhook travelling from LiveKit Cloud through Event Gateway and `hookdeck listen` to the app, with scripted scenes for a call's lifecycle, a duplicate, a bad signature and an app that is down.
+The demo has three parts: this app (and its agent), LiveKit Cloud and Hookdeck Event Gateway. The agent uses LiveKit Inference for speech-to-text, the language model and text-to-speech, so the only credentials are your LiveKit key and secret (plus a Hookdeck project API key).
 
 ## Quick start
 
@@ -88,6 +83,17 @@ npm start        # the app
 
 Open <http://localhost:4000>.
 
+## How it works
+
+- **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
+- **Idempotent call log.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
+- **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
+- **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get the story agent.
+- **A soundtrack per scene.** At each new scene Old Bram calls a function tool. The tool posts to the app (`POST /api/scene`, local only), and the app asks LiveKit's Ingress API to pull that scene's soundtrack from a URL into the room. LiveKit reports `ingress_started`, `ingress_ended` and the track events back through Event Gateway.
+- **A session chronicle.** The page builds a timeline of the session from the webhooks it receives: who joined and when, who dropped (`participant_connection_aborted`), each scene's soundtrack starting and ending, and the session length. It tells players, the story agent and soundtracks apart with `participant.kind` in the payload (`AGENT` for the agent, `INGRESS` for a soundtrack, absent for a player). See [`src/chronicle.ts`](src/chronicle.ts).
+- **Event Gateway rules.** The connection deduplicates on the LiveKit event id (`body.id`, 10 minutes) and retries failed deliveries with exponential backoff (8 attempts from 30 seconds).
+- **A data flow pane.** The page's bottom pane shows each webhook travelling from LiveKit Cloud through Event Gateway and `hookdeck listen` to the app, with scripted scenes for a call's lifecycle, a duplicate, a bad signature and an app that is down.
+
 ## The story and the agent
 
 `npm run agent` starts a worker (`agent/src/main.ts`, built with [`@livekit/agents`](https://docs.livekit.io/agents/) for Node.js) that registers with your LiveKit project as `story-gm`. It needs Node.js 22.18 or later. The page's token dispatches it when the first player joins, so there is nothing to configure in the LiveKit dashboard.
@@ -112,15 +118,33 @@ The four 3 minute soundtracks in `public/soundtracks/` are real ambience recordi
 
 LiveKit Cloud fetches the file itself, so the URL must be public: `localhost` doesn't work. By default the app points at this folder in the repository (`raw.githubusercontent.com/hookdeck/hookdeck-demos/main/livekit/call-log/public/soundtracks/<scene>.ogg`). To host the files yourself, set `SOUNDTRACK_BASE_URL` in `.env`, or `SOUNDTRACK_URL_TAVERN` (and `_FOREST`, `_CAVE`, `_FINALE`) for one scene. If a soundtrack can't be fetched, the story carries on without music. Each scene's ingress is deleted when the next scene starts, when the story ends and when the room finishes (the `room_finished` webhook), and the app deletes leftover `scene:*` ingresses from rooms that are gone when it starts, so nothing counts against your project's ingress limit.
 
-## Themes
+## The webhooks it produces
 
-The page has a switch with System, Light, Dark and **Story**, an old-world fantasy theme that is the default until you choose another (the choice is remembered). The switch is the shared `_shared/theme/theme.js`: a demo declares `data-demo-theme`, `data-demo-theme-label` and `data-demo-theme-default` on `<html>` to add a fourth option. The Story theme is `public/theme-story.css`: it overrides design-system tokens on `main` (and on the How it works dialog) and styles the parchment cards, banner, badges and transcript with them, using Cinzel Decorative, Cinzel and IM Fell English from Google Fonts. The Data flow pane is outside `main`, so it keeps the standard look. Headings and microcopy have a plain and a Story version (`only-plain` and `only-story`), so the other themes keep today's wording.
+Observed on LiveKit Cloud with a 20 second call (two participants), a WEBHOOK source type and the app verifying each delivery with `WebhookReceiver`:
+
+| Event | Count | Body size |
+|---|---|---|
+| `room_started` | 1 | 457 bytes |
+| `participant_joined` | 2 (plus the agent and each soundtrack) | about 760 bytes |
+| `track_published`, `track_unpublished` | 2 each | 1.0 to 1.1 KB |
+| `participant_left` | 2 | about 860 bytes |
+| `room_finished` | 1 | 152 bytes |
+| `ingress_started`, `ingress_ended` | 1 each per soundtrack | about 0.6 KB |
+
+- **Ordering and timing.** Events arrived in the order LiveKit generated them. `room_finished` came about 38 seconds after the last participant left (the room's departure timeout), so a record must not assume a call ends as soon as the last person leaves.
+- **Signature.** The `Authorization` header is a JWT (HS256) whose `iss` claim is the signing key, whose `sha256` claim is the base64 SHA-256 of the body, and which expires five minutes after LiveKit issues it. Event Gateway stores the request and forwards the header and the body unchanged; the body it stored and the body the app received were identical.
+- **Who is who.** `participant.kind` is absent for a player, `AGENT` for the story agent, and `INGRESS` for a soundtrack. `track_published` and `track_unpublished` events carry no `kind`, so the chronicle reads participant events. A second `participant_joined` of kind `AGENT` in the same room means LiveKit restarted the storyteller; the chronicle notes it.
+- **Dedup and retries.** Sending the same event id twice produces one delivery (the second request is recorded with `ignored_count: 1` and no event). An app that answers 503 or 401 gets retried: the first retry about 30 seconds later, then exponential backoff for up to 8 attempts.
 
 ## The data flow pane
 
 The page has a **Data flow** pane at the bottom, open by default. **Live** shows the demo as it runs: each webhook travels from LiveKit Cloud through Event Gateway (receive, store, dedup, retry) and `hookdeck listen` to the app. Click a node or a packet for that webhook's details below the diagram: each delivery attempt, what the app answered and a **View in Hookdeck** link. When Old Bram starts a scene, a packet travels from the app to LiveKit's Ingress API along the outbound **INGRESS** edge, and the ingress webhooks come back through Event Gateway. The other tabs play scripted scenes with captions: **Call lifecycle**, **Duplicate dropped**, **Bad signature** and **App down, retry succeeds**.
 
 The scenes live in `scenes/livekit-calls.ts` (the kit in `scenes/kit/` is synced from `_shared/scenes`). MP4 captures of the four scenes, landscape and square, are in `scenes/captures/`. To render them again: `npm run capture -- livekit-call-lifecycle`.
+
+## Themes
+
+The page has a switch with System, Light, Dark and **Story**, an old-world fantasy theme that is the default until you choose another (the choice is remembered). The switch is the shared `_shared/theme/theme.js`: a demo declares `data-demo-theme`, `data-demo-theme-label` and `data-demo-theme-default` on `<html>` to add a fourth option. The Story theme is `public/theme-story.css`: it overrides design-system tokens on `main` (and on the How it works dialog) and styles the parchment cards, banner, badges and transcript with them, using Cinzel Decorative, Cinzel and IM Fell English from Google Fonts. The Data flow pane is outside `main`, so it keeps the standard look. Headings and microcopy have a plain and a Story version (`only-plain` and `only-story`), so the other themes keep today's wording.
 
 ## Generate activity from the command line (optional)
 
