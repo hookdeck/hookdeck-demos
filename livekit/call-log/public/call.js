@@ -138,14 +138,15 @@ function showLine(id, who, text, final, role = 'player') {
     // The first line the storyteller speaks gets an illuminated first letter in the story theme
     if (role === 'storyteller' && !box.querySelector('li[data-role="storyteller"]')) li.dataset.first = 'true';
     lines.set(id, li);
-    box.append(li);
-    while (box.children.length > 80) box.firstChild.remove();
+    // Newest first, so the transcript reads down from the latest line
+    box.prepend(li);
+    while (box.children.length > 80) box.lastChild.remove();
   }
   li.className = final ? '' : 'interim';
   // A mute player's gesture arrives as *Pixel does something.*: show it as an italic line without the asterisks
   const shown = role === 'mute' ? text.replace(/^\s*\*+\s*|\s*\*+\s*$/g, '') : text;
   li.innerHTML = `<span class="badge badge--mono speaker">${esc(who)}</span> <span class="line-text">${esc(shown)}</span>`;
-  box.scrollTop = box.scrollHeight;
+  box.scrollTop = 0;
 }
 
 function speakerRole(identity) {
