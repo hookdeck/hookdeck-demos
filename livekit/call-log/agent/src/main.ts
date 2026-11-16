@@ -369,6 +369,12 @@ export default defineAgent({
       },
     });
     await ctx.connect();
+    // Two story agents in one room would run two stories at once: if another is already here, this one leaves
+    if ([...ctx.room.remoteParticipants.values()].some((p) => p.info.kind === ParticipantKind.AGENT)) {
+      console.log('another story agent is already in this room: leaving');
+      ctx.shutdown('duplicate story agent');
+      return;
+    }
     // onEnter ran before the room connected, so publish Hester's attributes again now
     await publish(ctx, { 'story.character': 'Hester Pennywhistle, innkeeper', 'story.state': 'playing', 'story.turn': '', 'story.turn_name': '' });
     // Open once the first guest is at the door: whether they gave a name decides Hester's first words
