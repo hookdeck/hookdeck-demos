@@ -32,9 +32,6 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
-# Captured webhook deliveries and the call log
-captures/
-
 # JSON data storage
 data/
 
