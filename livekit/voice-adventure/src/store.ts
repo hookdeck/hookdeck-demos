@@ -3,7 +3,8 @@ import * as path from 'path';
 import { CallLog, emptyLog } from './call-log';
 import { Chronicle, emptyChronicle } from './chronicle';
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// DATA_DIR lets a second instance (a test run) keep its files apart from the main one
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const LOG_FILE = path.join(DATA_DIR, 'call-log.json');
 export const DELIVERIES_FILE = path.join(DATA_DIR, 'deliveries.jsonl');
 

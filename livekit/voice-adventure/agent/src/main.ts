@@ -27,7 +27,7 @@ import { SCENES, BREVITY, bramInstructions, createEndWatcher, moveOnVerdict, sce
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 /** Must match AGENT_NAME in ../src/token.ts: the token's room configuration dispatches this name. */
-const AGENT_NAME = 'story-gm';
+const AGENT_NAME = process.env.STORY_AGENT_NAME || 'story-gm';
 const APP_URL = process.env.STORY_APP_URL || `http://localhost:${process.env.PORT || 4000}`;
 
 // Voices, all through LiveKit Inference. Cartesia's Robyn is an Australian, mature voice from LiveKit's
@@ -454,7 +454,7 @@ export default defineAgent({
       // Player inputs are counted in Bram's onUserTurnCompleted. Here only Bram's own reply is kept, to see who he named.
       if (item.role === 'assistant') {
         onBramReply(data, item.textContent);
-        if (data.players.filter((p) => !p.bot).length === 1 && data.inputs > 0 && usesName(item.textContent, data.last_speaker_name)) console.log(`name check: the reply used the speaker's name "${data.last_speaker_name}"`);
+        if (usesName(item.textContent, data.last_speaker_name)) console.log(`name check: the reply used the speaker's name "${data.last_speaker_name}" (${data.players.filter((p) => !p.bot).length} human player(s))`);
         data.summary = addSummaryLine(data.summary, 'Bram', item.textContent);
         saveState(data);
       }

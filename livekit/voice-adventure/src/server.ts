@@ -46,7 +46,7 @@ app.post('/api/story/continue', express.json(), async (req: Request, res: Respon
   try {
     const here = await room_client.listParticipants(room);
     if (here.some((p) => p.kind === 4)) return res.status(409).json({ error: 'The storyteller is still in the room.' });
-    await dispatch_client.createDispatch(room, 'story-gm');
+    await dispatch_client.createDispatch(room, AGENT_NAME);
     res.json({ ok: true });
   } catch (error: any) {
     res.status(502).json({ error: error.message });

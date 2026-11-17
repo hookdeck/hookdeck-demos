@@ -1,7 +1,8 @@
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
 
 /** The agent that runs the story. `npm run agent` registers a worker under this name. */
-export const AGENT_NAME = 'story-gm';
+// STORY_AGENT_NAME lets a test instance use its own agent name, so it never takes a real room's dispatch
+export const AGENT_NAME = process.env.STORY_AGENT_NAME || 'story-gm';
 
 /**
  * A 10 minute token that can join one room, publish and subscribe. The page never sees the key or
