@@ -14,15 +14,15 @@ test('the gesture delay is one to three seconds', () => {
 });
 
 test('Pixel answers its own turn once, and only its own turn', () => {
-  const turn = { turn: 'bot-pixel', turn_seq: '3', scene: 'cave', agent_state: 'speaking' };
-  assert.equal(shouldGesture(turn, undefined), 'gesture');
-  assert.equal(shouldGesture(turn, '3'), 'idle');
-  assert.equal(shouldGesture({ ...turn, turn_seq: '4' }, '3'), 'gesture');
-  assert.equal(shouldGesture({ ...turn, turn: 'web-1a2b3c' }, undefined), 'idle');
-  assert.equal(shouldGesture({ turn: '' }, undefined), 'idle');
+  const ask = { pixel_seq: '3', line: '*Pixel nods.*' };
+  assert.equal(shouldGesture(ask, undefined), 'gesture');
+  assert.equal(shouldGesture(ask, '3'), 'idle');
+  assert.equal(shouldGesture({ ...ask, pixel_seq: '4' }, '3'), 'gesture');
+  assert.equal(shouldGesture({ pixel_seq: '5' }, undefined), 'idle'); // no line, nothing to send
+  assert.equal(shouldGesture({}, undefined), 'idle');
 });
 
 
 test('every place has a few gesture lines', () => {
-  for (const [place, lines] of Object.entries(SCENE_LINES)) assert.ok(lines.length >= 4, place);
+  for (const [place, lines] of Object.entries(SCENE_LINES)) assert.ok(lines.length >= 2, place);
 });

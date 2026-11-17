@@ -102,10 +102,6 @@ export interface TurnState {
   short_mode?: boolean;
   /** Where the party is. */
   location?: PlaceId;
-  /** Turns given to a human since the mute player last had one. */
-  since_bot?: number;
-  /** Set by onPlayout when the mute player's turn was passed over because it was not his round. */
-  skip_reason?: string;
   /** Bram's replies since the scene began (the arrival description is the first), and the sights he has already used in them. */
   replies_in_scene?: number;
   described?: string[];
@@ -128,25 +124,19 @@ export function onBramReply(s: TurnState, text: string) {
 }
 
 /** Bram has finished speaking: who gets the turn now (the player he named, or the next in rotation), or nobody. */
-/** The mute player gets a turn after this many turns (about every third round). */
-export const BOT_EVERY = 3;
-
+/**
+ * Bram has finished speaking: who gets the next turn, among the human players only. The mute player is never in the rotation: nothing
+ * waits for it, and it acts only as an extra around a human turn (when addressed, or once on arriving somewhere).
+ */
 export function onPlayout<T extends Addressable>(s: TurnState, players: T[]): T | undefined {
   if (s.ending || s.scene_index === 0) return undefined;
-  let index = nextSpeakerIndex(players, s.rotation, s.last_reply);
-  s.skip_reason = undefined;
+  const humans = players.filter((p) => !p.bot);
+  const pool = humans.length ? humans : players;
+  const last = pool.indexOf(players[s.rotation]);
+  const index = nextSpeakerIndex(pool, last, s.last_reply);
   if (index < 0) return undefined;
-  // The mute player takes a turn about every third round, not every rotation: other turns go to the next human
-  if (players[index].bot && players.some((p) => !p.bot)) {
-    if ((s.since_bot ?? 0) < BOT_EVERY - 1) {
-      s.skip_reason = 'not his round';
-      for (let step = 1; step <= players.length && players[index].bot; step++) index = (index + 1) % players.length;
-    }
-  }
-  if (players[index].bot) s.since_bot = 0;
-  else s.since_bot = (s.since_bot ?? 0) + 1;
-  s.rotation = index;
-  return players[index];
+  s.rotation = players.indexOf(pool[index]);
+  return pool[index];
 }
 
 /** The party arrives at a place: this place's own count of inputs and replies starts over. */

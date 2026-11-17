@@ -5,72 +5,56 @@
  */
 import { itemsHere, type ItemId, type PlaceId, type World } from './world.ts';
 
-/** A gesture line, and what must be true for it to make sense. A gesture never refers to something the party does not have. */
+/** A gesture line, and what must be true for it to make sense. A gesture never refers to something that is no longer so. */
 export interface GestureLine {
   text: string;
   /** Items the party must already carry. */
   needs?: ItemId[];
   /** Items that must still be lying in this place (so Pixel points at something that is there). */
   here?: ItemId[];
+  /** Puzzle flags that must have this value (the chest is still shut, the Lantern is not yet lit). */
+  flags?: { chest_open?: boolean; lantern_lit?: boolean };
 }
 
-const L = (text: string, o: { needs?: ItemId[]; here?: ItemId[] } = {}): GestureLine => ({ text, ...o });
+const L = (text: string, o: Omit<GestureLine, 'text'> = {}): GestureLine => ({ text, ...o });
 
+// Few lines, each one a small reaction to something that is really there. Pixel adds colour; it never carries the story.
 export const SCENE_LINES: Record<PlaceId, GestureLine[]> = {
   tavern: [
     L('*Pixel taps the salt-stained map and points at a small drawing of a lantern.*', { here: ['map'] }),
-    L('*Pixel slides the hooded stranger\'s mug a little closer, then raises one eyebrow.*'),
-    L('*Pixel nods slowly at the stranger and taps two fingers on the table, once.*'),
-    L('*Pixel points at the north door, then at the storm outside.*'),
-    L('*Pixel gives the lock of the small iron chest a puzzled tug.*'),
-    L('*Pixel peers at the back door and the dark shore beyond it.*'),
+    L('*Pixel gives the lock of the small iron chest a puzzled tug.*', { flags: { chest_open: false } }),
+    L('*Pixel peers into the open chest and grins.*', { flags: { chest_open: true } }),
   ],
   forest: [
-    L('*Pixel presses a palm to a tree trunk and tilts an ear to the bark.*'),
     L('*Pixel crouches, brushes the leaves aside and points at a trail of silver footprints.*'),
-    L('*Pixel holds a finger to the wind, then points deeper into the trees.*'),
     L('*Pixel points at the hollow oak and its small door.*'),
-    L('*Pixel peers over the rope bridge at the stream below.*'),
-    L('*Pixel ties a scrap of cloth to a low branch to mark the way back.*'),
   ],
   oak: [
-    L('*Pixel runs a finger along the root shelf and taps it twice.*'),
     L('*Pixel points at the small brass key on the shelf.*', { here: ['brass_key'] }),
     L('*Pixel sniffs the resin-scented air and wrinkles its nose.*'),
-    L('*Pixel peeks back out through the little door at the storm.*'),
   ],
   cave: [
-    L('*Pixel counts the drips from the ceiling on four fingers, then points at the dark.*'),
-    L('*Pixel runs a finger along the carving of a boat on the wall.*'),
     L('*Pixel points at the Lantern on the stone ledge.*', { here: ['lantern'] }),
-    L('*Pixel presses a hand to the cold stone and shakes its head.*'),
-    L('*Pixel points at the rowboat on the pool.*'),
-    L('*Pixel holds the Lantern up to the cave wall and taps the carving.*', { needs: ['lantern'] }),
+    L('*Pixel points at the rowboat on the dark pool.*'),
   ],
   lighthouse: [
-    L('*Pixel looks up at the dark lamp, then out at the clearing storm.*'),
-    L('*Pixel runs a hand along the salt-streaked wall and smiles.*'),
-    L('*Pixel cups both hands around the Lantern and nods: nearly home.*', { needs: ['lantern'] }),
-    L('*Pixel points down the shore path to the Drowned Bell.*'),
+    L('*Pixel looks up at the dark lamp, then out at the clearing storm.*', { flags: { lantern_lit: false } }),
+    L('*Pixel cups both hands around the Lantern and nods: nearly home.*', { needs: ['lantern'], flags: { lantern_lit: false } }),
   ],
 };
 
-/** Lines that fit anywhere, with no item needs: the weather, a sound, the stranger, an exit, copying someone. A place never runs dry of them. */
+/** Lines that fit anywhere, with no item needs. */
 export const GENERIC_LINES: GestureLine[] = [
   L('*Pixel listens to the storm and pulls its collar up.*'),
   L('*Pixel tilts its head at a faint sound in the distance.*'),
-  L('*Pixel glances at the hooded stranger\'s boots, then away.*'),
   L('*Pixel points at the nearest way out, then at the others.*'),
-  L('*Pixel copies the last thing the others did, a beat late, and shrugs.*'),
   L('*Pixel nods along and taps a foot.*'),
-  L('*Pixel peers around and rubs its hands against the cold.*'),
 ];
 
 /** Pixel's answers when a player speaks to it: it responds to what was asked, never with words. */
 export const RESPONDING_LINES: GestureLine[] = [
   L('*Pixel tilts its head, considers, and nods slowly.*'),
   L('*Pixel shrugs and spreads both hands, as if to say: not sure.*'),
-  L('*Pixel taps its chin, then holds up one finger: wait.*'),
   L('*Pixel gives a firm thumbs up and a small grin.*'),
 ];
 
@@ -80,7 +64,7 @@ export const POINTING_RESPONSES: Record<PlaceId, string> = {
   forest: '*Pixel points at the hollow oak and its small door.*',
   oak: '*Pixel points at the little door back out to the wood.*',
   cave: '*Pixel points at the rowboat on the dark pool.*',
-  lighthouse: '*Pixel points at the dark lamp above.*',
+  lighthouse: '*Pixel points up at the lamp room.*',
 };
 
 /** A line is not used again for this many turns. */
@@ -96,7 +80,9 @@ export type GestureChoice = { line: string; reason?: undefined } | { line?: unde
 export function chooseGesture(world: World, cooldown: Map<string, number>, turn_no: number, random: () => number = Math.random): GestureChoice {
   const here = new Set(itemsHere(world).map((i) => i.id));
   const fits = [...SCENE_LINES[world.location], ...GENERIC_LINES].filter((line) =>
-    (line.needs ?? []).every((id) => world.satchel.includes(id)) && (line.here ?? []).every((id) => here.has(id)));
+    (line.needs ?? []).every((id) => world.satchel.includes(id)) && (line.here ?? []).every((id) => here.has(id))
+    && (line.flags?.chest_open === undefined || line.flags.chest_open === world.chest_open)
+    && (line.flags?.lantern_lit === undefined || line.flags.lantern_lit === world.lantern_lit));
   if (!fits.length) return { reason: 'no eligible line' };
   const eligible = fits.filter((line) => {
     const last = cooldown.get(line.text);
@@ -117,36 +103,29 @@ export function respondLine(world: World, gave_label: string | undefined, random
   return options[Math.floor(random() * options.length)];
 }
 
-/** What Pixel sees in the story agent's participant attributes, and what it should do about it. */
+/** What Pixel sees in the story agent's participant attributes. */
 export interface StoryAttributes {
-  turn?: string;
-  turn_seq?: string;
-  scene?: string;
   state?: string;
-  agent_state?: string;
-  /** The gesture the story agent chose for Pixel's turn. */
+  /** A counter the agent bumps each time it wants Pixel to act, and the gesture for that moment. Pixel never holds a turn. */
+  pixel_seq?: string;
   line?: string;
 }
 
 export const PIXEL_IDENTITY = 'bot-pixel';
 
 export const readAttributes = (a: Record<string, string>): StoryAttributes => ({
-  turn: a['story.turn'],
-  turn_seq: a['story.turn_seq'],
-  scene: a['story.scene'],
   state: a['story.state'],
-  agent_state: a['lk.agent.state'],
+  pixel_seq: a['story.pixel_seq'],
   line: a['story.pixel_line'],
 });
 
 /**
- * Pixel's turn trigger. A turn is new when `story.turn` is Pixel's identity and `story.turn_seq` (counted by the
- * storyteller on every give_turn) has changed since Pixel last answered. The storyteller's give_turn tool is
- * waiting for the gesture, so Pixel answers after its short delay whatever state the agent is in.
+ * Whether Pixel should send a gesture now: the agent published a new sequence number with a line. Pixel acts only on that. It does
+ * not wait for a turn and nothing waits for it: the gesture goes into the transcript, and the storyteller weaves it into a reply.
  */
-export function shouldGesture(attrs: StoryAttributes, last_answered_seq: string | undefined): 'gesture' | 'idle' {
-  if (attrs.turn !== PIXEL_IDENTITY) return 'idle';
-  return attrs.turn_seq === last_answered_seq ? 'idle' : 'gesture';
+export function shouldGesture(attrs: StoryAttributes, last_seq: string | undefined): 'gesture' | 'idle' {
+  if (!attrs.pixel_seq || !attrs.line) return 'idle';
+  return attrs.pixel_seq === last_seq ? 'idle' : 'gesture';
 }
 
 /** Pixel waits one to three seconds before it gestures. */

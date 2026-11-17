@@ -27,6 +27,8 @@ export interface PlaceDef {
   id: PlaceId;
   /** Shown on the page. */
   name: string;
+  /** What players call it (lower case, as speech to text writes it): used to match a named destination. */
+  aliases: string[];
   /** The soundtrack file (scene name) played here. Places that share one keep it playing. */
   soundtrack: 'tavern' | 'forest' | 'cave' | 'finale';
   place: string;
@@ -41,6 +43,7 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
   tavern: {
     id: 'tavern',
     name: 'The Drowned Bell',
+    aliases: ['the drowned bell', 'drowned bell', 'the inn', 'the tavern', 'the bell', 'the pub'],
     soundtrack: 'tavern',
     place: 'the common room of the Drowned Bell on a stormy night, with a fire, a long table and a hooded stranger',
     sights: 'rain on the shutters, the fire popping, a salt-stained map on the table in front of the stranger, a small iron chest under the bench, locked',
@@ -53,6 +56,7 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
   forest: {
     id: 'forest',
     name: 'The Hollow Wood',
+    aliases: ['the hollow wood', 'the wood', 'the woods', 'the forest', 'the trees'],
     soundtrack: 'forest',
     place: 'the Hollow Wood, a damp pine forest',
     sights: 'a rope bridge over a stream, a muddy path under the pines, silver footprints in the mud, a hollow oak with a small door in its trunk',
@@ -67,6 +71,7 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
   oak: {
     id: 'oak',
     name: 'The Hollow Oak',
+    aliases: ['the hollow oak', 'the oak', 'the oak tree', 'the tree'],
     soundtrack: 'forest',
     place: 'inside the hollow oak, a cramped, dry hollow that smells of resin',
     sights: 'a root shelf along the wall with a small brass key on it, the storm muffled outside the little door',
@@ -76,6 +81,7 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
   cave: {
     id: 'cave',
     name: 'The Cave under the Mere',
+    aliases: ['the cave', 'the mere', 'the hollow mere', 'the cave under the mere', 'the pool'],
     soundtrack: 'cave',
     place: 'the cave under the Hollow Mere, dripping and dark',
     sights: 'a stone ledge with the Lantern of Hollow Mere on it, unlit, drips from the ceiling, a carving of a boat crossing a pool on the wall, a small rowboat on the underground pool',
@@ -88,6 +94,7 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
   lighthouse: {
     id: 'lighthouse',
     name: 'The Lighthouse',
+    aliases: ['the lighthouse', 'the light house', 'the lamp room', 'the tower'],
     soundtrack: 'finale',
     place: 'the lamp room of Old Bram\'s lighthouse at dawn, the great lamp dark',
     sights: 'the storm clearing outside, the dark lamp, the stone walls streaked with salt, the Drowned Bell far below',
@@ -134,6 +141,32 @@ export const worldAt = (place: string | undefined, items?: string): World => {
   for (const id of (items ?? '').split(',').map((s) => s.trim())) if (itemById(id) && !w.satchel.includes(id as ItemId)) w.satchel.push(id as ItemId);
   return w;
 };
+
+/** The way out of this place, described by where it leads: for telling the players their real options. */
+export const exitsByDestination = (w: World): string => placeOf(w).exits.map((e) => `${PLACES[e.to].name} (${e.text})`).join('; ');
+
+const MOVE_WORDS = /\b(go|goes|going|head|heading|walk|walking|return|returning|back|enter|travel|get|run|leave|climb|row|follow|through|into|towards?|take us|take me|off to|out to)\b/i;
+
+/**
+ * Names a destination in the player's words ("go through the door into the Drowned Bell"): the exit from here that leads there, or the
+ * destination when there is no direct exit. The destination the player names outweighs words like "door" or "path". Only with a
+ * word of movement, so "look at the inn sign" does not move anyone.
+ */
+export function matchDestination(w: World, words: string): { exit?: ExitDef; destination?: PlaceDef } | undefined {
+  if (!MOVE_WORDS.test(words)) return undefined;
+  const text = words.toLowerCase();
+  let best: { place: PlaceDef; at: number; len: number } | undefined;
+  for (const place of Object.values(PLACES)) {
+    if (place.id === w.location) continue;
+    for (const alias of place.aliases) {
+      const at = text.search(new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`));
+      if (at >= 0 && (!best || alias.length > best.len || (alias.length === best.len && at > best.at))) best = { place, at, len: alias.length };
+    }
+  }
+  if (!best) return undefined;
+  const exit = placeOf(w).exits.find((e) => e.to === best!.place.id);
+  return exit ? { exit } : { destination: best.place };
+}
 
 export const goalDone = (w: World) => w.lantern_lit;
 export const itemById = (id: string): ItemDef | undefined => ITEMS.find((i) => i.id === id);
@@ -206,9 +239,9 @@ export function actionPrompt(w: World, words: string, pixel_present = false): { 
   const here = itemsHere(w).map((i) => `${i.id} (${i.label})`);
   const carried = w.satchel.map((id) => `${id} (${itemById(id)!.label})`);
   return {
-    system: 'You read what a player says in a spoken adventure and list only what they clearly do right now. Reply with one JSON object and nothing else: {"move": exit id or null, "blocked": text or null, "addressed": "pixel" or null, "take": [item ids], "use": [{"item": id, "target": id or "chest"}], "give": [{"item": id, "to": "stranger"}]}. Choose a "move" only when the player\'s words clearly name or describe one of the listed exits. If the player tries to go somewhere, or by a way, that is NOT in the list of exits, set "move" to null and put what they tried in "blocked". Never pick the nearest exit as a guess. Use empty arrays and null when the player does none of these. Handing an item to someone is "give" ("to" is who gets it, for example "pixel" or "stranger"). When the player speaks to or asks Pixel something, set "addressed" to "pixel". Exploring, asking, looking and talking are none of these.',
+    system: 'You read what a player says in a spoken adventure and list only what they clearly do right now. Reply with one JSON object and nothing else: {"move": exit id or null, "blocked": text or null, "addressed": "pixel" or null, "take": [item ids], "use": [{"item": id, "target": id or "chest"}], "give": [{"item": id, "to": "stranger"}]}. Choose a "move" only when the player\'s words clearly name or describe one of the listed exits. Prefer the exit whose destination the player names ("the Drowned Bell", "the inn", "the lighthouse", "the cave"): the destination outweighs words like "door" or "path". If the player tries to go somewhere, or by a way, that is NOT in the list of exits, set "move" to null and put what they tried in "blocked". Never pick the nearest exit as a guess. Use empty arrays and null when the player does none of these. Handing an item to someone is "give" ("to" is who gets it, for example "pixel" or "stranger"). When the player speaks to or asks Pixel something, set "addressed" to "pixel". Exploring, asking, looking and talking are none of these.',
     user: `Place: ${p.place}.
-Exits (use the id): ${p.exits.map((e) => `${e.id}: ${e.text}`).join('; ')}.
+Exits (use the id): ${p.exits.map((e) => `${e.id}: ${e.text}, leads to ${PLACES[e.to].name} (also called ${PLACES[e.to].aliases.join(', ')})`).join('; ')}.
 Items lying here: ${here.join('; ') || 'none'}.${chestHere(w) ? ` An iron chest is here, ${w.chest_open ? 'open' : 'locked'}.` : ''}
 The party carries: ${carried.join('; ') || 'nothing'}.
 ${pixel_present ? 'Pixel, a mute traveller, is in the party.\n' : ''}The player said: "${words.trim().slice(0, 300)}"`,
@@ -222,11 +255,13 @@ export interface Resolution {
   opened: boolean;
   lit: boolean;
   took: ItemId[];
+  /** A move was asked for and refused (no such exit, or a destination with no way from here). */
+  blocked_move: boolean;
 }
 
 /** Validates and applies the resolver's actions in order: take, give, use, then move. Anything that does not hold becomes a refusal outcome. */
 export function applyActions(w: World, actions: Actions): Resolution {
-  const r: Resolution = { outcomes: [], moved: false, opened: false, lit: false, took: [] };
+  const r: Resolution = { outcomes: [], moved: false, opened: false, lit: false, took: [], blocked_move: false };
   const taken_ids = new Set<string>();
   const take = (raw: string, via_stranger = false, who = 'the stranger') => {
     const id = normalizeItem(raw);
@@ -269,12 +304,12 @@ export function applyActions(w: World, actions: Actions): Resolution {
     } else if (a && itemById(a) && !w.satchel.includes(a)) r.outcomes.push(`${cap(itemById(a)!.label)} is not in the satchel.`);
     else r.outcomes.push('Nothing happens: that does not work here.');
   }
-  if (!actions.move && actions.blocked) r.outcomes.push(`There is no way to ${actions.blocked} from here. The ways out are: ${placeOf(w).exits.map((e) => e.text).join('; ')}.`);
+  if (!actions.move && actions.blocked) { r.blocked_move = true; r.outcomes.push(`There is no way to ${actions.blocked} from here. From here the party can go to: ${exitsByDestination(w)}.`); }
   if (actions.move) {
     const here = placeOf(w);
     const wanted = actions.move.toLowerCase().replace(/[\s-]+/g, '_');
     const exit = here.exits.find((e) => e.id === wanted) ?? here.exits.find((e) => e.to === wanted);
-    if (!exit) r.outcomes.push(`There is no way "${actions.move}" from here.`);
+    if (!exit) { r.blocked_move = true; r.outcomes.push(`There is no way "${actions.move}" from here. From here the party can go to: ${exitsByDestination(w)}.`); }
     else {
       w.location = exit.to;
       r.moved = true;

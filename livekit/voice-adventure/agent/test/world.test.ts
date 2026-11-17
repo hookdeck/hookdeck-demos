@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addressesPixel, itemNamed, ITEMS, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
+import { addressesPixel, exitsByDestination, itemNamed, ITEMS, matchDestination, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
 import { buildState, decodeState, encodeState, recapInstructions, shouldResume } from '../src/resume.ts';
-import { BOT_EVERY, bramInstructions, cleanSpeech, onBramReply, onPlayout, onSceneStart, TOOL_NAMES, type TurnState } from '../src/story.ts';
+import { bramInstructions, cleanSpeech, onBramReply, onPlayout, onSceneStart, TOOL_NAMES, type TurnState } from '../src/story.ts';
 import { COOLDOWN_TURNS, GENERIC_LINES, POINTING_RESPONSES, RESPONDING_LINES, SCENE_LINES, chooseGesture, pickGesture, respondLine } from '../src/pixel-lines.ts';
 
 const act = (o: Partial<Actions>): Actions => ({ ...noActions(), ...o });
@@ -212,19 +212,6 @@ test('Pixel: lines fit the place and the satchel, with a cooldown, and it skips 
   assert.deepEqual(chooseGesture(at('oak'), c3, 11, random), { reason: 'cooldown' });
 });
 
-test('Pixel takes a turn about every third round, not every rotation', () => {
-  const players = [{ identity: 'web-1', name: 'Priya', bot: false }, { identity: 'bot-pixel', name: 'Pixel', bot: true }];
-  const s: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
-  const order: string[] = [];
-  for (let i = 0; i < 12; i++) order.push(onPlayout(s, players)!.name);
-  const pixel_turns = order.filter((n) => n === 'Pixel').length;
-  assert.ok(pixel_turns >= 3 && pixel_turns <= 4, order.join(','));
-  assert.equal(BOT_EVERY, 3);
-  // with no human at all the bot still gets the turn
-  const only: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
-  assert.equal(onPlayout(only, [players[1]])!.name, 'Pixel');
-});
-
 test('an exit the player names that does not exist is refused, not guessed; flint and wick are one take', () => {
   const w = at('cave');
   const r = applyActions(w, act({ blocked: 'the shore path' }));
@@ -251,7 +238,7 @@ test('test starts: STORY_START puts the party elsewhere with the map', () => {
 });
 
 test('presence floor: every place has generic lines that need nothing, so Pixel never runs dry; the reason for a skip is named', () => {
-  assert.ok(GENERIC_LINES.length >= 5 && GENERIC_LINES.every((l) => !l.needs && !l.here));
+  assert.ok(GENERIC_LINES.length >= 3 && GENERIC_LINES.every((l) => !l.needs && !l.here));
   for (const place of Object.keys(PLACES) as Array<keyof typeof PLACES>) {
     // an empty-handed party, even with every place line cooling down, still has the generic lines
     const cool = new Map<string, number>();
@@ -264,33 +251,6 @@ test('presence floor: every place has generic lines that need nothing, so Pixel 
   const all = new Map<string, number>();
   for (const l of [...SCENE_LINES.cave, ...GENERIC_LINES]) all.set(l.text, 0);
   assert.equal(chooseGesture(at('cave'), all, 1).reason, 'cooldown');
-});
-
-test('presence floor: with two humans and Pixel, Pixel takes a turn every third turn over a long story, always with a line', () => {
-  const players = [{ identity: 'web-1', name: 'Gandalf', bot: false }, { identity: 'web-2', name: 'Strider', bot: false }, { identity: 'bot-pixel', name: 'Pixel', bot: true }];
-  const s: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
-  const cooldown = new Map<string, number>();
-  const world = at('tavern');
-  let pixel = 0;
-  let skipped_by_round = 0;
-  for (let turn = 0; turn < 30; turn++) {
-    let next = onPlayout(s, players)!;
-    if (s.skip_reason === 'not his round') skipped_by_round++;
-    if (next.bot) {
-      const choice = chooseGesture(world, cooldown, turn);
-      assert.ok(choice.line, `turn ${turn}: ${choice.reason}`);
-      pixel++;
-    }
-  }
-  assert.ok(pixel >= 8 && pixel <= 11, `pixel turns: ${pixel}`);
-  assert.equal(skipped_by_round, 0); // with two humans his turn comes round on the third turn by itself
-});
-
-test('onPlayout names why Pixel was passed over', () => {
-  const players = [{ identity: 'web-1', name: 'Priya', bot: false }, { identity: 'bot-pixel', name: 'Pixel', bot: true }];
-  const s: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: 0, ending: false, since_bot: 0 };
-  assert.equal(onPlayout(s, players)!.name, 'Priya');
-  assert.equal(s.skip_reason, 'not his round');
 });
 
 test('addressing Pixel: detected in the words and flagged by the resolver; an item given to Pixel joins the shared satchel', () => {
@@ -318,4 +278,65 @@ test('a garbled "give pixel to map" still names the item, so the code can make t
   assert.equal(itemNamed('Give pixel to map.'), 'map');
   assert.equal(itemNamed('hand Pixel the brass key'), 'brass_key');
   assert.equal(itemNamed('give pixel a hug'), undefined);
+});
+
+test('Pixel is never in the turn rotation: with any number of humans, only humans get the turn', () => {
+  const players = [{ identity: 'web-1', name: 'Gandalf', bot: false }, { identity: 'bot-pixel', name: 'Pixel', bot: true }, { identity: 'web-2', name: 'Strider', bot: false }];
+  const s: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
+  const order: string[] = [];
+  for (let i = 0; i < 12; i++) order.push(onPlayout(s, players)!.name);
+  assert.ok(!order.includes('Pixel'), order.join(','));
+  assert.deepEqual(order.slice(0, 4), ['Gandalf', 'Strider', 'Gandalf', 'Strider']);
+  // one human: the turn always goes back to them
+  const one: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
+  for (let i = 0; i < 5; i++) assert.equal(onPlayout(one, [players[0], players[1]])!.name, 'Gandalf');
+});
+
+test('Pixel lines follow the puzzle flags: no tug at a chest that is open, no "nearly home" once the Lantern is lit', () => {
+  const open = at('tavern');
+  open.chest_open = true;
+  for (let i = 0; i < 60; i++) assert.doesNotMatch(pickGesture(open, new Map(), 0, () => Math.random()) ?? '', /puzzled tug/);
+  const shut = at('tavern');
+  const seen = new Set<string>();
+  for (let i = 0; i < 200; i++) seen.add(pickGesture(shut, new Map(), 0, () => Math.random()) ?? '');
+  assert.ok([...seen].some((l) => /puzzled tug/.test(l)));
+  assert.ok(![...seen].some((l) => /open chest/.test(l)));
+  const lit = at('lighthouse', ['lantern']);
+  lit.lantern_lit = true;
+  for (let i = 0; i < 60; i++) assert.doesNotMatch(pickGesture(lit, new Map(), 0, () => Math.random()) ?? '', /nearly home|dark lamp/);
+  assert.ok(Object.values(SCENE_LINES).every((lines) => lines.length <= 3), 'few, better lines');
+});
+
+test('destinations: "Go through the door into the Drowned Bell" from the forest is the inn path, not the oak door', () => {
+  const forest = at('forest');
+  const m = matchDestination(forest, 'Go through the door into the drowned bell.');
+  assert.equal(m?.exit?.id, 'inn_path');
+  assert.equal(matchDestination(forest, 'head back to the inn')?.exit?.id, 'inn_path');
+  assert.equal(matchDestination(forest, 'we go to the lighthouse')?.exit?.id, 'headland_track');
+  assert.equal(matchDestination(forest, 'walk into the cave under the mere')?.exit?.id, 'rope_bridge');
+  assert.equal(matchDestination(forest, 'go into the hollow oak')?.exit?.id, 'oak_door');
+  // a destination with no direct exit from here: named, with no exit
+  const cave = at('cave');
+  const nope = matchDestination(cave, 'go back to the inn');
+  assert.equal(nope?.exit, undefined);
+  assert.equal(nope?.destination?.name, 'The Drowned Bell');
+  // no word of movement, no move; and the current place is not a destination
+  assert.equal(matchDestination(forest, 'look at the inn sign'), undefined);
+  assert.equal(matchDestination(forest, 'go deeper into the wood'), undefined);
+  // the prompt shows each exit with its destination and what it is called
+  const p = actionPrompt(forest, 'x');
+  assert.match(p.user, /inn_path: .*leads to The Drowned Bell \(also called the drowned bell, drowned bell, the inn/);
+  assert.match(p.system, /destination outweighs words like "door" or "path"/);
+});
+
+test('a blocked move names the real ways out by destination', () => {
+  const w = at('forest');
+  const r = applyActions(w, act({ blocked: 'the tone' }));
+  assert.equal(r.blocked_move, true);
+  assert.match(r.outcomes[0], /From here the party can go to: The Hollow Oak \(the small door in the hollow oak\); The Cave under the Mere/);
+  assert.match(r.outcomes[0], /The Drowned Bell \(the lit windows/);
+  assert.match(exitsByDestination(at('oak')), /The Hollow Wood \(the small door leads back out/);
+  const bad = applyActions(at('cave'), act({ move: 'north_door' }));
+  assert.equal(bad.blocked_move, true);
+  assert.match(bad.outcomes[0], /The Hollow Wood.*The Lighthouse/);
 });

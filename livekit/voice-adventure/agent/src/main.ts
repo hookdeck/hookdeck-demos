@@ -19,12 +19,12 @@ import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { itemById, itemNamed, normalizeItem, PLACES, actionPrompt, addressesPixel, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
+import { exitsByDestination, itemById, itemNamed, matchDestination, normalizeItem, PLACES, actionPrompt, addressesPixel, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
 import { askShort, describeLlm, makeLlm } from './llm.ts';
 import { botName, fetchLine, planLedger, shouldFetchBram } from './names.ts';
 import { chooseGesture, respondLine } from './pixel-lines.ts';
 import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
-import { BREVITY, bramInstructions, createEndWatcher, BOT_EVERY, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
+import { BREVITY, bramInstructions, createEndWatcher, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -78,10 +78,9 @@ interface StoryData {
   soundtrack: string | undefined;
   /** Where the party is (for the reply's atmosphere tracking) and turns given to a human since the mute player last had one. */
   location?: PlaceId;
-  since_bot?: number;
-  skip_reason?: string;
-  /** A player spoke to Pixel: it answers on the next turn. `gave` is the label of an item handed to it. */
-  pixel_addressed: { words: string; gave?: string } | undefined;
+  /** A counter for Pixel's gestures (`story.pixel_seq`), and what Pixel last did, for Bram to weave into his next reply. */
+  pixel_seq: number;
+  pixel_did: string | undefined;
   /** Travellers who joined after the story began: Bram acknowledges them once. */
   arrivals: string[];
   /** Pixel's gesture cooldown: line to the turn it was last used, and a count of turns given. */
@@ -192,6 +191,13 @@ const publishPlace = (data: StoryData) => {
   return publish(data.ctx, { 'story.scene': place.id, 'story.place': place.name, 'story.turn': '', 'story.turn_name': '' });
 };
 
+/** Pixel acts: a new sequence number with the gesture to send. Nothing waits for it and it holds no turn: the line goes into the transcript. */
+const pixelAct = (data: StoryData, line: string) => {
+  data.pixel_seq += 1;
+  console.log(`pixel gesture ${data.pixel_seq}: ${line}`);
+  return publish(data.ctx, { 'story.pixel_line': line, 'story.pixel_seq': String(data.pixel_seq) });
+};
+
 /** The party is at (a new) place: counts, saved story, attributes, and the soundtrack when it differs from the one playing. Returns what to tell Bram about the music. */
 async function arrive(data: StoryData): Promise<string | undefined> {
   onSceneStart(data, data.world.location);
@@ -223,6 +229,12 @@ async function resolveTurn(data: StoryData, words: string, from_bot = false): Pr
     console.log(`resolver failed (${error?.message ?? error}): treated as no actions`);
   }
   console.log(`resolver at ${data.world.location}: "${words.trim().slice(0, 80)}" -> ${JSON.stringify(actions)}`);
+  // The destination the player names outweighs the model's guess (and words like "door"): the exit that leads there, or a refusal when there is none
+  if (!from_bot) {
+    const dest = matchDestination(data.world, words);
+    if (dest?.exit && actions.move !== dest.exit.id) { console.log(`destination named: ${dest.exit.id} (the resolver said ${actions.move})`); actions.move = dest.exit.id; actions.blocked = null; }
+    else if (dest?.destination && !dest.exit) { console.log(`destination named with no way from here: ${dest.destination.name}`); actions.move = null; actions.blocked = dest.destination.name; }
+  }
   const to_pixel = !!pixel && !from_bot && (actions.addressed === 'pixel' || addressesPixel(words));
   // "Give Pixel the map": if the resolver missed an obvious give, the words still name the item
   if (to_pixel && !actions.give.length && !actions.take.length && /\b(give|hand|pass|offer|toss|lend)\b/i.test(words)) {
@@ -235,17 +247,30 @@ async function resolveTurn(data: StoryData, words: string, from_bot = false): Pr
   if (to_pixel) {
     const gave = actions.give.find((g) => /pix/i.test(g.to));
     const gave_item = gave ? itemLabelFor(gave.item) : undefined;
-    data.pixel_addressed = { words, gave: gave_item };
     console.log(`pixel addressed: "${words.trim().slice(0, 80)}"${gave_item ? ` (gave ${gave_item})` : ''}`);
-    extra.push(`The player spoke to Pixel, the mute traveller. Acknowledge it in a sentence by describing Pixel noticing and reacting (a tilt of the head, a look), and never speak for Pixel or say what Pixel thinks: Pixel will answer with a gesture of its own.`);
+    // Pixel answers at once with a gesture that responds to what was asked; it holds no turn and nothing waits for it
+    pixelAct(data, respondLine(data.world, gave_item));
+    extra.push(`The player spoke to Pixel, the mute traveller. Acknowledge it in a sentence by describing Pixel noticing and reacting (a tilt of the head, a look), and never speak for Pixel or say what Pixel thinks: Pixel answers with a gesture of its own.`);
   }
+  if (data.pixel_did) {
+    extra.push(`Pixel, the mute traveller, just did this: ${data.pixel_did.replace(/\*/g, '')} Weave it into your reply in one clause if it fits, and never speak for Pixel.`);
+    data.pixel_did = undefined;
+  }
+  if (result.blocked_move) extra.push(`The party's move was blocked. Say plainly, in one sentence, where they can go from here: ${exitsByDestination(data.world)}.`);
   if (data.arrivals.length) {
     extra.push(`${data.arrivals.join(' and ')} just joined the party: acknowledge the new arrival in a few words.`);
     data.arrivals = [];
   }
   if (result.outcomes.length) console.log(`resolved: ${result.outcomes.join(' | ')}`);
   let music: string | undefined;
-  if (result.moved) music = await arrive(data);
+  if (result.moved) {
+    music = await arrive(data);
+    // On arriving somewhere new Pixel may react once (when it has a fitting line); Bram weaves it into his next reply
+    if (pixel && !to_pixel) {
+      const choice = chooseGesture(data.world, data.pixel_cooldown, data.turn_no);
+      if (choice.line) { pixelAct(data, choice.line); data.pixel_did = choice.line; } else console.log(`pixel stays quiet on arriving: ${choice.reason}`);
+    }
+  }
   else if (result.took.length || result.opened || result.lit) {
     publishSatchel(data);
     saveState(data, endTriggered(result));
@@ -402,7 +427,7 @@ export default defineAgent({
         preemptiveGeneration: { enabled: false },
       },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, replies_in_scene: 0, described: [], world: worldAt(process.env.STORY_START, process.env.STORY_ITEMS), soundtrack: undefined, pixel_cooldown: new Map(), turn_no: 0, pixel_addressed: undefined, arrivals: [], last_speaker_name: undefined },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, replies_in_scene: 0, described: [], world: worldAt(process.env.STORY_START, process.env.STORY_ITEMS), soundtrack: undefined, pixel_cooldown: new Map(), turn_no: 0, pixel_seq: 0, pixel_did: undefined, arrivals: [], last_speaker_name: undefined },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {
@@ -464,39 +489,14 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => {
       const data = session.userData;
       if (e.oldState !== 'speaking' || e.newState !== 'listening' || !data.handed_off || data.ending || !data.bram || data.scene_index === 0) return;
-      let next = onPlayout(data, data.players);
+      // Humans only: Pixel never holds the turn
+      const next = onPlayout(data, data.players);
       if (!next) return;
-      // Pixel's gesture is chosen here: an answer when a player spoke to it, otherwise a line from this place and the satchel with a cooldown.
-      // When it cannot go, the reason is logged and the next human goes
-      let pixel_line = '';
-      const pixel = data.players.find((p) => p.bot);
-      if (data.pixel_addressed && pixel) {
-        next = pixel;
-        data.rotation = data.players.indexOf(pixel);
-        data.since_bot = 0;
-        pixel_line = respondLine(data.world, data.pixel_addressed.gave);
-        console.log(`pixel answers the player who spoke to it: ${pixel_line}`);
-        data.pixel_addressed = undefined;
-      } else if (data.skip_reason && pixel) {
-        console.log(`pixel skipped: ${data.skip_reason} (${data.since_bot ?? 0} human turns since his last)`);
-      }
-      if (next.bot && !pixel_line) {
-        const choice = chooseGesture(data.world, data.pixel_cooldown, data.turn_no);
-        if (choice.line) pixel_line = choice.line;
-        else {
-          const human = data.players.find((p) => !p.bot);
-          if (!human) return;
-          console.log(`pixel skipped: ${choice.reason}`);
-          next = human;
-          data.rotation = data.players.indexOf(human);
-          data.since_bot = BOT_EVERY - 1;
-        }
-      }
       data.turn_no += 1;
       const index = data.rotation;
-      // Text input (a mute player's chat gesture) is accepted only from the participant being listened to, so link whoever's turn it is
+      // Text input is accepted only from the participant being listened to, so link whoever's turn it is
       switchListener(session, next.identity);
-      publish(data.ctx, { 'story.turn': next.identity, 'story.turn_name': next.name, 'story.turn_seq': String(data.turn_no * 1000 + data.inputs * 10 + index), 'story.pixel_line': pixel_line });
+      publish(data.ctx, { 'story.turn': next.identity, 'story.turn_name': next.name, 'story.turn_seq': String(data.turn_no * 1000 + data.inputs * 10 + index) });
       console.log(`turn given to ${next.name} after playout (inputs=${data.inputs})`);
     });
 
@@ -506,6 +506,19 @@ export default defineAgent({
       const next = humans(ctx)[0];
       switchListener(session, next ? next.identity : null);
     });
+
+    // Hard rule: nothing waits on Pixel. If the listener is ever a bot for more than about 5 s, it goes back to a human and the skip is logged
+    let bot_since = 0;
+    setInterval(() => {
+      const who = listening_to(session);
+      if (!who || !who.startsWith('bot-')) { bot_since = 0; return; }
+      bot_since ||= Date.now();
+      if (Date.now() - bot_since < 5000) return;
+      const human = session.userData.players.find((p) => !p.bot) ?? humans(ctx).map((p) => ({ identity: p.identity, name: p.name }))[0];
+      console.log(`pixel held the listener for 5 s: skipping to ${human?.name ?? 'the next human'}`);
+      if (human) switchListener(session, human.identity);
+      bot_since = 0;
+    }, 1000).unref();
 
     // A traveller who joins after the story began (Pixel added mid-story, or a player with a name) joins the party: it was never in the
     // ledger, so without this it would never get a turn. Bram's roster is updated and he acknowledges the arrival once.

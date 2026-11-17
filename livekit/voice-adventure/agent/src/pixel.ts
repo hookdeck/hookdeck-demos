@@ -1,7 +1,7 @@
 /**
  * Pixel: a silent, scripted player. The demo app starts this process when someone selects "Add a bot player".
- * It joins the room as `bot-pixel` (name "Pixel"), publishes no audio or video, and when the storyteller gives
- * it the turn (`story.turn` on the story agent's participant) it waits a moment and sends the gesture line the agent chose (`story.pixel_line`) as a
+ * It joins the room as `bot-pixel` (name "Pixel"), publishes no audio or video, and when the storyteller asks for a
+ * gesture (a new `story.pixel_seq` with a `story.pixel_line` on the story agent's participant) it waits a moment and sends that line as a
  * chat message on the `lk.chat` topic. That is the standard text input of an agent session, so the storyteller
  * reacts to it exactly as he would to a player's spoken answer, with no model call of Pixel's own.
  *
@@ -18,7 +18,7 @@ if (!url || !token) {
 }
 
 const room = new Room();
-let last_answered_seq: string | undefined;
+let last_seq: string | undefined;
 let busy = false;
 
 process.on('unhandledRejection', (error) => console.error('Pixel error:', error));
@@ -41,12 +41,12 @@ setInterval(async () => {
     if (Date.now() - ended_at > 8000) await room.disconnect();
     return;
   }
-  if (busy || shouldGesture(attrs, last_answered_seq) !== 'gesture') return;
-  console.log('Pixel: its turn (seq', attrs.turn_seq + ')');
+  if (busy || shouldGesture(attrs, last_seq) !== 'gesture') return;
+  console.log('Pixel: the storyteller asked for a gesture (seq', attrs.pixel_seq + ')');
   busy = true;
-  last_answered_seq = attrs.turn_seq;
+  last_seq = attrs.pixel_seq;
   setTimeout(async () => {
-    // The story agent chose the line for this place and satchel; with none, Pixel stays quiet
+    // The story agent chose the line for this place and satchel
     const line = attrs.line;
     if (line) {
       await room.localParticipant!.sendText(line, { topic: 'lk.chat' });
