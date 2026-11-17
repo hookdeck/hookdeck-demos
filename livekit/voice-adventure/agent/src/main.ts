@@ -256,7 +256,7 @@ async function resolveTurn(data: StoryData, words: string, from_bot = false): Pr
     extra.push(`Pixel, the mute traveller, just did this: ${data.pixel_did.replace(/\*/g, '')} Weave it into your reply in one clause if it fits, and never speak for Pixel.`);
     data.pixel_did = undefined;
   }
-  if (result.blocked_move) extra.push(`The party's move was blocked. Say plainly, in one sentence, where they can go from here: ${exitsByDestination(data.world)}.`);
+  if (result.blocked_move) extra.push(`The party's move was blocked, so nothing changed. Reply with one plain sentence only, naming where they can go from here: ${exitsByDestination(data.world)}. Do not describe the room again.`);
   if (data.arrivals.length) {
     extra.push(`${data.arrivals.join(' and ')} just joined the party: acknowledge the new arrival in a few words.`);
     data.arrivals = [];
