@@ -19,12 +19,12 @@ import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { exitsByDestination, itemById, itemNamed, matchDestination, normalizeItem, PLACES, actionPrompt, addressesPixel, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
+import { exitsByDestination, itemById, itemNamed, matchDestination, normalizeItem, PLACES, actionPrompt, addressesPixel, addLightingFromWords, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
 import { askShort, describeLlm, makeLlm } from './llm.ts';
 import { botName, fetchLine, planLedger, shouldFetchBram } from './names.ts';
 import { chooseGesture, respondLine } from './pixel-lines.ts';
 import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
-import { BREVITY, bramInstructions, createEndWatcher, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
+import { BREVITY, GOAL_LINE, bramInstructions, createEndWatcher, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -235,6 +235,8 @@ async function resolveTurn(data: StoryData, words: string, from_bot = false): Pr
     if (dest?.exit && actions.move !== dest.exit.id) { console.log(`destination named: ${dest.exit.id} (the resolver said ${actions.move})`); actions.move = dest.exit.id; actions.blocked = null; }
     else if (dest?.destination && !dest.exit) { console.log(`destination named with no way from here: ${dest.destination.name}`); actions.move = null; actions.blocked = dest.destination.name; }
   }
+  // Lighting is decided on the player's words too: a cut-off or questioning turn ("can we now light the lighthouse?") still lights it where it can be lit
+  if (!from_bot && addLightingFromWords(data.world, words, actions)) console.log('lighting requested in the player\'s words: the resolver missed it');
   const to_pixel = !!pixel && !from_bot && (actions.addressed === 'pixel' || addressesPixel(words));
   // "Give Pixel the map": if the resolver missed an obvious give, the words still name the item
   if (to_pixel && !actions.give.length && !actions.take.length && /\b(give|hand|pass|offer|toss|lend)\b/i.test(words)) {
@@ -361,7 +363,7 @@ class Bram extends voice.Agent<StoryData> {
     arrive(data).then((music) => {
       const note = placeNote(data.world, { full: true, music, arriving: true });
       this.session.generateReply({
-        instructions: `You have just come in from the fire at Hester's call. Introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name once, state the goal plainly in one sentence (my lighthouse went dark in the storm, and only the Lantern of Hollow Mere can relight it), then describe where the party is. Do not call any tool. ${note}`,
+        instructions: `You have just come in from the fire at Hester's call. Introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name once, state the goal plainly in one sentence (${GOAL_LINE}), then describe where the party is. Do not call any tool. ${note}`,
         toolChoice: 'none',
       });
     });

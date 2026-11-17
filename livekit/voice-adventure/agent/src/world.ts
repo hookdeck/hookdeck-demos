@@ -183,7 +183,7 @@ export function sightsOf(w: World): string[] {
     if (!w.chest_open) out.push('a small iron chest under the bench, locked');
     else out.push(w.satchel.includes('flint_and_wick') ? 'the small iron chest under the bench, open and empty' : `the small iron chest under the bench, open, with ${LYING.flint_and_wick.replace(' lying inside the open chest', '')} inside`);
   }
-  if (w.location === 'lighthouse') out.push(w.lantern_lit ? 'the great lamp blazing, lit by the Lantern' : 'the great lamp, dark');
+  if (w.location === 'lighthouse') out.push(w.lantern_lit ? 'the great lamp blazing, lit from the Lantern\'s flame' : 'the great lamp, dark');
   return out;
 }
 
@@ -206,10 +206,32 @@ export function cluesOf(w: World): string[] {
       if (!w.satchel.includes('lantern')) out.push('the Lantern is cold and unlit');
       break;
     case 'lighthouse':
-      if (!w.lantern_lit) out.push('the Lantern is lit here, at the lighthouse, with flint and a wick');
+      if (!w.lantern_lit) out.push('the dark great lamp will take only the Lantern\'s flame, and the Lantern needs flint and a wick to wake it');
       break;
   }
   return out;
+}
+
+/** What happens when the Lantern is lit: one beat. The Mere's flame is the only fire the great lamp takes, and the party keeps the Lantern. */
+export const LIT_OUTCOME = 'The flint strikes and the wick catches. The Lantern wakes with the Mere\'s own flame, and the great lamp catches from it and blazes. The Lantern stays lit in the party\'s hands: the quest is done.';
+
+const LIGHT_REQUEST = /\b(?:re)?(?:light|kindle|ignite)\b[^.?!]{0,30}?\b(?:lantern|lamp|beacon|light|lighthouse)\b/i;
+const LIGHT_REFUSAL = /\b(?:don'?t|do not|not|never|shouldn'?t|won'?t|no)\b[^.?!]{0,20}\b(?:re)?(?:light|kindle|ignite)\b/i;
+
+/** True when the player's words ask to light, kindle or relight the Lantern, the lamp, the beacon, the light or the lighthouse ("can we...", "let's...", "I want to..." included). */
+export const asksToLight = (words: string): boolean => LIGHT_REQUEST.test(words) && !LIGHT_REFUSAL.test(words);
+
+/**
+ * Lighting is decided on the player's words as well as the resolver's reading: at the lighthouse, with the Lantern and the flint and wick
+ * in the satchel and the Lantern not yet lit, any request to light it lights it, whatever the resolver made of a cut-off or questioning
+ * turn. Anywhere else this does nothing, so the usual refusals stand. Returns whether it added the use.
+ */
+export function addLightingFromWords(w: World, words: string, actions: Actions): boolean {
+  if (w.location !== 'lighthouse' || w.lantern_lit || !w.satchel.includes('lantern') || !w.satchel.includes('flint_and_wick')) return false;
+  if (!asksToLight(words)) return false;
+  const already = actions.use.some((u) => { const a = normalizeItem(u.item); const b = normalizeItem(u.target); return (a === 'lantern' && b === 'flint_and_wick') || (a === 'flint_and_wick' && b === 'lantern'); });
+  if (!already) actions.use.push({ item: 'lantern', target: 'flint_and_wick' });
+  return !already;
 }
 
 export const goalDone = (w: World) => w.lantern_lit;
@@ -342,9 +364,9 @@ export function applyActions(w: World, actions: Actions): Resolution {
     } else if (pair('lantern', 'flint_and_wick')) {
       if (!w.satchel.includes('lantern')) r.outcomes.push('The party is not carrying the Lantern.');
       else if (!w.satchel.includes('flint_and_wick')) r.outcomes.push('There is nothing to light the Lantern with: the party has no flint and wick.');
-      else if (w.location !== 'lighthouse') r.outcomes.push('This is not the place to light the Lantern. It must be lit at the lighthouse.');
+      else if (w.location !== 'lighthouse') r.outcomes.push('This is not the place to light the Lantern. It must be lit at the lighthouse, where the great lamp is.');
       else if (w.lantern_lit) r.outcomes.push('The Lantern is already lit.');
-      else { w.lantern_lit = true; r.lit = true; r.outcomes.push('The wick catches. The Lantern is lit and the lighthouse lamp blazes: the quest is done.'); }
+      else { w.lantern_lit = true; r.lit = true; r.outcomes.push(LIT_OUTCOME); }
     } else if (a && itemById(a) && !w.satchel.includes(a)) r.outcomes.push(`${cap(itemById(a)!.label)} is not in the satchel.`);
     else r.outcomes.push('Nothing happens: that does not work here.');
   }
@@ -393,6 +415,7 @@ export function placeNote(w: World, opts: { extra?: string[]; full: boolean; des
     const fresh = sights.filter((d) => !described.includes(d));
     parts.push(`You have already described this place${described.length ? `: already described, so do not repeat it unless something about it changes or it matters to what the player just did: ${described.join('; ')}` : ''}.${fresh.length ? ` Not yet mentioned: ${fresh.join('; ')}.` : ''}`);
   }
+  parts.push('Never describe the Lantern or the great lamp being lit, anything opening, or anything being taken, unless "What just happened" says so.');
   parts.push(`Ways out, to describe only as part of the place: ${p.exits.map((e) => e.text).join('; ')}.`);
   const clues = cluesOf(w);
   if (clues.length && !w.lantern_lit) parts.push(`Things to find, revealed only when a player investigates that thing: ${clues.join('; ')}.`);
@@ -409,7 +432,7 @@ export function placeNote(w: World, opts: { extra?: string[]; full: boolean; des
 }
 
 /** The closing note once the Lantern is lit: Bram speaks his closing and nothing more. */
-export const closingNote = (outcomes: string[]) => `The quest is complete: ${outcomes.join(' ')} Speak your closing now: at most three plain sentences that say what the players did and end the story. Do not say anything after it.`;
+export const closingNote = (outcomes: string[]) => `The quest is complete: ${outcomes.join(' ')} Speak your closing now: at most three plain sentences that say what the players did, that the party keeps the lit Lantern and carries it back down to the Drowned Bell, and end the story. Do not say anything after it.`;
 
 const STOP = new Set(['the', 'and', 'with', 'its', 'on', 'in', 'of', 'a', 'an', 'to', 'it', 'from', 'under', 'over', 'into', 'across', 'near', 'that', 'small', 'front']);
 

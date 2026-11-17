@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cluesOf, sightsOf, addressesPixel, exitsByDestination, itemNamed, ITEMS, matchDestination, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
+import { addLightingFromWords, cluesOf, sightsOf, addressesPixel, exitsByDestination, itemNamed, ITEMS, matchDestination, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
 import { buildState, decodeState, encodeState, recapInstructions, shouldResume } from '../src/resume.ts';
 import { bramInstructions, cleanSpeech, onBramReply, onPlayout, onSceneStart, TOOL_NAMES, type TurnState } from '../src/story.ts';
 import { COOLDOWN_TURNS, GENERIC_LINES, POINTING_RESPONSES, RESPONDING_LINES, SCENE_LINES, chooseGesture, pickGesture, respondLine } from '../src/pixel-lines.ts';
@@ -393,7 +393,7 @@ test('the lighthouse lamp is dark until the Lantern is lit, then described as li
   assert.match(sightsOf(w).join(', '), /great lamp, dark/);
   applyActions(w, act({ use: [{ item: 'flint and wick', target: 'lantern' }] }));
   const lit = everything(w);
-  assert.match(lit, /great lamp blazing, lit by the Lantern/);
+  assert.match(lit, /great lamp blazing, lit from the Lantern's flame/);
   assert.doesNotMatch(lit, /lamp, dark/);
   assert.doesNotMatch(sightsOf(at('lighthouse')).join(' '), /chest/i);
 });
@@ -418,4 +418,60 @@ test('Pixel lines use the same state: no tap at a map that was taken, no pointin
   for (let i = 0; i < 80; i++) assert.doesNotMatch(pickGesture(tavern, new Map(), 0, () => Math.random()) ?? '', /taps the salt-stained map/);
   const oak = at('oak', ['brass_key']);
   for (let i = 0; i < 80; i++) assert.doesNotMatch(pickGesture(oak, new Map(), 0, () => Math.random()) ?? '', /brass key on the shelf/);
+});
+
+// ---- Lighting the Lantern: decided on the player's words as well as the resolver's reading ----
+
+const lightWith = (w: World, words: string, a: Actions = noActions()) => {
+  addLightingFromWords(w, words, a);
+  return applyActions(w, a);
+};
+
+test('at the lighthouse with the Lantern and the flint and wick, any request to light it lights it, whatever the resolver said', () => {
+  for (const words of ['Can we light the lantern with the', 'Can we now light the lighthouse?', 'light the lamp', "Let's light the beacon", 'I want to relight the light', 'kindle the lantern please']) {
+    const w = at('lighthouse', ['lantern', 'flint_and_wick']);
+    const r = lightWith(w, words, act({ addressed: 'pixel' }));
+    assert.equal(r.lit, true, words);
+    assert.equal(w.lantern_lit, true, words);
+    assert.equal(endTriggered(r), true, words);
+    assert.ok(w.satchel.includes('lantern'), 'the Lantern is kept');
+  }
+});
+
+test('the same words do not light it elsewhere, without both items, when already lit, or when refused', () => {
+  const words = 'Can we now light the lighthouse?';
+  const cave = at('cave', ['lantern', 'flint_and_wick']);
+  assert.equal(addLightingFromWords(cave, words, noActions()), false);
+  assert.equal(lightWith(cave, words).lit, false);
+  assert.equal(lightWith(at('lighthouse', ['lantern']), words).lit, false);
+  assert.equal(lightWith(at('lighthouse', ['flint_and_wick']), words).lit, false);
+  const lit = at('lighthouse', ['lantern', 'flint_and_wick']);
+  lit.lantern_lit = true;
+  assert.equal(addLightingFromWords(lit, words, noActions()), false);
+  assert.equal(lightWith(at('lighthouse', ['lantern', 'flint_and_wick']), "Don't light the lantern yet").lit, false);
+  assert.equal(lightWith(at('lighthouse', ['lantern', 'flint_and_wick']), 'What is the lamp made of?').lit, false);
+  // a resolver use that already lights it is not doubled
+  const w = at('lighthouse', ['lantern', 'flint_and_wick']);
+  const a = act({ use: [{ item: 'lantern', target: 'flint' }] });
+  assert.equal(addLightingFromWords(w, 'light the lantern', a), false);
+  assert.equal(a.use.length, 1);
+});
+
+test('Bram cannot narrate changes the code did not make, and the lighthouse clue is a hint, not an event', () => {
+  const w = at('lighthouse', ['lantern', 'flint_and_wick']);
+  assert.match(placeNote(w, { full: true }), /Never describe the Lantern or the great lamp being lit, anything opening, or anything being taken, unless "What just happened" says so/);
+  assert.match(placeNote(w, { full: false }), /unless "What just happened" says so/);
+  const clue = cluesOf(w).join(' ');
+  assert.doesNotMatch(clue, /\b(is|are) lit\b|lit here/i);
+  assert.match(clue, /only the Lantern's flame/);
+});
+
+test('the Lantern is a special flame that is kept: the outcome, the sights and the closing say so', () => {
+  const w = at('lighthouse', ['lantern', 'flint_and_wick']);
+  const r = lightWith(w, 'light the lamp');
+  assert.match(r.outcomes.join(' '), /Mere's own flame, and the great lamp catches from it/);
+  assert.match(r.outcomes.join(' '), /stays lit in the party's hands/);
+  assert.ok(w.satchel.includes('lantern') && w.satchel.includes('flint_and_wick'));
+  assert.match(closingNote(r.outcomes), /keeps the lit Lantern and carries it back down to the Drowned Bell/);
+  assert.match(bramInstructions([{ name: 'A', bot: false }]), /only the Mere's own flame, which the Lantern of Hollow Mere holds/);
 });
