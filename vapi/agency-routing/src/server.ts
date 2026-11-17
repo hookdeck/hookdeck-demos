@@ -226,12 +226,14 @@ export function createApp() {
   });
 
   app.get('/api/state', (_req, res) => {
-    res.json(CLIENTS.map((c) => ({ slug: c.slug, name: c.name, path: c.path, expect_note: c.expect_note, events: logs[c.slug] })));
+    res.json(CLIENTS.map((c) => ({ slug: c.slug, name: c.name, path: c.path, expect_note: c.expect_note, agent_role: c.agent_role, caller_name: c.crm[0].name, caller_note: c.caller_note, events: logs[c.slug] })));
   });
   // Browser-safe config for the Start call buttons. Only the PUBLIC key; VAPI_API_KEY never leaves the server.
   app.get('/api/config', (_req, res) => {
     res.json({
       vapi_public_key: process.env.VAPI_PUBLIC_KEY || null,
+      // The "While you wait" panel counts down from this
+      lookup_delay_ms: LOOKUP_DELAY_MS(),
       clients: CLIENTS.map((c) => ({ slug: c.slug, name: c.name, assistant_id: process.env[c.env_assistant_id] || null, suggested_line: suggestedLine(c) })),
     });
   });

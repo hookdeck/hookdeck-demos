@@ -1,0 +1,122 @@
+/*
+ * Switchboard: the agency as a manual telephone exchange, over the Hookdeck design system. Each client is a numbered
+ * line with a brass jack and a status lamp.
+ *
+ * It applies only when <html data-theme="switchboard"> (set by theme.js, the "Switchboard" option of the theme
+ * switch, the default for this demo). The design-system tokens are overridden on `main` (and on the ⓘ dialogs, which
+ * sit outside it), so the Data flow pane, which is also outside `main`, keeps the standard look. The layout is the
+ * demo's focused layout in every theme; this file only changes how it looks.
+ *
+ * Palette: enamel green ground, panel green cards, brass rules, cream text, lamp amber for the status lamp.
+ * Type: Barlow Condensed (headings and labels, uppercase), IBM Plex Sans (body), IBM Plex Mono (paths, times, tags).
+ * Text pairs are those of the spec board: the lowest is muted #B7B19C on panel green #233029, 6.4:1.
+ */
+html[data-theme="switchboard"], html[data-theme="switchboard"] body { background-color: #151c18; }
+
+html[data-theme="switchboard"] main,
+html[data-theme="switchboard"] .info-dialog {
+  --bg-0: #233029; --bg-1: #1a241e; --bg-3: #233029; --tan-bg: #151c18;
+  --neutral-fg-1: #f1e8d0; --neutral-fg-2: #d9cfb5; --neutral-fg-3: #b7b19c; --disabled-fg: #8d8a7b;
+  --neutral-outline-1: #3d5046; --neutral-outline-2: #3d5046; --neutral-outline-3: #5a7064;
+  --primary-blue-bg: #c9a24b; --primary-blue-bg-hover: #e7c875; --on-hue-fg: #151c18;
+  --primary-fg: #e7c875; --focused-outline: #ffb347;
+  --primary-badge-fg: #e7c875; --primary-badge-outline: #c9a24b; --blue-badge-bg: #1a241e;
+  --color-success: #9be3a5; --color-success-outline: #7fd18b; --color-success-surface: #1a241e;
+  --color-warning: #ffb347; --color-warning-outline: #ffb347; --color-warning-surface: #1a241e;
+  --color-danger: #ffb3a8; --color-danger-outline: #e0604f; --color-danger-surface: #3a1511;
+  --tooltip-bg: #0d1210; --tooltip-fg: #f1e8d0;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-display: "Barlow Condensed", sans-serif;
+  --radius: 4px; --radius-s: 3px;
+  font-family: var(--font-sans);
+  color: var(--neutral-fg-1);
+}
+html[data-theme="switchboard"] .info-dialog { --elevation-large: 0 14px 40px rgb(0 0 0 / 0.6); }
+
+/* Headings and labels: Barlow Condensed, uppercase, tracked */
+html[data-theme="switchboard"] main h1, html[data-theme="switchboard"] main h2, html[data-theme="switchboard"] .info-dialog h3,
+html[data-theme="switchboard"] .role__label, html[data-theme="switchboard"] .role__name, html[data-theme="switchboard"] .chaos-title, html[data-theme="switchboard"] .log-title,
+html[data-theme="switchboard"] main .button, html[data-theme="switchboard"] .info-dialog .button, html[data-theme="switchboard"] .tip-bubble strong {
+  font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em;
+}
+html[data-theme="switchboard"] main h1 { font-weight: 700; }
+html[data-theme="switchboard"] main h2, html[data-theme="switchboard"] .info-dialog h3 { font-weight: 600; }
+html[data-theme="switchboard"] .info-dialog h3, html[data-theme="switchboard"] .tip-bubble strong { color: var(--primary-fg); }
+html[data-theme="switchboard"] .chaos-title, html[data-theme="switchboard"] .log-title { color: var(--primary-fg); font-size: 14px; font-weight: 600; }
+html[data-theme="switchboard"] main code, html[data-theme="switchboard"] .meta, html[data-theme="switchboard"] .step__meta, html[data-theme="switchboard"] .info-dialog code { font-family: "IBM Plex Mono", var(--font-mono), monospace; }
+
+/* Hero: a panel with a brass rule and four screws */
+html[data-theme="switchboard"] .hero .lined__box {
+  position: relative; background: #1c2620; border: 1px solid #c9a24b; border-radius: var(--radius); padding: var(--s7) var(--s8);
+}
+html[data-theme="switchboard"] .hero.lined { background: none; }
+html[data-theme="switchboard"] .hero.lined::before, html[data-theme="switchboard"] .hero .lined__dots { display: none; }
+html[data-theme="switchboard"] .hero .eyebrow { color: var(--primary-fg); font-family: var(--font-display); letter-spacing: 0.08em; font-size: 14px; }
+html[data-theme="switchboard"] .hero h1 { color: var(--neutral-fg-1); line-height: 1.07; font-size: clamp(36px, 6vw, 56px); }
+html[data-theme="switchboard"] .hero h1 em { color: var(--primary-fg); font-style: normal; }
+html[data-theme="switchboard"] .hero p { color: var(--neutral-fg-2); }
+html[data-theme="switchboard"] .screw { display: block; position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #c9a24b; box-shadow: inset 0 0 0 3px #151c18; }
+html[data-theme="switchboard"] .screw--tl { top: 8px; left: 8px; }
+html[data-theme="switchboard"] .screw--tr { top: 8px; right: 8px; }
+html[data-theme="switchboard"] .screw--bl { bottom: 8px; left: 8px; }
+html[data-theme="switchboard"] .screw--br { bottom: 8px; right: 8px; }
+@media (max-width: 560px) { html[data-theme="switchboard"] .hero .lined__box { padding: var(--s6) var(--s8); } }
+
+/* Cards: panel green, a brass jack before the line's name */
+html[data-theme="switchboard"] main .card.client { background: var(--bg-0); border: 1px solid var(--neutral-outline-1); border-radius: 6px; box-shadow: none; }
+html[data-theme="switchboard"] .client-head { align-items: center; }
+html[data-theme="switchboard"] .client-head h2 { font-size: 30px; line-height: 32px; }
+@media (max-width: 560px) { html[data-theme="switchboard"] .client-head h2 { font-size: 24px; line-height: 28px; } }
+html[data-theme="switchboard"] .client-head code { flex-basis: 100%; padding-left: 48px; margin-top: -4px; }
+html[data-theme="switchboard"] .jack {
+  display: inline-block; flex: none; width: 34px; height: 34px; border-radius: 50%; background: #0d1210; border: 3px solid #c9a24b; box-shadow: inset 0 0 0 5px #3a463f; box-sizing: border-box;
+}
+html[data-theme="switchboard"] main code { background: none; color: var(--neutral-fg-3); }
+html[data-theme="switchboard"] .tip-bubble code, html[data-theme="switchboard"] .step code { color: inherit; }
+
+/* Roles, call box, failure injection and while-you-wait panels: dark insets with a hairline */
+html[data-theme="switchboard"] .role, html[data-theme="switchboard"] .call, html[data-theme="switchboard"] .chaos, html[data-theme="switchboard"] .wait {
+  background: var(--bg-1); border: 1px solid var(--neutral-outline-1); border-radius: 4px;
+}
+html[data-theme="switchboard"] .role__label { color: var(--neutral-fg-3); font-size: 13px; font-weight: 500; }
+html[data-theme="switchboard"] .role__name { font-size: 18px; font-weight: 600; letter-spacing: 0.06em; color: var(--primary-fg); }
+html[data-theme="switchboard"] .role__icon { color: var(--on-hue-fg); background: #c9a24b; border-color: #c9a24b; }
+html[data-theme="switchboard"] .role__icon--you { color: var(--primary-fg); background: #233029; border-color: #c9a24b; }
+
+/* The status lamp: dark when idle, amber with a glow only while a call is live (the status is also written as text) */
+html[data-theme="switchboard"] .dot { width: 12px; height: 12px; background: #59655e; margin-right: var(--s1); }
+html[data-theme="switchboard"] .dot.live { background: #ffb347; box-shadow: 0 0 10px 2px rgb(255 179 71 / 0.7); }
+html[data-theme="switchboard"] .dot.busy { background: #ffb347; }
+html[data-theme="switchboard"] .dot.bad { background: #e0604f; }
+@media (prefers-reduced-motion: no-preference) { html[data-theme="switchboard"] .dot.live { transition: box-shadow 0.2s; } }
+html[data-theme="switchboard"] .call .status { color: var(--neutral-fg-1); }
+
+/* Controls: brass fill, dark label */
+html[data-theme="switchboard"] main .button { min-height: 44px; padding: 0 22px; font-size: 16px; font-weight: 600 !important; border-radius: var(--radius); box-shadow: none; }
+html[data-theme="switchboard"] main .button:not(.button--secondary):not(.button--danger) { background: #c9a24b; border: 1px solid #c9a24b; color: #151c18; }
+html[data-theme="switchboard"] main .button:not(.button--secondary):not(.button--danger):hover:not(:disabled) { background: #e7c875; border-color: #e7c875; }
+html[data-theme="switchboard"] main .button--secondary, html[data-theme="switchboard"] .info-dialog .button { background: transparent; color: var(--primary-fg); border: 1px solid #c9a24b; box-shadow: none; }
+html[data-theme="switchboard"] main .button--secondary:hover { background: #1a241e; color: var(--primary-fg); }
+html[data-theme="switchboard"] main .button--danger { background: #3a1511; border: 1px solid #e0604f; color: #ffb3a8; }
+html[data-theme="switchboard"] main .button--danger:hover { background: #4a1c16; color: #ffb3a8; }
+html[data-theme="switchboard"] main .button:disabled { background: #1a241e; border: 1px solid var(--neutral-outline-1); color: var(--disabled-fg); }
+html[data-theme="switchboard"] main .chaos-apply { min-height: 32px; font-size: 14px; padding: 0 14px; }
+html[data-theme="switchboard"] main .input { background: #151c18; color: var(--neutral-fg-1); border-color: var(--neutral-outline-1); font-family: "IBM Plex Mono", var(--font-mono), monospace; box-shadow: none; }
+html[data-theme="switchboard"] main .say q { color: var(--neutral-fg-1); }
+
+/* Log */
+html[data-theme="switchboard"] .ev { border-top-color: var(--neutral-outline-1); }
+html[data-theme="switchboard"] main .badge { font-family: "IBM Plex Mono", var(--font-mono), monospace; background: transparent; border: 1px solid #c9a24b; color: var(--primary-fg); border-radius: 3px; }
+html[data-theme="switchboard"] main .badge--success { border-color: #7fd18b; color: #9be3a5; }
+html[data-theme="switchboard"] main .badge--danger { border-color: #e0604f; color: #ffb3a8; }
+
+/* While you wait */
+html[data-theme="switchboard"] .step__n { font-family: "IBM Plex Mono", var(--font-mono), monospace; }
+html[data-theme="switchboard"] .bar i { background: #ffb347; }
+
+/* ⓘ tip and dialog: dark card with a brass rule */
+html[data-theme="switchboard"] .tip-bubble { border: 1px solid #c9a24b; border-radius: 4px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.55); }
+html[data-theme="switchboard"] .info-dialog { background: #0d1210; border: 1px solid #c9a24b; border-radius: 6px; }
+html[data-theme="switchboard"] .info-dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+html[data-theme="switchboard"] .info-dialog h3 { font-size: 22px; }
+html[data-theme="switchboard"] .info-dialog code { background: #1a241e; color: var(--neutral-fg-1); padding: 1px 5px; border-radius: 3px; }

@@ -27,6 +27,10 @@ export interface Client {
   crm: CrmRecord[];
   /** Question to say on a test call; names the first CRM record */
   suggested_question: string;
+  /** Who the assistant is on the phone, shown on the card so a viewer knows who they are about to talk to */
+  agent_role: string;
+  /** What the viewer plays on the call: the customer named in the suggested line */
+  caller_note: string;
   /** One line shown under the client name: which webhooks a call produces, and when */
   expect_note: string;
 }
@@ -56,6 +60,8 @@ export const CLIENTS: Client[] = [
     assistant_name: 'Hookdeck demo - Acme Dental',
     first_message: 'Hello, you\'ve reached Acme Dental. How can I help you today?',
     system_prompt: `You are the phone receptionist for Acme Dental. Keep replies short and spoken-style.\n${TOOL_RULES}`,
+    agent_role: 'Phone receptionist',
+    caller_note: 'An Acme patient',
     suggested_question: "what's my next appointment?",
     expect_note: EXPECT_NOTE,
     crm: [
@@ -74,6 +80,8 @@ export const CLIENTS: Client[] = [
     assistant_name: 'Hookdeck demo - Globex Plumbing',
     first_message: 'Hello, you\'ve reached Globex Plumbing. How can I help you today?',
     system_prompt: `You are the phone dispatcher for Globex Plumbing. Keep replies short and spoken-style.\n${TOOL_RULES}`,
+    agent_role: 'Phone dispatcher',
+    caller_note: 'A Globex customer',
     suggested_question: 'when is my plumber coming?',
     expect_note: EXPECT_NOTE,
     crm: [

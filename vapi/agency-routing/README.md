@@ -16,11 +16,15 @@ Run one `hookdeck listen` for these sources. Each running `hookdeck listen` gets
 No Vapi dashboard needed.
 
 1. Open http://localhost:4000.
-2. In the Acme Dental column, click **Start call** and allow microphone access.
-3. Say: "Hi, I'm Priya Shah, what's my next appointment?" The assistant says it is checking, then stays quiet; about 6 seconds later the CRM result is spoken into the call.
-4. Click **End call**. Repeat in the Globex Plumbing column with: "Hi, I'm Maria Lopez, when is my plumber coming?"
+2. On the Acme Dental card, click **Call Acme Dental** (**Plug in and call** in the default Switchboard theme) and allow microphone access. You are the caller; the card names the assistant you are ringing.
+3. Say: "Hi, I'm Priya Shah, what's my next appointment?" The assistant says it is checking, then stays quiet; about 6 seconds later the CRM result is spoken into the call. The **While you wait** panel on the card shows the tool request, the CRM delay counting down and the result being posted to the call's `controlUrl`.
+4. Click **End call** (**Pull the plug**). Repeat in the Globex Plumbing column with: "Hi, I'm Maria Lopez, when is my plumber coming?"
 
 Each column shows the events that arrived through that client's Hookdeck source. The page loads the Vapi Web SDK (`@vapi-ai/web`, pinned) from esm.sh; the server only exposes `VAPI_PUBLIC_KEY` and the assistant IDs at `/api/config`.
+
+## Themes and the focused layout
+
+The page has System, Light, Dark and Switchboard themes; Switchboard (the agency as a telephone exchange, each client a numbered line) is the default. The theme switch is `public/theme.js`, copied from `_shared/theme/`; the Switchboard look and wording are in `public/theme-switchboard.css` and `public/theme-switchboard.copy.js`, and apply only to the main view, never the Data flow pane. Explanations sit behind ⓘ buttons: a "How this demo works" dialog by the title, and hover tips by the failure injection and log headings (`public/info.js`).
 
 ## Data flow pane
 
