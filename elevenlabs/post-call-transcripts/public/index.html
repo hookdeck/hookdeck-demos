@@ -1,26 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-demo-theme="salon" data-demo-theme-label="Salon" data-demo-theme-default="true">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ElevenLabs post-call transcripts</title>
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&amp;family=DM+Sans:wght@400;500;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/theme-salon.css">
   <link rel="stylesheet" href="/scenes/scenes.css">
   <link rel="stylesheet" href="/topology-pane/topology-pane.css">
+  <script src="/theme-salon.copy.js"></script>
   <script src="/theme.js"></script>
 </head>
 <body>
   <main>
     <section class="hero lined">
       <div class="lined__box">
-        <span class="eyebrow mono-xs">{ Hookdeck + ElevenLabs }</span>
-        <h1 class="title-2xl">Post-call transcripts, <em>delivered once</em></h1>
-        <p class="body-m">
-          ElevenLabs sends a webhook when a conversation ends. Hookdeck verifies the <code>ElevenLabs-Signature</code>,
-          drops duplicates, retries failures and delivers each event to this app. Watch it happen in the <strong>Data flow</strong> pane below.
-        </p>
+        <svg class="hero__scissors" aria-hidden="true" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="34" cy="86" r="14"></circle><circle cx="86" cy="86" r="14"></circle><path d="M44 76 L88 18"></path><path d="M76 76 L32 18"></path></svg>
+        <span class="eyebrow mono-xs" data-copy="eyebrow">{ Hookdeck + ElevenLabs }</span>
+        <h1 class="title-2xl" data-copy="hero_title">Post-call transcripts, <em>delivered once</em></h1>
+        <div class="hero__line">
+          <p class="body-m" data-copy="hero_line">You call the Hookdeck Hair booking line; the post-call webhook follows.</p>
+          <button type="button" class="info" data-info="hero" aria-label="How it works" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+        </div>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
       <span class="lined__dots lined__dots--top_right"></span>
@@ -28,26 +34,46 @@
       <span class="lined__dots lined__dots--bottom_right"></span>
     </section>
 
-
     <section class="card">
-      <h2 class="title-l">Talk to the agent</h2>
-      <p class="body-s">
-        Start a voice call from this page (the browser asks for your microphone), say something, then
-        <strong>End call</strong>. A few seconds later the post-call webhooks arrive below.
-      </p>
-      <p class="body-s">Suggested line: <em id="suggested"></em></p>
+      <div class="heading-row">
+        <h2 class="title-l" data-copy="talk_title">Call the booking line</h2>
+        <button type="button" class="info" data-info="call" aria-label="About this call" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+      </div>
+      <div class="roles">
+        <div class="party">
+          <span class="party__avatar party__avatar--caller" aria-hidden="true"><svg width="22" height="28" viewBox="0 0 22 28"><rect class="glyph" x="7" y="2" width="8" height="15" rx="4"></rect><path class="glyph" d="M3 13 a8 8 0 0 0 16 0 M11 21 V26"></path></svg></span>
+          <div class="party__text">
+            <span class="party__label">The customer</span>
+            <strong class="party__name">You</strong>
+            <span class="body-xs muted">Ringing to book a haircut</span>
+          </div>
+        </div>
+        <div class="roles__link">
+          <svg class="roles__arrow" aria-hidden="true" width="64" height="16" viewBox="0 0 64 16"><path d="M2 8 H58 M51 2 L58 8 L51 14"></path></svg>
+          <span class="pill" id="callPill" role="status">Ready</span>
+        </div>
+        <div class="party">
+          <span class="party__avatar" aria-hidden="true">H</span>
+          <div class="party__text">
+            <span class="party__label">The booking assistant</span>
+            <strong class="party__name">Hookdeck Hair</strong>
+            <span class="body-xs muted">Answers the salon's phone line</span>
+          </div>
+          <button type="button" class="info" data-info="assistant" aria-label="About the booking assistant" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+        </div>
+      </div>
+      <p class="body-s">Say: <em id="suggested"></em></p>
       <div class="actions">
-        <button id="callBtn" class="button" disabled>Start call</button>
+        <button id="callBtn" class="button" disabled>Call Hookdeck Hair</button>
         <span id="callStatus" class="body-xs"></span>
       </div>
     </section>
 
     <section class="card controls">
-      <h2 class="title-l">Retry demo</h2>
-      <p class="body-s">
-        Make the next deliveries fail with a 500. Hookdeck retries them on its schedule; once this counter reaches
-        zero the app recovers and a retry succeeds. You can also replay any event from the Hookdeck dashboard.
-      </p>
+      <div class="heading-row">
+        <h2 class="title-l" data-copy="retry_title">Retry demo</h2>
+        <button type="button" class="info" data-info="retry" aria-label="About the retry demo" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+      </div>
       <div class="actions">
         <label class="inline-field body-s">Fail the next
           <input id="failCount" class="input input--count" type="number" min="1" max="10" value="1" aria-label="Number of deliveries to fail">
@@ -60,7 +86,18 @@
 
     <section class="card">
       <div class="section-head">
-        <h2 class="title-l">Conversations</h2>
+        <div class="heading-row">
+          <h2 class="title-l">Diary</h2>
+          <button type="button" class="info" data-info="diary" aria-label="About the diary" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+        </div>
+        <span id="diaryCount" class="body-xs"></span>
+      </div>
+      <div id="diary"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2 class="title-l" data-copy="conversations_title">Conversations</h2>
         <div class="section-tools">
           <span id="count" class="body-xs"></span>
           <button id="resetBtn" class="button button--secondary button--small">Clear stored data</button>
@@ -70,15 +107,18 @@
     </section>
 
     <section class="card">
-      <details class="deliveries" id="deliveriesBox">
-        <summary>
-          <h2 class="title-l">Deliveries received</h2>
+      <div class="deliveries" id="deliveriesBox">
+        <div class="deliveries__head">
+          <h2 class="title-l"><button type="button" class="deliveries__toggle" id="deliveriesToggle" aria-expanded="false" aria-controls="deliveries">Deliveries received</button></h2>
+          <span class="tip">
+            <button type="button" class="info info--tip" aria-label="About deliveries received" aria-describedby="tipDeliveries"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+            <span class="tip-bubble" id="tipDeliveries" role="tooltip">The latest requests this app received, including failures and retries. Click a packet or node in the <strong>Data flow</strong> pane for the full path of each one.</span>
+          </span>
           <span id="deliverySummary" class="body-xs"></span>
           <span id="sdkBadge"></span>
-        </summary>
-        <p class="body-xs">The latest requests this app received, including failures and retries. Click a packet or node in the <strong>Data flow</strong> pane for the full path of each one.</p>
-        <div id="deliveries" class="delivery-list body-xs"></div>
-      </details>
+        </div>
+        <div id="deliveries" class="delivery-list body-xs" hidden></div>
+      </div>
     </section>
 
     <footer class="body-xs">
@@ -86,9 +126,39 @@
       <a href="https://hookdeck.com" target="_blank" rel="noopener">Hookdeck</a>
     </footer>
   </main>
+
+  <!-- ⓘ dialogs: one is open at a time. Esc, the Close button and a click outside close it (info.js). -->
+  <dialog class="info-dialog" id="info-hero" aria-labelledby="info-hero-title">
+    <h3 id="info-hero-title">How it works</h3>
+    <p>ElevenLabs sends a webhook when a conversation ends. Hookdeck verifies the <code>ElevenLabs-Signature</code>, drops duplicates, retries failures and delivers each event to this app. Watch it happen in the <strong>Data flow</strong> pane below.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-call" aria-labelledby="info-call-title">
+    <h3 id="info-call-title">About this call</h3>
+    <p>Start a voice call from this page (the browser asks for your microphone), say something, then <strong>End call</strong>. A few seconds later the post-call webhooks arrive below.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-assistant" aria-labelledby="info-assistant-title">
+    <h3 id="info-assistant-title">About the booking assistant</h3>
+    <p>An ElevenLabs agent that answers as the phone booking assistant for Hookdeck Hair, a hair salon. It greets you, then asks for the service, the day and time, and your name. Any slot between 9am and 6pm, Monday to Saturday, is free. It has no tools, so it never looks anything up.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-retry" aria-labelledby="info-retry-title">
+    <h3 id="info-retry-title">About the retry demo</h3>
+    <p>Make the next deliveries fail with a 500. Hookdeck retries them on its schedule; once this counter reaches zero the app recovers and a retry succeeds. You can also replay any event from the Hookdeck dashboard.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-diary" aria-labelledby="info-diary-title">
+    <h3 id="info-diary-title">About the diary</h3>
+    <p>Each finished call with <code>booking_made: success</code> adds a slot here, read from <code>caller_name</code>, <code>requested_service</code> and <code>requested_time</code>. A call where the caller did not agree a time adds nothing. A time this page cannot read as a day and a time goes in the Unscheduled row.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+
+  <script src="/info.js"></script>
   <script src="/scenes/scenes.js"></script>
   <script src="/topology-pane/topology-pane.js"></script>
   <script src="/topology.js"></script>
+  <script src="/diary.js"></script>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>
 </body>

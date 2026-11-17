@@ -15,7 +15,7 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 |---|---|
 | **Signature verification** in Event Gateway with Hookdeck's `ELEVENLABS` source type | `scripts/setup.ts` creates the source and sets the secret |
 | **Deduplication** on `body.type` + `body.data.conversation_id` | the `RULES` in `scripts/setup.ts`; `npm run send -- --duplicate` |
-| **Retries**: make the app fail, watch Hookdeck retry, then replay | the "Retry demo" card in the UI |
+| **Retries**: make the app fail, watch Hookdeck retry, then replay | the "Retry demo" card in the UI ("Bad line" in the Salon theme) |
 | **Large payloads**: transcripts and base64 MP3 audio | the Size column in the UI; `npm run send -- --large 8` |
 
 ## Prerequisites
@@ -86,6 +86,9 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 ## What you'll see
 
 - **Data flow pane** (bottom of the page, open by default; the header collapses it): the live topology of ElevenLabs agent, Event Gateway (with its verify, store, dedup and retry capabilities), `hookdeck listen` and this app, with a packet moving along each edge as a real webhook arrives, and status badges (`answering 500`, `handled · attempt 2`, `duplicate · dropped`). The 3.5 MB audio webhook is drawn thicker and slower than the transcript. Click a node or a packet to fill the detail strip with that webhook: verified or rejected and what ElevenLabs got back, each delivery attempt's status, latency and retry gap, what the app answered, and a **View in Hookdeck** link to the request or event in the dashboard. The other tabs play four scripted scenes of the same topology with captions (Back, Next, Replay): delivery, a duplicate dropped, a bad signature, and the app down with a retry that succeeds. On a phone the pane opens at 60% of the screen height with the portrait layout, and the page keeps that much padding at the bottom so the buttons above stay reachable. It reads Event Gateway with `HOOKDECK_API_KEY` on the server.
+- **Who is who**: you are the customer ringing the Hookdeck Hair booking line; the booking assistant is the agent that `npm run setup` creates (its prompt is `AGENT_CONFIG` in `scripts/setup.ts`).
+- **Diary**: a week view above the conversations. A conversation whose `booking_made` evaluation is `success` fills a slot from `caller_name`, `requested_service` and `requested_time`. The page works this out from the stored conversations (`public/diary.js`); the webhook handler is unchanged. A `requested_time` it cannot read as a day and a time of day goes in an Unscheduled row as received.
+- **Themes**: Salon (the default, the Hookdeck Hair booking line), Light, Dark and System, from the switch at the top right. Salon is `public/theme-salon.css` and `public/theme-salon.copy.js`; the Data flow pane keeps the standard look. Explanations sit behind the ⓘ buttons and hover tips.
 - **Deliveries received** (collapsed): the latest requests the app received, with body size and result, and the result of the ElevenLabs SDK's `constructEvent` on the forwarded requests.
 
 Data collection results and evaluation criteria are configured per agent (agent -> **Analysis**). Setup gives the demo agent `caller_name`, `requested_service` and `requested_time` as data collection items and `booking_made` as an evaluation criterion; they show up in the conversation detail.
