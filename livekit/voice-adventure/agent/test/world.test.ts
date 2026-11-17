@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ITEMS, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
+import { addressesPixel, ITEMS, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
 import { buildState, decodeState, encodeState, recapInstructions, shouldResume } from '../src/resume.ts';
 import { BOT_EVERY, bramInstructions, cleanSpeech, onBramReply, onPlayout, onSceneStart, TOOL_NAMES, type TurnState } from '../src/story.ts';
-import { COOLDOWN_TURNS, SCENE_LINES, pickGesture } from '../src/pixel-lines.ts';
+import { COOLDOWN_TURNS, GENERIC_LINES, POINTING_RESPONSES, RESPONDING_LINES, SCENE_LINES, chooseGesture, pickGesture, respondLine } from '../src/pixel-lines.ts';
 
 const act = (o: Partial<Actions>): Actions => ({ ...noActions(), ...o });
 const at = (place: World['location'], satchel: World['satchel'] = []): World => ({ ...newWorld(), location: place, satchel: [...satchel] });
@@ -111,7 +111,7 @@ test('lighting: only at the lighthouse with the Lantern and the flint and wick, 
 });
 
 test('resolver JSON: parsed from the model text, bad shapes dropped, unreadable is no actions; the prompt carries place, exits, items and the words', () => {
-  assert.deepEqual(parseActions('{"move":"boat","take":["lantern"],"use":[{"item":"key","target":"chest"}],"give":[{"item":"map","to":"stranger"}]}'), { move: 'boat', blocked: null, take: ['lantern'], use: [{ item: 'key', target: 'chest' }], give: [{ item: 'map', to: 'stranger' }] });
+  assert.deepEqual(parseActions('{"move":"boat","take":["lantern"],"use":[{"item":"key","target":"chest"}],"give":[{"item":"map","to":"stranger"}]}'), { move: 'boat', blocked: null, addressed: null, take: ['lantern'], use: [{ item: 'key', target: 'chest' }], give: [{ item: 'map', to: 'stranger' }] });
   assert.deepEqual(parseActions('```json\n{"move": null, "take": [], "use": [], "give": []}\n```'), noActions());
   assert.deepEqual(parseActions('{"move": 3, "take": "map", "use": [{"item": "key"}], "give": [{"to": "x"}]}'), noActions());
   for (const bad of ['', 'no', '{broken', '[1]', 'null']) assert.deepEqual(parseActions(bad), noActions());
@@ -207,8 +207,9 @@ test('Pixel: lines fit the place and the satchel, with a cooldown, and it skips 
   for (let turn = 1; turn < COOLDOWN_TURNS; turn++) assert.notEqual(pickGesture(at('oak'), c2, turn, random), first);
   // a place whose lines are all cooling down: Pixel skips
   const c3 = new Map<string, number>();
-  for (const line of SCENE_LINES.oak) c3.set(line.text, 10);
+  for (const line of [...SCENE_LINES.oak, ...GENERIC_LINES]) c3.set(line.text, 10);
   assert.equal(pickGesture(at('oak'), c3, 11, random), undefined);
+  assert.deepEqual(chooseGesture(at('oak'), c3, 11, random), { reason: 'cooldown' });
 });
 
 test('Pixel takes a turn about every third round, not every rotation', () => {
@@ -247,4 +248,68 @@ test('test starts: STORY_START puts the party elsewhere with the map', () => {
   assert.equal(worldAt('nowhere').location, 'tavern');
   assert.deepEqual(worldAt('lighthouse', 'lantern,bogus').satchel, ['map', 'lantern']);
   assert.equal(ITEMS.length, 4);
+});
+
+test('presence floor: every place has generic lines that need nothing, so Pixel never runs dry; the reason for a skip is named', () => {
+  assert.ok(GENERIC_LINES.length >= 5 && GENERIC_LINES.every((l) => !l.needs && !l.here));
+  for (const place of Object.keys(PLACES) as Array<keyof typeof PLACES>) {
+    // an empty-handed party, even with every place line cooling down, still has the generic lines
+    const cool = new Map<string, number>();
+    for (const l of SCENE_LINES[place]) cool.set(l.text, 5);
+    const choice = chooseGesture(at(place), cool, 6, () => 0);
+    assert.ok(choice.line, `${place}: ${JSON.stringify(choice)}`);
+    assert.ok(GENERIC_LINES.some((l) => l.text === choice.line));
+  }
+  // nothing eligible at all is its own reason (a world where no line fits cannot happen with generics, so test the cooldown path and the empty-pool wording)
+  const all = new Map<string, number>();
+  for (const l of [...SCENE_LINES.cave, ...GENERIC_LINES]) all.set(l.text, 0);
+  assert.equal(chooseGesture(at('cave'), all, 1).reason, 'cooldown');
+});
+
+test('presence floor: with two humans and Pixel, Pixel takes a turn every third turn over a long story, always with a line', () => {
+  const players = [{ identity: 'web-1', name: 'Gandalf', bot: false }, { identity: 'web-2', name: 'Strider', bot: false }, { identity: 'bot-pixel', name: 'Pixel', bot: true }];
+  const s: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
+  const cooldown = new Map<string, number>();
+  const world = at('tavern');
+  let pixel = 0;
+  let skipped_by_round = 0;
+  for (let turn = 0; turn < 30; turn++) {
+    let next = onPlayout(s, players)!;
+    if (s.skip_reason === 'not his round') skipped_by_round++;
+    if (next.bot) {
+      const choice = chooseGesture(world, cooldown, turn);
+      assert.ok(choice.line, `turn ${turn}: ${choice.reason}`);
+      pixel++;
+    }
+  }
+  assert.ok(pixel >= 8 && pixel <= 11, `pixel turns: ${pixel}`);
+  assert.equal(skipped_by_round, 0); // with two humans his turn comes round on the third turn by itself
+});
+
+test('onPlayout names why Pixel was passed over', () => {
+  const players = [{ identity: 'web-1', name: 'Priya', bot: false }, { identity: 'bot-pixel', name: 'Pixel', bot: true }];
+  const s: TurnState = { scene_index: 1, inputs: 0, input_since_call: false, last_reply: '', rotation: 0, ending: false, since_bot: 0 };
+  assert.equal(onPlayout(s, players)!.name, 'Priya');
+  assert.equal(s.skip_reason, 'not his round');
+});
+
+test('addressing Pixel: detected in the words and flagged by the resolver; an item given to Pixel joins the shared satchel', () => {
+  for (const words of ['Ask the pixel what he thinks.', 'Pixel, what do you think?', 'give Pixel the map', 'ask pixle']) assert.equal(addressesPixel(words), true, words);
+  assert.equal(addressesPixel('I look at the pixelated map'), false);
+  assert.equal(parseActions('{"move": null, "addressed": "Pixel", "take": [], "use": [], "give": [{"item": "map", "to": "pixel"}]}').addressed, 'pixel');
+  const p = actionPrompt(newWorld(), 'ask pixel', true);
+  assert.match(p.user, /Pixel, a mute traveller, is in the party/);
+  assert.match(p.system, /"addressed": "pixel" or null/);
+  assert.doesNotMatch(actionPrompt(newWorld(), 'x', false).user, /Pixel, a mute traveller/);
+  const w = newWorld();
+  const r = applyActions(w, act({ give: [{ item: 'map', to: 'Pixel' }] }));
+  assert.deepEqual(w.satchel, ['map']);
+  assert.match(r.outcomes[0], /gave the salt-stained map to Pixel, who carries it/);
+  // Pixel answers: handed an item it takes it; otherwise a response or a pointer at something here
+  assert.match(respondLine(w, 'the salt-stained map'), /Pixel takes the salt-stained map with a small bow/);
+  const answers = new Set<string>();
+  for (let i = 0; i < 60; i++) answers.add(respondLine(at('cave'), undefined));
+  assert.ok([...answers].every((a) => RESPONDING_LINES.some((l) => l.text === a) || a === POINTING_RESPONSES.cave));
+  assert.ok(answers.has(POINTING_RESPONSES.cave));
+  assert.match(placeNote(w, { full: false, replies: 1, extra: ['The player spoke to Pixel, the mute traveller.'] }), /spoke to Pixel/);
 });

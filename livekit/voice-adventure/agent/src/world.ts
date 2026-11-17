@@ -167,12 +167,14 @@ export interface Actions {
   move: string | null;
   /** Somewhere or some way the player tried to go that is not one of the exits (so it is refused, not guessed). */
   blocked: string | null;
+  /** "pixel" when the player spoke to the mute traveller ("ask Pixel what he thinks"). */
+  addressed: string | null;
   take: string[];
   use: Array<{ item: string; target: string }>;
   give: Array<{ item: string; to: string }>;
 }
 
-export const noActions = (): Actions => ({ move: null, blocked: null, take: [], use: [], give: [] });
+export const noActions = (): Actions => ({ move: null, blocked: null, addressed: null, take: [], use: [], give: [] });
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 
@@ -191,6 +193,7 @@ export function parseActions(raw: string): Actions {
   if (!json || typeof json !== 'object') return out;
   out.move = str(json.move) ?? null;
   out.blocked = str(json.blocked) ?? null;
+  out.addressed = str(json.addressed)?.toLowerCase() ?? null;
   if (Array.isArray(json.take)) out.take = json.take.map(str).filter((x: string | undefined): x is string => !!x);
   if (Array.isArray(json.use)) out.use = json.use.map((u: any) => ({ item: str(u?.item), target: str(u?.target) })).filter((u: any) => u.item && u.target);
   if (Array.isArray(json.give)) out.give = json.give.map((g: any) => ({ item: str(g?.item), to: str(g?.to) ?? 'stranger' })).filter((g: any) => g.item);
@@ -198,17 +201,17 @@ export function parseActions(raw: string): Actions {
 }
 
 /** The question for the resolver: the place, its exits, what lies here, what the party carries, and the player's words. */
-export function actionPrompt(w: World, words: string): { system: string; user: string } {
+export function actionPrompt(w: World, words: string, pixel_present = false): { system: string; user: string } {
   const p = placeOf(w);
   const here = itemsHere(w).map((i) => `${i.id} (${i.label})`);
   const carried = w.satchel.map((id) => `${id} (${itemById(id)!.label})`);
   return {
-    system: 'You read what a player says in a spoken adventure and list only what they clearly do right now. Reply with one JSON object and nothing else: {"move": exit id or null, "blocked": text or null, "take": [item ids], "use": [{"item": id, "target": id or "chest"}], "give": [{"item": id, "to": "stranger"}]}. Choose a "move" only when the player\'s words clearly name or describe one of the listed exits. If the player tries to go somewhere, or by a way, that is NOT in the list of exits, set "move" to null and put what they tried in "blocked". Never pick the nearest exit as a guess. Use empty arrays and null when the player does none of these. Handing an item to someone is "give". Exploring, asking, looking and talking are none of these.',
+    system: 'You read what a player says in a spoken adventure and list only what they clearly do right now. Reply with one JSON object and nothing else: {"move": exit id or null, "blocked": text or null, "addressed": "pixel" or null, "take": [item ids], "use": [{"item": id, "target": id or "chest"}], "give": [{"item": id, "to": "stranger"}]}. Choose a "move" only when the player\'s words clearly name or describe one of the listed exits. If the player tries to go somewhere, or by a way, that is NOT in the list of exits, set "move" to null and put what they tried in "blocked". Never pick the nearest exit as a guess. Use empty arrays and null when the player does none of these. Handing an item to someone is "give" ("to" is who gets it, for example "pixel" or "stranger"). When the player speaks to or asks Pixel something, set "addressed" to "pixel". Exploring, asking, looking and talking are none of these.',
     user: `Place: ${p.place}.
 Exits (use the id): ${p.exits.map((e) => `${e.id}: ${e.text}`).join('; ')}.
 Items lying here: ${here.join('; ') || 'none'}.${chestHere(w) ? ` An iron chest is here, ${w.chest_open ? 'open' : 'locked'}.` : ''}
 The party carries: ${carried.join('; ') || 'nothing'}.
-The player said: "${words.trim().slice(0, 300)}"`,
+${pixel_present ? 'Pixel, a mute traveller, is in the party.\n' : ''}The player said: "${words.trim().slice(0, 300)}"`,
   };
 }
 
@@ -225,7 +228,7 @@ export interface Resolution {
 export function applyActions(w: World, actions: Actions): Resolution {
   const r: Resolution = { outcomes: [], moved: false, opened: false, lit: false, took: [] };
   const taken_ids = new Set<string>();
-  const take = (raw: string, via_stranger = false) => {
+  const take = (raw: string, via_stranger = false, who = 'the stranger') => {
     const id = normalizeItem(raw);
     if (id === 'chest') return r.outcomes.push('The iron chest is far too heavy to take and is bolted to the floor of the inn. It stays where it is.');
     const item = id ? itemById(id) : undefined;
@@ -237,14 +240,15 @@ export function applyActions(w: World, actions: Actions): Resolution {
     if (!itemsHere(w).some((i) => i.id === item.id)) return r.outcomes.push(`${cap(item.label)} is not in this place.`);
     w.satchel.push(item.id);
     r.took.push(item.id);
-    r.outcomes.push(via_stranger ? `The party gave ${item.label} to the stranger, who carries it: it is in the party's satchel.` : `The party took ${item.label}. It is in the satchel.`);
+    r.outcomes.push(via_stranger ? `The party gave ${item.label} to ${who}, who carries it: it is in the party's satchel.` : `The party took ${item.label}. It is in the satchel.`);
   };
   for (const raw of actions.take) take(raw);
   for (const g of actions.give) {
     const id = normalizeItem(g.item);
     const item = id && id !== 'chest' ? itemById(id) : undefined;
-    if (item && w.satchel.includes(item.id)) r.outcomes.push(`The party handed ${item.label} to the stranger, who carries it: it stays in the party's satchel.`);
-    else take(g.item, true);
+    const who = /pix/i.test(g.to) ? 'Pixel' : 'the stranger';
+    if (item && w.satchel.includes(item.id)) r.outcomes.push(`The party handed ${item.label} to ${who}, who carries it: it stays in the party's satchel.`);
+    else take(g.item, true, who);
   }
   for (const u of actions.use) {
     const a = normalizeItem(u.item);
@@ -286,7 +290,10 @@ export const endTriggered = (r: Resolution) => r.lit;
 // ---- What Bram is told ----
 
 /** The scene note for one reply: where the party is, what lies here, what is carried, the exits as description, what just happened. */
-export function placeNote(w: World, opts: { full: boolean; described?: string[]; replies?: number; outcomes?: string[]; music?: string; arriving?: boolean }): string {
+/** True when the words name Pixel (speech to text may write "pixel" or "pixle"). */
+export const addressesPixel = (words: string): boolean => /\bpix(?:el|le)\b/i.test(words);
+
+export function placeNote(w: World, opts: { extra?: string[]; full: boolean; described?: string[]; replies?: number; outcomes?: string[]; music?: string; arriving?: boolean }): string {
   const p = placeOf(w);
   const replies = opts.replies ?? 0;
   const parts: string[] = [];
@@ -305,6 +312,7 @@ export function placeNote(w: World, opts: { full: boolean; described?: string[];
   parts.push(`In the satchel: ${w.satchel.length ? w.satchel.map((id) => itemById(id)!.label).join('; ') : 'nothing'}.`);
   if (chestHere(w)) parts.push(`The iron chest is here, ${w.chest_open ? 'open' : 'locked'}.`);
   if (opts.outcomes?.length) parts.push(`What just happened, resolved by the story (state it plainly as fact, never contradict it): ${opts.outcomes.join(' ')}`);
+  for (const e of opts.extra ?? []) parts.push(e);
   if (opts.arriving) parts.push('Describe the place in two short plain sentences using some of what can be seen and heard, then stop on a short open line with no name and no question.');
   else if (replies >= 4) parts.push('Give the shortest reply now: one sentence about what happens, and no atmosphere at all.');
   else if (replies >= 1) parts.push('Answer only what the player did, in one or two sentences, with no recap of the scene.');

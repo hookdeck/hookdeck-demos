@@ -55,26 +55,66 @@ export const SCENE_LINES: Record<PlaceId, GestureLine[]> = {
   ],
 };
 
+/** Lines that fit anywhere, with no item needs: the weather, a sound, the stranger, an exit, copying someone. A place never runs dry of them. */
+export const GENERIC_LINES: GestureLine[] = [
+  L('*Pixel listens to the storm and pulls its collar up.*'),
+  L('*Pixel tilts its head at a faint sound in the distance.*'),
+  L('*Pixel glances at the hooded stranger\'s boots, then away.*'),
+  L('*Pixel points at the nearest way out, then at the others.*'),
+  L('*Pixel copies the last thing the others did, a beat late, and shrugs.*'),
+  L('*Pixel nods along and taps a foot.*'),
+  L('*Pixel peers around and rubs its hands against the cold.*'),
+];
+
+/** Pixel's answers when a player speaks to it: it responds to what was asked, never with words. */
+export const RESPONDING_LINES: GestureLine[] = [
+  L('*Pixel tilts its head, considers, and nods slowly.*'),
+  L('*Pixel shrugs and spreads both hands, as if to say: not sure.*'),
+  L('*Pixel taps its chin, then holds up one finger: wait.*'),
+  L('*Pixel gives a firm thumbs up and a small grin.*'),
+];
+
+/** Things Pixel points at when it answers, by place: something real that is there. */
+export const POINTING_RESPONSES: Record<PlaceId, string> = {
+  tavern: '*Pixel points at the north door, then at the storm outside, and raises an eyebrow.*',
+  forest: '*Pixel points at the hollow oak and its small door.*',
+  oak: '*Pixel points at the little door back out to the wood.*',
+  cave: '*Pixel points at the rowboat on the dark pool.*',
+  lighthouse: '*Pixel points at the dark lamp above.*',
+};
+
 /** A line is not used again for this many turns. */
 export const COOLDOWN_TURNS = 6;
 
+export type GestureChoice = { line: string; reason?: undefined } | { line?: undefined; reason: 'no eligible line' | 'cooldown' };
+
 /**
- * Picks a gesture for Pixel's turn: a line for this place that makes sense for what the party carries and what still lies here, and
- * that has not been used in the last COOLDOWN_TURNS turns. When no line qualifies it returns undefined and Pixel skips the turn
- * (there is no filler gesture). `cooldown` is updated with the turn the line was used on.
+ * Picks a gesture for Pixel's turn: a line for this place that makes sense for what the party carries and what still lies here (or
+ * one of the generic lines that fit anywhere), not used in the last COOLDOWN_TURNS turns. When none qualifies the reason says why
+ * (nothing eligible at all, or everything eligible is cooling down) and Pixel skips the turn. `cooldown` records the turn a line was used on.
  */
-export function pickGesture(world: World, cooldown: Map<string, number>, turn_no: number, random: () => number = Math.random): string | undefined {
+export function chooseGesture(world: World, cooldown: Map<string, number>, turn_no: number, random: () => number = Math.random): GestureChoice {
   const here = new Set(itemsHere(world).map((i) => i.id));
-  const eligible = SCENE_LINES[world.location].filter((line) => {
-    if (!(line.needs ?? []).every((id) => world.satchel.includes(id))) return false;
-    if (!(line.here ?? []).every((id) => here.has(id))) return false;
+  const fits = [...SCENE_LINES[world.location], ...GENERIC_LINES].filter((line) =>
+    (line.needs ?? []).every((id) => world.satchel.includes(id)) && (line.here ?? []).every((id) => here.has(id)));
+  if (!fits.length) return { reason: 'no eligible line' };
+  const eligible = fits.filter((line) => {
     const last = cooldown.get(line.text);
     return last === undefined || turn_no - last >= COOLDOWN_TURNS;
   });
-  if (!eligible.length) return undefined;
+  if (!eligible.length) return { reason: 'cooldown' };
   const line = eligible[Math.floor(random() * eligible.length)].text;
   cooldown.set(line, turn_no);
-  return line;
+  return { line };
+}
+
+export const pickGesture = (world: World, cooldown: Map<string, number>, turn_no: number, random: () => number = Math.random): string | undefined => chooseGesture(world, cooldown, turn_no, random).line;
+
+/** Pixel's answer when addressed: handed an item, it takes it; otherwise a response, or a pointer at something here. */
+export function respondLine(world: World, gave_label: string | undefined, random: () => number = Math.random): string {
+  if (gave_label) return `*Pixel takes ${gave_label} with a small bow and tucks it away.*`;
+  const options = [...RESPONDING_LINES.map((l) => l.text), POINTING_RESPONSES[world.location]];
+  return options[Math.floor(random() * options.length)];
 }
 
 /** What Pixel sees in the story agent's participant attributes, and what it should do about it. */
