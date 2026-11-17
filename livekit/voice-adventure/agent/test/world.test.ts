@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addressesPixel, ITEMS, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
+import { addressesPixel, itemNamed, ITEMS, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
 import { buildState, decodeState, encodeState, recapInstructions, shouldResume } from '../src/resume.ts';
 import { BOT_EVERY, bramInstructions, cleanSpeech, onBramReply, onPlayout, onSceneStart, TOOL_NAMES, type TurnState } from '../src/story.ts';
 import { COOLDOWN_TURNS, GENERIC_LINES, POINTING_RESPONSES, RESPONDING_LINES, SCENE_LINES, chooseGesture, pickGesture, respondLine } from '../src/pixel-lines.ts';
@@ -312,4 +312,10 @@ test('addressing Pixel: detected in the words and flagged by the resolver; an it
   assert.ok([...answers].every((a) => RESPONDING_LINES.some((l) => l.text === a) || a === POINTING_RESPONSES.cave));
   assert.ok(answers.has(POINTING_RESPONSES.cave));
   assert.match(placeNote(w, { full: false, replies: 1, extra: ['The player spoke to Pixel, the mute traveller.'] }), /spoke to Pixel/);
+});
+
+test('a garbled "give pixel to map" still names the item, so the code can make the give itself', () => {
+  assert.equal(itemNamed('Give pixel to map.'), 'map');
+  assert.equal(itemNamed('hand Pixel the brass key'), 'brass_key');
+  assert.equal(itemNamed('give pixel a hug'), undefined);
 });

@@ -19,7 +19,7 @@ import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { itemById, normalizeItem, PLACES, actionPrompt, addressesPixel, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
+import { itemById, itemNamed, normalizeItem, PLACES, actionPrompt, addressesPixel, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
 import { askShort, describeLlm, makeLlm } from './llm.ts';
 import { botName, fetchLine, planLedger, shouldFetchBram } from './names.ts';
 import { chooseGesture, respondLine } from './pixel-lines.ts';
@@ -223,10 +223,16 @@ async function resolveTurn(data: StoryData, words: string, from_bot = false): Pr
     console.log(`resolver failed (${error?.message ?? error}): treated as no actions`);
   }
   console.log(`resolver at ${data.world.location}: "${words.trim().slice(0, 80)}" -> ${JSON.stringify(actions)}`);
+  const to_pixel = !!pixel && !from_bot && (actions.addressed === 'pixel' || addressesPixel(words));
+  // "Give Pixel the map": if the resolver missed an obvious give, the words still name the item
+  if (to_pixel && !actions.give.length && !actions.take.length && /\b(give|hand|pass|offer|toss|lend)\b/i.test(words)) {
+    const named = itemNamed(words);
+    if (named) actions.give.push({ item: named, to: 'pixel' });
+  }
   const result = applyActions(data.world, actions);
   // A player spoke to Pixel (the resolver says so, or the name is in the words; Pixel's own gestures never count): it answers next turn
   const extra: string[] = [];
-  if (pixel && !from_bot && (actions.addressed === 'pixel' || addressesPixel(words))) {
+  if (to_pixel) {
     const gave = actions.give.find((g) => /pix/i.test(g.to));
     const gave_item = gave ? itemLabelFor(gave.item) : undefined;
     data.pixel_addressed = { words, gave: gave_item };

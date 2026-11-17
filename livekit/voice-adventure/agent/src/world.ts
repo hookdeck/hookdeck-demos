@@ -290,6 +290,13 @@ export const endTriggered = (r: Resolution) => r.lit;
 // ---- What Bram is told ----
 
 /** The scene note for one reply: where the party is, what lies here, what is carried, the exits as description, what just happened. */
+/** The first item the words name ("give pixel to map" still names the map), for when the resolver missed an obvious give. */
+export function itemNamed(words: string): ItemId | undefined {
+  const t = words.toLowerCase();
+  for (const item of ITEMS) if (item.aliases.some((a) => new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(t))) return item.id;
+  return undefined;
+}
+
 /** True when the words name Pixel (speech to text may write "pixel" or "pixle"). */
 export const addressesPixel = (words: string): boolean => /\bpix(?:el|le)\b/i.test(words);
 
