@@ -11,7 +11,7 @@
     "probe": "ts-node scripts/probe.ts",
     "simulate": "ts-node scripts/simulate-call.ts",
     "typecheck": "tsc --noEmit",
-    "test": "ts-node test/run.ts && node --require ts-node/register --test test/scenes.test.ts test/pane.test.ts",
+    "test": "ts-node test/run.ts && node --require ts-node/register --test test/scenes.test.ts test/pane.test.ts test/theme-copy.test.ts test/while-you-wait.test.ts test/page.test.ts",
     "build:scenes": "node scripts/build-scenes.mjs",
     "capture": "ts-node scenes/kit/capture/capture.ts"
   },

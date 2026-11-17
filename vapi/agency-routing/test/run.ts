@@ -91,6 +91,11 @@ async function main() {
   assert.deepEqual([...new Set(outbound.map((o: any) => o.client))].sort(), ['acme', 'globex']);
   assert.ok(outbound.every((o: any) => o.ok === true));
 
+  // 8. what the page needs for the roles and the "While you wait" panel
+  const state = await (await fetch(`${base}/api/state`)).json();
+  assert.deepEqual(state.map((c: any) => [c.slug, c.agent_role, c.caller_name]), [['acme', 'Phone receptionist', 'Priya Shah'], ['globex', 'Phone dispatcher', 'Maria Lopez']]);
+  assert.equal((await (await fetch(`${base}/api/config`)).json()).lookup_delay_ms, 50);
+
   console.log('All checks passed');
   app.close(); control.close();
 }
