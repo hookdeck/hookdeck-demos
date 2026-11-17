@@ -7,6 +7,10 @@ export const RETELL_PUBLIC_KEY = process.env.RETELL_PUBLIC_KEY || '';
 export const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER || '';
 export const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID || '';
 export const TEST_LEAD_PHONE_NUMBER = process.env.TEST_LEAD_PHONE_NUMBER || '';
+/** Where the signed events from `npm run simulate` and the page's "Lead does not answer" go: the Hookdeck source `npm run setup` made. */
+export const RETELL_EVENTS_URL = process.env.RETELL_EVENTS_URL || '';
+/** The key Retell signs webhooks with (the webhook-badged one), which the Hookdeck source verifies with. */
+export const RETELL_SIGNING_KEY = process.env.RETELL_SECRET_KEY || process.env.RETELL_API_KEY || '';
 export const ENABLE_LIVE_INJECTION = process.env.ENABLE_LIVE_INJECTION === 'true';
 
 export const RETELL_API_BASE = 'https://api.retellai.com';

@@ -1,3 +1,4 @@
+import { planRetry } from './retry';
 import { Lead, LeadStatus, addTimeline, findLeadByCall, getLead, updateLead } from './store';
 
 export interface RetellWebhook {
@@ -55,11 +56,12 @@ export function applyRetellEvent(payload: RetellWebhook, meta: DeliveryMeta = {}
   const lead = (call.metadata?.lead_id && getLead(call.metadata.lead_id)) || findLeadByCall(call.call_id);
   if (!lead) return 'unknown_lead';
 
-  if (lead.timeline.some(t => t.event === event && !t.note)) {
-    addTimeline(lead.id, { event, hookdeck_event_id: meta.hookdeck_event_id, note: 'duplicate, ignored' });
+  // A lead has one call per attempt, so a repeat is the same event for the same call
+  if (lead.timeline.some(t => t.event === event && t.call_id === call.call_id && !t.note)) {
+    addTimeline(lead.id, { event, call_id: call.call_id, hookdeck_event_id: meta.hookdeck_event_id, note: 'duplicate, ignored' });
     return 'duplicate';
   }
-  addTimeline(lead.id, { event, hookdeck_event_id: meta.hookdeck_event_id });
+  addTimeline(lead.id, { event, call_id: call.call_id, hookdeck_event_id: meta.hookdeck_event_id });
 
   switch (event) {
     case 'call_started':
@@ -72,6 +74,7 @@ export function applyRetellEvent(payload: RetellWebhook, meta: DeliveryMeta = {}
         disconnection_reason: call.disconnection_reason,
         duration_seconds:
           call.start_timestamp && call.end_timestamp ? Math.round((call.end_timestamp - call.start_timestamp) / 1000) : undefined,
+        ...planRetry(lead.attempt, call.disconnection_reason),
       });
       break;
     case 'call_analyzed': {

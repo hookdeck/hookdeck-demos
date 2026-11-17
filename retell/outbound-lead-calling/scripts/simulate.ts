@@ -7,11 +7,12 @@
  *   npm run simulate -- call_ended        # one event
  *   npm run simulate -- call_ended --twice  # the same event twice (the second is deduplicated)
  *   npm run simulate -- call_ended --bad-signature  # rejected by Hookdeck's verification
+ *   npm run simulate -- --no-answer       # the lead did not pick up: call_ended (dial_no_answer), which starts the retry ladder
  *
  * With no lead yet, it asks the running app for a demo lead (no call is placed).
  */
 import 'dotenv/config';
-import { signRetellBody } from '../src/retell-signature';
+import { postSigned, simulatedCallId, simulatedPayload, SimulatedEvent } from '../src/simulated';
 
 const PORT = process.env.PORT || '4000';
 const URL_ = process.env.RETELL_EVENTS_URL;
@@ -25,7 +26,9 @@ if (!URL_ || !KEY) {
 
 const args = process.argv.slice(2);
 const names = args.filter(a => !a.startsWith('--'));
-const events = names.length ? names : ['call_started', 'call_ended', 'call_analyzed'];
+const no_answer = args.includes('--no-answer');
+// A lead that does not pick up gets call_ended only (the retry ladder reads it); the analysis is skipped
+const events = names.length ? names : no_answer ? ['call_ended'] : ['call_started', 'call_ended', 'call_analyzed'];
 const twice = args.includes('--twice');
 const bad_signature = args.includes('--bad-signature');
 
@@ -41,53 +44,15 @@ async function main() {
     leads = await app('/api/leads');
   }
   const lead = leads[0];
-  const call_id = lead.call_id || `simulated_${lead.id}`;
-  const start = Date.now() - 95_000;
+  const call_id = lead.call_id || simulatedCallId(lead);
 
-  const call: any = {
-    call_type: 'phone_call',
-    direction: 'outbound',
-    call_id,
-    agent_id: process.env.RETELL_AGENT_ID || 'agent_simulated',
-    call_status: 'registered',
-    metadata: { lead_id: lead.id },
-    retell_llm_dynamic_variables: { lead_name: lead.name, property_interest: lead.property_interest },
-    start_timestamp: start,
-  };
-  const payloads: { [event: string]: any } = {
-    call_started: { event: 'call_started', call },
-    call_ended: {
-      event: 'call_ended',
-      call: { ...call, call_status: 'ended', end_timestamp: Date.now(), disconnection_reason: 'agent_hangup', transcript: 'Agent: Hi, is that Demo?\nUser: Yes.' },
-    },
-    call_analyzed: {
-      event: 'call_analyzed',
-      call: {
-        ...call,
-        call_status: 'ended',
-        end_timestamp: Date.now(),
-        disconnection_reason: 'agent_hangup',
-        call_analysis: {
-          call_summary: 'Simulated call. The lead confirmed interest, mentioned a budget of 450k and asked for a viewing on Tuesday.',
-          user_sentiment: 'Positive',
-          call_successful: true,
-          in_voicemail: false,
-          custom_analysis_data: { budget: '450k', viewing_requested: true, preferred_viewing_time: 'Tuesday' },
-        },
-      },
-    },
-  };
+  const reason = no_answer ? 'dial_no_answer' : 'agent_hangup';
 
   for (const event of events) {
-    const body = JSON.stringify(payloads[event] ?? fail(`Unknown event ${event}`));
+    if (!['call_started', 'call_ended', 'call_analyzed'].includes(event)) fail(`Unknown event ${event}`);
+    const payload = simulatedPayload(event as SimulatedEvent, lead, call_id, reason);
     for (let i = 0; i < (twice ? 2 : 1); i++) {
-      const signature = signRetellBody(body, bad_signature ? `${KEY}-wrong` : KEY!);
-      const response = await fetch(URL_!, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-retell-signature': signature },
-        body,
-      });
-      console.log(`${event}${i ? ' (again)' : ''} -> Hookdeck ${response.status}`);
+      console.log(`${event}${i ? ' (again)' : ''} -> Hookdeck ${await postSigned(URL_!, KEY!, payload, bad_signature)}`);
     }
   }
 }

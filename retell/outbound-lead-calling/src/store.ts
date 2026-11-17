@@ -8,6 +8,8 @@ export interface TimelineEntry {
   event: string;
   /** Hookdeck event ID (x-hookdeck-eventid), when the delivery came through Hookdeck */
   hookdeck_event_id?: string;
+  /** The call the event belongs to: a lead has one call per attempt */
+  call_id?: string;
   /** "duplicate" when the app had already processed this event for this call */
   note?: string;
 }
@@ -29,6 +31,13 @@ export interface Lead {
   call_successful?: boolean;
   analysis?: Record<string, unknown>;
   error?: string;
+  /** Retry ladder (src/retry.ts): the attempt being waited for or in progress, starting at 1 */
+  attempt?: number;
+  /** When the next attempt is due, while the app is waiting to ring the lead again */
+  next_attempt_at?: string;
+  gave_up?: boolean;
+  /** Made by the page without a Retell call; its events come from `npm run simulate` or the page's "Lead does not answer" */
+  simulated?: boolean;
   timeline: TimelineEntry[];
 }
 
