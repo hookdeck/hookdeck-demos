@@ -1,4 +1,4 @@
-import { PLACES, usedDetails, type PlaceId } from './world.ts';
+import { sightsOf, usedDetails, type PlaceId, type World } from './world.ts';
 import { ReadableStream, TransformStream, type TransformStreamDefaultController } from 'node:stream/web';
 
 /**
@@ -102,6 +102,8 @@ export interface TurnState {
   short_mode?: boolean;
   /** Where the party is. */
   location?: PlaceId;
+  /** The state of the world: what can be seen is built from it. */
+  world?: World;
   /** Bram's replies since the scene began (the arrival description is the first), and the sights he has already used in them. */
   replies_in_scene?: number;
   described?: string[];
@@ -119,8 +121,8 @@ export function onPlayerInput(s: TurnState) {
 export function onBramReply(s: TurnState, text: string) {
   s.last_reply = text;
   s.replies_in_scene = (s.replies_in_scene ?? 0) + 1;
-  const place = s.location ? PLACES[s.location] : undefined;
-  if (place) s.described = [...new Set([...(s.described ?? []), ...usedDetails(place.sights, text)])];
+  // What Bram has now described is judged against what can be seen now, so a thing that changed (the chest, now open) counts as new
+  if (s.world) s.described = [...new Set([...(s.described ?? []), ...usedDetails(sightsOf(s.world), text)])];
 }
 
 /** Bram has finished speaking: who gets the turn now (the player he named, or the next in rotation), or nobody. */

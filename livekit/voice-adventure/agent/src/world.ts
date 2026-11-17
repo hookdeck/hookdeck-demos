@@ -32,11 +32,10 @@ export interface PlaceDef {
   /** The soundtrack file (scene name) played here. Places that share one keep it playing. */
   soundtrack: 'tavern' | 'forest' | 'cave' | 'finale';
   place: string;
-  /** Observations only, never an action to take. */
-  sights: string;
+  /** The fixed ambience of the place (weather, fire, trees, drips): never an item, never anything a player can change. */
+  ambient: string[];
   exits: ExitDef[];
-  /** Things to find, revealed only when a player investigates that thing. */
-  clue: string;
+  /** Things to find, revealed only when a player investigates that thing: built from the world state (see cluesOf). */
 }
 
 export const PLACES: Record<PlaceId, PlaceDef> = {
@@ -46,12 +45,11 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
     aliases: ['the drowned bell', 'drowned bell', 'the inn', 'the tavern', 'the bell', 'the pub'],
     soundtrack: 'tavern',
     place: 'the common room of the Drowned Bell on a stormy night, with a fire, a long table and a hooded stranger',
-    sights: 'rain on the shutters, the fire popping, a salt-stained map on the table in front of the stranger, a small iron chest under the bench, locked',
+    ambient: ['rain on the shutters', 'the fire popping', 'the hooded stranger watching from the long table'],
     exits: [
       { id: 'north_door', to: 'forest', text: 'a north door leads out into the storm toward the Hollow Wood' },
       { id: 'shore_door', to: 'lighthouse', text: 'a back door opens onto a shore path that climbs to the lighthouse' },
     ],
-    clue: 'the map has a lantern drawn near the Hollow Mere and a margin note about dripping water; the stranger knows the way and says so only if asked; the chest is locked and needs a key',
   },
   forest: {
     id: 'forest',
@@ -59,14 +57,13 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
     aliases: ['the hollow wood', 'the wood', 'the woods', 'the forest', 'the trees'],
     soundtrack: 'forest',
     place: 'the Hollow Wood, a damp pine forest',
-    sights: 'a rope bridge over a stream, a muddy path under the pines, silver footprints in the mud, a hollow oak with a small door in its trunk',
+    ambient: ['a rope bridge over a stream', 'a muddy path under the pines', 'silver footprints in the mud', 'a hollow oak with a small door in its trunk'],
     exits: [
       { id: 'oak_door', to: 'oak', text: 'the small door in the hollow oak' },
       { id: 'rope_bridge', to: 'cave', text: 'the rope bridge and stone steps beside a waterfall lead down toward the Mere, following the dripping water' },
       { id: 'inn_path', to: 'tavern', text: 'the lit windows of the Drowned Bell show back down the path' },
       { id: 'headland_track', to: 'lighthouse', text: 'a headland track leads out toward the lighthouse' },
     ],
-    clue: 'the footprints are small and lead to the door in the oak',
   },
   oak: {
     id: 'oak',
@@ -74,9 +71,8 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
     aliases: ['the hollow oak', 'the oak', 'the oak tree', 'the tree'],
     soundtrack: 'forest',
     place: 'inside the hollow oak, a cramped, dry hollow that smells of resin',
-    sights: 'a root shelf along the wall with a small brass key on it, the storm muffled outside the little door',
+    ambient: ['a root shelf along the wall', 'the storm muffled outside the little door'],
     exits: [{ id: 'out', to: 'forest', text: 'the small door leads back out to the wood' }],
-    clue: 'the brass key looks the right size for a small lock',
   },
   cave: {
     id: 'cave',
@@ -84,25 +80,23 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
     aliases: ['the cave', 'the mere', 'the hollow mere', 'the cave under the mere', 'the pool'],
     soundtrack: 'cave',
     place: 'the cave under the Hollow Mere, dripping and dark',
-    sights: 'a stone ledge with the Lantern of Hollow Mere on it, unlit, drips from the ceiling, a carving of a boat crossing a pool on the wall, a small rowboat on the underground pool',
+    ambient: ['a stone ledge above the water', 'drips from the ceiling', 'a carving of a boat crossing a pool on the wall', 'a small rowboat on the underground pool'],
     exits: [
       { id: 'steps_up', to: 'forest', text: 'stone steps beside the waterfall lead back up to the wood' },
       { id: 'boat', to: 'lighthouse', text: 'rowing the boat across the pool leads out to the shore below the lighthouse' },
     ],
-    clue: 'the carving shows a boat crossing the pool toward a light; the Lantern is cold and unlit',
   },
   lighthouse: {
     id: 'lighthouse',
     name: 'The Lighthouse',
     aliases: ['the lighthouse', 'the light house', 'the lamp room', 'the tower'],
     soundtrack: 'finale',
-    place: 'the lamp room of Old Bram\'s lighthouse at dawn, the great lamp dark',
-    sights: 'the storm clearing outside, the dark lamp, the stone walls streaked with salt, the Drowned Bell far below',
+    place: 'the lamp room of Old Bram\'s lighthouse at dawn',
+    ambient: ['the storm clearing outside', 'the stone walls streaked with salt', 'the Drowned Bell far below'],
     exits: [
       { id: 'shore_path', to: 'tavern', text: 'a shore path leads down to the Drowned Bell' },
       { id: 'headland_track', to: 'forest', text: 'a headland track leads back to the Hollow Wood' },
     ],
-    clue: 'the Lantern is lit here, at the lighthouse, with flint and a wick',
   },
 };
 
@@ -166,6 +160,56 @@ export function matchDestination(w: World, words: string): { exit?: ExitDef; des
   if (!best) return undefined;
   const exit = placeOf(w).exits.find((e) => e.to === best!.place.id);
   return exit ? { exit } : { destination: best.place };
+}
+
+/** How an item looks where it lies: written for the item, so a taken item is simply no longer described. */
+const LYING: Record<ItemId, string> = {
+  map: 'a salt-stained map on the table in front of the stranger',
+  brass_key: 'a small brass key on a root shelf along the wall',
+  lantern: 'the Lantern of Hollow Mere on a stone ledge, unlit',
+  flint_and_wick: 'flint and a wick lying inside the open chest',
+};
+
+/**
+ * What can be seen here right now, built from the world state: the fixed ambience, the items still lying here where they lie, the
+ * chest as it is (locked, or open with what is left inside), and the lamp as it is. Nothing in the static text depends on the state,
+ * so nothing here can be out of date.
+ */
+export function sightsOf(w: World): string[] {
+  const p = placeOf(w);
+  const out = [...p.ambient];
+  for (const item of itemsHere(w)) if (item.id !== 'flint_and_wick') out.push(LYING[item.id]);
+  if (chestHere(w)) {
+    if (!w.chest_open) out.push('a small iron chest under the bench, locked');
+    else out.push(w.satchel.includes('flint_and_wick') ? 'the small iron chest under the bench, open and empty' : `the small iron chest under the bench, open, with ${LYING.flint_and_wick.replace(' lying inside the open chest', '')} inside`);
+  }
+  if (w.location === 'lighthouse') out.push(w.lantern_lit ? 'the great lamp blazing, lit by the Lantern' : 'the great lamp, dark');
+  return out;
+}
+
+/** Things to find, revealed only when a player investigates that thing. Each one goes when it stops being true. */
+export function cluesOf(w: World): string[] {
+  const out: string[] = [];
+  switch (w.location) {
+    case 'tavern':
+      out.push('the map has a lantern drawn near the Hollow Mere and a margin note about dripping water; the stranger knows the way and says so only if asked');
+      if (!w.chest_open) out.push('the chest is locked and needs a key');
+      break;
+    case 'forest':
+      out.push('the footprints are small and lead to the door in the oak');
+      break;
+    case 'oak':
+      if (!w.satchel.includes('brass_key')) out.push('the brass key looks the right size for a small lock');
+      break;
+    case 'cave':
+      out.push('the carving shows a boat crossing the pool toward a light');
+      if (!w.satchel.includes('lantern')) out.push('the Lantern is cold and unlit');
+      break;
+    case 'lighthouse':
+      if (!w.lantern_lit) out.push('the Lantern is lit here, at the lighthouse, with flint and a wick');
+      break;
+  }
+  return out;
 }
 
 export const goalDone = (w: World) => w.lantern_lit;
@@ -341,14 +385,17 @@ export function placeNote(w: World, opts: { extra?: string[]; full: boolean; des
   const parts: string[] = [];
   parts.push(`You are at ${p.name}: ${p.place}. Never describe being anywhere else, and never describe the party moving, unless this note says the party moved.`);
   if (opts.music) parts.push(`The place has started ${opts.music}.`);
-  if (opts.full) parts.push(`What can be seen and heard: ${p.sights}.`);
+  const sights = sightsOf(w);
+  if (opts.full) parts.push(`What can be seen and heard: ${sights.join(', ')}.`);
   else {
-    const described = opts.described ?? [];
-    const fresh = p.sights.split(/,\s*/).filter((d) => !described.includes(d));
+    // Only what is still true counts as described: a phrase for how things used to be (the locked chest) is dropped, never repeated to Bram
+    const described = (opts.described ?? []).filter((d) => sights.includes(d));
+    const fresh = sights.filter((d) => !described.includes(d));
     parts.push(`You have already described this place${described.length ? `: already described, so do not repeat it unless something about it changes or it matters to what the player just did: ${described.join('; ')}` : ''}.${fresh.length ? ` Not yet mentioned: ${fresh.join('; ')}.` : ''}`);
   }
   parts.push(`Ways out, to describe only as part of the place: ${p.exits.map((e) => e.text).join('; ')}.`);
-  if (p.clue && !w.lantern_lit) parts.push(`Things to find, revealed only when a player investigates that thing: ${p.clue}.`);
+  const clues = cluesOf(w);
+  if (clues.length && !w.lantern_lit) parts.push(`Things to find, revealed only when a player investigates that thing: ${clues.join('; ')}.`);
   const here = itemsHere(w);
   parts.push(here.length ? `Lying here, not yet taken: ${here.map((i) => i.label).join('; ')}. Describe each where it lies and never tell the players to take it.` : 'Nothing here is left to take.');
   parts.push(`In the satchel: ${w.satchel.length ? w.satchel.map((id) => itemById(id)!.label).join('; ') : 'nothing'}.`);
@@ -367,9 +414,9 @@ export const closingNote = (outcomes: string[]) => `The quest is complete: ${out
 const STOP = new Set(['the', 'and', 'with', 'its', 'on', 'in', 'of', 'a', 'an', 'to', 'it', 'from', 'under', 'over', 'into', 'across', 'near', 'that', 'small', 'front']);
 
 /** The sights (comma-separated details) that a reply mentions: a detail counts as used when one of its key words appears. */
-export function usedDetails(sights: string, reply: string): string[] {
+export function usedDetails(details: string[], reply: string): string[] {
   const text = reply.toLowerCase();
-  return sights.split(/,\s*/).filter((detail) => detail.toLowerCase().match(/[a-z]+/g)?.some((word) => word.length >= 3 && !STOP.has(word) && new RegExp(`\\b${word}(?:s|es)?\\b`).test(text)));
+  return details.filter((detail) => detail.toLowerCase().match(/[a-z]+/g)?.some((word) => word.length >= 3 && !STOP.has(word) && new RegExp(`\\b${word}(?:s|es)?\\b`).test(text)));
 }
 
 export const satchelAttribute = (w: World): string => JSON.stringify(w.satchel);

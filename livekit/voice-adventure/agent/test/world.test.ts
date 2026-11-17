@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addressesPixel, exitsByDestination, itemNamed, ITEMS, matchDestination, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
+import { cluesOf, sightsOf, addressesPixel, exitsByDestination, itemNamed, ITEMS, matchDestination, PLACES, actionPrompt, applyActions, closingNote, endTriggered, itemsHere, newWorld, noActions, normalizeItem, parseActions, parseNameCorrection, parseSatchel, placeNote, satchelAttribute, usedDetails, usesName, worldAt, type Actions, type World } from '../src/world.ts';
 import { buildState, decodeState, encodeState, recapInstructions, shouldResume } from '../src/resume.ts';
 import { bramInstructions, cleanSpeech, onBramReply, onPlayout, onSceneStart, TOOL_NAMES, type TurnState } from '../src/story.ts';
 import { COOLDOWN_TURNS, GENERIC_LINES, POINTING_RESPONSES, RESPONDING_LINES, SCENE_LINES, chooseGesture, pickGesture, respondLine } from '../src/pixel-lines.ts';
@@ -152,11 +152,11 @@ test('the note: where the party is, never anywhere else; what lies here and is c
   assert.match(later, /already described, so do not repeat it.*a rope bridge over a stream/);
   assert.match(later, /Answer only what the player did, in one or two sentences/);
   assert.match(placeNote(w, { full: false, replies: 4 }), /shortest reply now/);
-  assert.deepEqual(usedDetails(PLACES.tavern.sights, 'The fire pops and the rain hammers the shutters.'), ['rain on the shutters', 'the fire popping']);
+  assert.deepEqual(usedDetails(sightsOf(newWorld()), 'The fire pops and the rain hammers the shutters.'), ['rain on the shutters', 'the fire popping']);
 });
 
 test('atmosphere tracking follows the place and resets on arrival', () => {
-  const s: TurnState = { scene_index: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
+  const s: TurnState = { scene_index: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false, world: newWorld() };
   onSceneStart(s, 'tavern');
   assert.equal(s.scene_index, 1);
   onBramReply(s, 'The fire pops and the rain hammers the shutters.');
@@ -339,4 +339,83 @@ test('a blocked move names the real ways out by destination', () => {
   const bad = applyActions(at('cave'), act({ move: 'north_door' }));
   assert.equal(bad.blocked_move, true);
   assert.match(bad.outcomes[0], /The Hollow Wood.*The Lighthouse/);
+});
+
+const everything = (w: World, extra = '') => [placeNote(w, { full: true, arriving: true }), placeNote(w, { full: false, described: [], replies: 1 }), sightsOf(w).join(', '), cluesOf(w).join('; '), extra].join(' | ');
+
+test('state-built descriptions: the static place text names no item and no puzzle state', () => {
+  for (const place of Object.values(PLACES)) {
+    const fixed = [place.place, ...place.ambient].join(' ');
+    assert.doesNotMatch(fixed, /\b(map|key|chest|lantern|flint|wick|locked|unlit|dark lamp)\b/i, `${place.id}: ${fixed}`);
+  }
+});
+
+test('the tavern before and after the chest is opened: locked, then open with the flint and wick until taken', () => {
+  const w = newWorld();
+  assert.match(everything(w), /small iron chest under the bench, locked/);
+  assert.match(everything(w), /chest is locked and needs a key/);
+  assert.match(placeNote(w, { full: true }), /iron chest is here, locked/);
+  w.satchel.push('brass_key');
+  applyActions(w, act({ use: [{ item: 'key', target: 'chest' }] }));
+  const opened = everything(w);
+  assert.doesNotMatch(opened, /locked|needs a key/i);
+  assert.match(opened, /iron chest under the bench, open, with flint and a wick inside/);
+  assert.match(opened, /iron chest is here, open/);
+  assert.match(opened, /Lying here, not yet taken: .*flint and wick/);
+  assert.match(actionPrompt(w, 'x').user, /chest is here, open/);
+  // once the flint and wick are taken the open chest is empty, and nothing says locked
+  applyActions(w, act({ take: ['flint and wick'] }));
+  const empty = everything(w);
+  assert.match(empty, /open and empty/);
+  assert.doesNotMatch(empty, /locked|needs a key|flint and a wick inside/i);
+});
+
+test('a taken item is no longer described where it lay: the map, the key, the Lantern', () => {
+  const tavern = newWorld();
+  assert.match(sightsOf(tavern).join(', '), /salt-stained map on the table/);
+  applyActions(tavern, act({ take: ['map'] }));
+  assert.doesNotMatch(everything(tavern), /map on the table|Lying here, not yet taken: the salt-stained map/);
+  const oak = at('oak');
+  assert.match(everything(oak), /small brass key on a root shelf/);
+  assert.match(everything(oak), /right size for a small lock/);
+  applyActions(oak, act({ take: ['key'] }));
+  assert.doesNotMatch(everything(oak), /brass key on a root shelf|right size for a small lock/);
+  assert.match(placeNote(oak, { full: true }), /Nothing here is left to take/);
+  const cave = at('cave');
+  assert.match(everything(cave), /Lantern of Hollow Mere on a stone ledge, unlit/);
+  applyActions(cave, act({ take: ['lantern'] }));
+  assert.doesNotMatch(everything(cave), /on a stone ledge, unlit|cold and unlit/);
+  assert.match(placeNote(cave, { full: true }), /In the satchel: the Lantern of Hollow Mere/);
+});
+
+test('the lighthouse lamp is dark until the Lantern is lit, then described as lit', () => {
+  const w = at('lighthouse', ['lantern', 'flint_and_wick']);
+  assert.match(sightsOf(w).join(', '), /great lamp, dark/);
+  applyActions(w, act({ use: [{ item: 'flint and wick', target: 'lantern' }] }));
+  const lit = everything(w);
+  assert.match(lit, /great lamp blazing, lit by the Lantern/);
+  assert.doesNotMatch(lit, /lamp, dark/);
+  assert.doesNotMatch(sightsOf(at('lighthouse')).join(' '), /chest/i);
+});
+
+test('a changed thing counts as new: the chest now open may be mentioned once, though the locked chest was already described', () => {
+  const s: TurnState = { scene_index: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, ending: false };
+  const w = newWorld();
+  s.world = w;
+  onSceneStart(s, 'tavern');
+  onBramReply(s, 'A small iron chest sits under the bench, locked.');
+  assert.ok(s.described!.includes('a small iron chest under the bench, locked'));
+  w.satchel.push('brass_key');
+  applyActions(w, act({ use: [{ item: 'key', target: 'chest' }] }));
+  const note = placeNote(w, { full: false, described: s.described, replies: 1 });
+  assert.match(note, /Not yet mentioned:.*iron chest under the bench, open/);
+  assert.doesNotMatch(note, /locked/);
+});
+
+test('Pixel lines use the same state: no tap at a map that was taken, no pointing at a key that is gone', () => {
+  const tavern = newWorld();
+  applyActions(tavern, act({ take: ['map'] }));
+  for (let i = 0; i < 80; i++) assert.doesNotMatch(pickGesture(tavern, new Map(), 0, () => Math.random()) ?? '', /taps the salt-stained map/);
+  const oak = at('oak', ['brass_key']);
+  for (let i = 0; i < 80; i++) assert.doesNotMatch(pickGesture(oak, new Map(), 0, () => Math.random()) ?? '', /brass key on the shelf/);
 });
