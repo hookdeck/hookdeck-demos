@@ -47,31 +47,29 @@
       <h2 class="title-l" data-copy="join_title">Join a call</h2>
       <p class="body-s muted" data-copy="join_hint">Type a name, join, and allow the microphone. Wait for your turn.</p>
       <div class="actions">
-        <label class="field inline"><span class="subtitle-xs">Your name</span><input class="input" id="playerName" name="story-player-name" maxlength="24" placeholder="optional" title="Optional: Hester asks your name if you leave it empty" data-copy-placeholder="name_placeholder" autocomplete="off" autocapitalize="words" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" style="width:140px"></label>
+        <span class="tip"><label class="field inline"><span class="subtitle-xs">Your name</span><input class="input" id="playerName" name="story-player-name" maxlength="24" placeholder="optional" aria-describedby="tipName" data-copy-placeholder="name_placeholder" autocomplete="off" autocapitalize="words" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" style="width:140px"></label><span class="tip-bubble" id="tipName" role="tooltip" data-copy="tip_name">Optional. Leave it empty and Hester asks your name, then writes it in her ledger.</span></span>
         <button class="button" id="joinBtn" type="button" data-copy="join_btn">Join a call</button>
-        <button class="button button--secondary" id="testBtn" type="button" data-copy="pixel_add" disabled>Add Pixel, a mute player</button>
+        <span class="tip"><button class="button button--secondary" id="testBtn" type="button" data-copy="pixel_add" aria-describedby="tipPixel" disabled>Add Pixel, a mute player</button><span class="tip-bubble" id="tipPixel" role="tooltip" data-copy="tip_pixel">Pixel is a scripted player that cannot speak. Old Bram weaves its gestures into the story.</span></span>
         <button class="button button--secondary" id="leaveBtn" type="button" data-copy="leave_btn" disabled>Leave</button>
         <span class="body-xs muted" id="callStatus"></span>
       </div>
       <div id="callMessage" class="message body-s" hidden></div>
       <div id="storyBanner" class="story-banner body-m" hidden></div>
-      <div id="satchel" class="satchel body-s" hidden><span class="subtitle-xs" data-copy="satchel_title">Items</span><ul id="satchelItems" class="satchel-items"></ul></div>
+      <div id="satchel" class="satchel body-s" hidden><span class="subtitle-xs" data-copy="satchel_title">Items</span><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the items" aria-describedby="tipSatchel"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipSatchel" role="tooltip" data-copy="tip_satchel">What your party is carrying. Old Bram updates it as you find things.</span></span><ul id="satchelItems" class="satchel-items"></ul></div>
     </section>
 
     <section class="card">
-      <h2 class="title-l" data-copy="transcript_title">Transcript</h2>
+      <div class="heading-row"><h2 class="title-l" data-copy="transcript_title">Transcript</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the transcript" aria-describedby="tipTranscript"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipTranscript" role="tooltip" data-copy="tip_transcript">Subtitles of what is said in the call, newest first.</span></span></div>
       <ul id="transcript" class="transcript body-s"></ul>
     </section>
 
     <section class="card">
-      <h2 class="title-l" data-copy="chronicle_title">Session chronicle</h2>
-      <p class="body-s muted" data-copy="chronicle_hint">Built from webhooks only.</p>
+      <div class="heading-row"><h2 class="title-l" data-copy="chronicle_title">Session chronicle</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the session chronicle" aria-describedby="tipChronicle"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipChronicle" role="tooltip" data-copy="chronicle_hint">Built from webhooks only.</span></span></div>
       <div id="chronicle" class="requests"></div>
     </section>
 
     <section class="card">
-      <h2 class="title-l" data-copy="failure_title">Failure injection</h2>
-      <p class="body-s muted">Make the app fail or slow down; Hookdeck retries.</p>
+      <div class="heading-row"><h2 class="title-l" data-copy="failure_title">Failure injection</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About failure injection" aria-describedby="tipFailure"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipFailure" role="tooltip" data-copy="tip_failure">Make the app fail or answer slowly. Hookdeck keeps each event and retries it.</span></span></div>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Fail the next</span><input class="input narrow" id="failNext" type="number" min="0" max="10" value="2"></label>
         <label class="field inline"><span class="subtitle-xs">Delay each answer (s)</span><input class="input narrow" id="delay" type="number" min="0" max="60" value="0"></label>
@@ -82,14 +80,14 @@
 
     <section class="card">
       <div class="section-head">
-        <h2 class="title-l">Calls</h2>
+        <div class="heading-row"><h2 class="title-l">Calls</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About calls" aria-describedby="tipCalls"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipCalls" role="tooltip" data-copy="tip_calls">Rooms, who was in them and for how long, built from room webhooks.</span></span></div>
         <label class="check body-xs"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 2s</label>
       </div>
       <div id="calls" class="requests"></div>
     </section>
 
     <section class="card">
-      <h2 class="title-l">Webhook deliveries</h2>
+      <div class="heading-row"><h2 class="title-l">Webhook deliveries</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About webhook deliveries" aria-describedby="tipDeliveries"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipDeliveries" role="tooltip" data-copy="tip_deliveries">Every request that reached this app, newest first. A repeated event id is a duplicate and changes nothing.</span></span></div>
       <div style="overflow-x: auto"><table class="deliveries body-s"><thead><tr><th>Received</th><th>Event</th><th>Event id</th><th>Result</th></tr></thead><tbody id="deliveries"></tbody></table></div>
     </section>
   </main>
@@ -116,6 +114,7 @@
     document.getElementById('howClose').addEventListener('click', () => document.getElementById('howDialog').close());
     document.getElementById('howDialog').addEventListener('click', (e) => { if (e.target.id === 'howDialog') e.target.close(); });
   </script>
+  <script src="/tips.js"></script>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>
   <script src="/scenes/scenes.js"></script>

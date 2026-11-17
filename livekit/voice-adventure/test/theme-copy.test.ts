@@ -60,3 +60,20 @@ test('the shared hook names no specific theme', () => {
   const shared = fs.readFileSync(path.join(__dirname, '../../../_shared/theme/theme.js'), 'utf8');
   assert.doesNotMatch(shared.replace(/\/\/.*$/gm, ''), /story|tale|drowned/i);
 });
+
+// Hover tips: every tip bubble is a tooltip a control points at, and the Story theme words each one.
+test('hover tips: bubbles are wired to their controls and have Story wording', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  const call = fs.readFileSync(path.join(__dirname, '../public/call.js'), 'utf8');
+  const copy: Record<string, string> = {};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/theme-story.copy.js'), 'utf8'), { window: { HookdeckThemeCopies: copy } });
+  const story = (copy as any).story as Record<string, string>;
+  const bubbles = [...html.matchAll(/<span class="tip-bubble" id="(\w+)" role="tooltip" data-copy="(\w+)">/g)];
+  assert.ok(bubbles.length >= 8, 'the page has its hover tips');
+  for (const [, id, key] of bubbles) {
+    assert.match(html, new RegExp(`aria-describedby="${id}"`), `${id} is described-by a control`);
+    assert.ok(story[key], `${key} has Story wording`);
+  }
+  assert.match(call, /bubble\.dataset\.copy = 'tip_volume'/);
+  for (const key of ['tip_volume', 'tip_name', 'tip_pixel', 'tip_satchel', 'tip_transcript', 'tip_failure', 'tip_calls', 'tip_deliveries']) assert.ok(story[key], key);
+});

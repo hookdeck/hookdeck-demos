@@ -33,7 +33,18 @@ function soundtrackSlider() {
     for (const el of audio_box.querySelectorAll('audio[data-soundtrack]')) el.volume = Number(input.value);
   });
   label.append(input);
-  $('callStatus').after(label);
+  // The slider sits in a hover tip, like the page's other controls (the bubble's wording follows the theme)
+  const tip = document.createElement('span');
+  tip.className = 'tip';
+  const bubble = document.createElement('span');
+  bubble.className = 'tip-bubble';
+  bubble.id = 'tipVolume';
+  bubble.setAttribute('role', 'tooltip');
+  bubble.dataset.copy = 'tip_volume';
+  bubble.textContent = 'Only changes what you hear. The soundtrack itself is pulled into the room at each new scene.';
+  input.setAttribute('aria-describedby', 'tipVolume');
+  tip.append(label, bubble);
+  $('callStatus').after(tip);
 }
 soundtrackSlider();
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

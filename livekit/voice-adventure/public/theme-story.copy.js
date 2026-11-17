@@ -35,5 +35,13 @@ window.HookdeckThemeCopies.story = {
   "item_flint_and_wick": "Flint and a wick",
   "place_label": "{place}",
   "quiet_title": "Old Bram has fallen silent",
-  "quiet_sub": "The tale is waiting where it stopped."
+  "quiet_sub": "The tale is waiting where it stopped.",
+  "tip_name": "Optional. Leave it empty and Hester asks your name at the door, then writes it in her ledger.",
+  "tip_pixel": "Pixel is a traveller who cannot speak. Old Bram weaves its gestures into the tale.",
+  "tip_volume": "Only changes what you hear. The music is drawn into the room at each new scene.",
+  "tip_satchel": "What your party carries. Old Bram updates it as you find things.",
+  "tip_transcript": "The tale as it is spoken, newest line first.",
+  "tip_failure": "Make the door stick or the answers slow. Hookdeck keeps every event and tries again.",
+  "tip_calls": "Rooms, who was in them and for how long, drawn from room webhooks.",
+  "tip_deliveries": "Every request that reached this app, newest first. A repeated event id is a duplicate and changes nothing."
 };

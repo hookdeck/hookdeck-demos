@@ -134,3 +134,31 @@ html[data-theme="story"] .end-sub { display: initial; }
 
 /* The connection status gets its own line, so a longer label or message never pushes the buttons onto a new row */
 #callStatus { flex-basis: 100%; }
+
+/* Hover tips (tips.js): one sentence about one control, on hover and on keyboard focus. The bubble anchors to the row or
+   heading that holds the control, so it stays inside the card on a phone. */
+.tip { position: relative; display: inline-flex; }
+.tip.tip--span { position: static; }
+.actions, .heading-row, .satchel { position: relative; }
+.heading-row { display: flex; align-items: center; gap: var(--s2); }
+.tip-bubble {
+  position: absolute; z-index: 20; top: calc(100% + var(--s2)); left: 0; width: max-content; max-width: min(300px, calc(100vw - 80px));
+  padding: var(--s2) var(--s3); border-radius: var(--radius); background: var(--bg-contrast, #1f1f23); color: var(--on-contrast-fg, #fff);
+  font-size: 13px; line-height: 1.45; font-weight: 400; letter-spacing: 0; text-transform: none; text-align: left;
+  box-shadow: var(--elevation-small); opacity: 0; visibility: hidden; pointer-events: none;
+}
+.tip:hover > .tip-bubble, .tip:focus-within > .tip-bubble { opacity: 1; visibility: visible; }
+.tip.tip--off > .tip-bubble { opacity: 0; visibility: hidden; }
+.tip-bubble code { color: inherit; }
+/* ⓘ button: a 44px hit area around a small mark */
+button.tip-i {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; margin: -12px -10px; padding: 0;
+  border: 0; background: none; box-shadow: none; color: var(--primary-fg); cursor: help;
+}
+button.tip-i:hover { background: none; box-shadow: none; }
+.tip-i__mark {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 50%;
+  font: italic 700 12px/1 Georgia, serif;
+}
+button.tip-i:hover .tip-i__mark { background: var(--primary-fg); color: var(--bg-0); }
+button.tip-i:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: -4px; border-radius: var(--radius); }
