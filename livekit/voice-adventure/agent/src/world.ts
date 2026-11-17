@@ -124,12 +124,14 @@ export interface World {
 export const newWorld = (): World => ({ location: 'tavern', satchel: [], chest_open: false, lantern_lit: false });
 
 /** Test starts (STORY_START=<place>): begin elsewhere with the map in the satchel. */
-export const worldAt = (place: string | undefined): World => {
+export const worldAt = (place: string | undefined, items?: string): World => {
   const w = newWorld();
-  if (place && place in PLACES && place !== 'tavern') {
+  if (place && place in PLACES) {
     w.location = place as PlaceId;
-    w.satchel = ['map'];
+    if (place !== 'tavern') w.satchel = ['map'];
   }
+  // STORY_ITEMS=map,lantern puts those items in the satchel to begin with
+  for (const id of (items ?? '').split(',').map((s) => s.trim())) if (itemById(id) && !w.satchel.includes(id as ItemId)) w.satchel.push(id as ItemId);
   return w;
 };
 
@@ -161,13 +163,16 @@ export const chestHere = (w: World) => w.location === 'tavern';
 // ---- What the resolver returns, and what the code makes of it ----
 
 export interface Actions {
+  /** An exit id the player clearly chose. */
   move: string | null;
+  /** Somewhere or some way the player tried to go that is not one of the exits (so it is refused, not guessed). */
+  blocked: string | null;
   take: string[];
   use: Array<{ item: string; target: string }>;
   give: Array<{ item: string; to: string }>;
 }
 
-export const noActions = (): Actions => ({ move: null, take: [], use: [], give: [] });
+export const noActions = (): Actions => ({ move: null, blocked: null, take: [], use: [], give: [] });
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 
@@ -185,6 +190,7 @@ export function parseActions(raw: string): Actions {
   }
   if (!json || typeof json !== 'object') return out;
   out.move = str(json.move) ?? null;
+  out.blocked = str(json.blocked) ?? null;
   if (Array.isArray(json.take)) out.take = json.take.map(str).filter((x: string | undefined): x is string => !!x);
   if (Array.isArray(json.use)) out.use = json.use.map((u: any) => ({ item: str(u?.item), target: str(u?.target) })).filter((u: any) => u.item && u.target);
   if (Array.isArray(json.give)) out.give = json.give.map((g: any) => ({ item: str(g?.item), to: str(g?.to) ?? 'stranger' })).filter((g: any) => g.item);
@@ -197,7 +203,7 @@ export function actionPrompt(w: World, words: string): { system: string; user: s
   const here = itemsHere(w).map((i) => `${i.id} (${i.label})`);
   const carried = w.satchel.map((id) => `${id} (${itemById(id)!.label})`);
   return {
-    system: 'You read what a player says in a spoken adventure and list only what they clearly do right now. Reply with one JSON object and nothing else: {"move": exit id or null, "take": [item ids], "use": [{"item": id, "target": id or "chest"}], "give": [{"item": id, "to": "stranger"}]}. Use empty arrays and null when the player does none of these. Handing an item to someone is "give". Exploring, asking, looking and talking are none of these.',
+    system: 'You read what a player says in a spoken adventure and list only what they clearly do right now. Reply with one JSON object and nothing else: {"move": exit id or null, "blocked": text or null, "take": [item ids], "use": [{"item": id, "target": id or "chest"}], "give": [{"item": id, "to": "stranger"}]}. Choose a "move" only when the player\'s words clearly name or describe one of the listed exits. If the player tries to go somewhere, or by a way, that is NOT in the list of exits, set "move" to null and put what they tried in "blocked". Never pick the nearest exit as a guess. Use empty arrays and null when the player does none of these. Handing an item to someone is "give". Exploring, asking, looking and talking are none of these.',
     user: `Place: ${p.place}.
 Exits (use the id): ${p.exits.map((e) => `${e.id}: ${e.text}`).join('; ')}.
 Items lying here: ${here.join('; ') || 'none'}.${chestHere(w) ? ` An iron chest is here, ${w.chest_open ? 'open' : 'locked'}.` : ''}
@@ -218,11 +224,15 @@ export interface Resolution {
 /** Validates and applies the resolver's actions in order: take, give, use, then move. Anything that does not hold becomes a refusal outcome. */
 export function applyActions(w: World, actions: Actions): Resolution {
   const r: Resolution = { outcomes: [], moved: false, opened: false, lit: false, took: [] };
+  const taken_ids = new Set<string>();
   const take = (raw: string, via_stranger = false) => {
     const id = normalizeItem(raw);
-    if (id === 'chest') return r.outcomes.push('The iron chest is far too heavy to take. It stays where it is.');
+    if (id === 'chest') return r.outcomes.push('The iron chest is far too heavy to take and is bolted to the floor of the inn. It stays where it is.');
     const item = id ? itemById(id) : undefined;
     if (!item) return r.outcomes.push(`There is no "${raw}" here that can be taken.`);
+    // "flint" and "wick" are one item: say it once
+    if (taken_ids.has(item.id)) return;
+    taken_ids.add(item.id);
     if (w.satchel.includes(item.id)) return r.outcomes.push(`${cap(item.label)} is already in the satchel.`);
     if (!itemsHere(w).some((i) => i.id === item.id)) return r.outcomes.push(`${cap(item.label)} is not in this place.`);
     w.satchel.push(item.id);
@@ -255,6 +265,7 @@ export function applyActions(w: World, actions: Actions): Resolution {
     } else if (a && itemById(a) && !w.satchel.includes(a)) r.outcomes.push(`${cap(itemById(a)!.label)} is not in the satchel.`);
     else r.outcomes.push('Nothing happens: that does not work here.');
   }
+  if (!actions.move && actions.blocked) r.outcomes.push(`There is no way to ${actions.blocked} from here. The ways out are: ${placeOf(w).exits.map((e) => e.text).join('; ')}.`);
   if (actions.move) {
     const here = placeOf(w);
     const wanted = actions.move.toLowerCase().replace(/[\s-]+/g, '_');

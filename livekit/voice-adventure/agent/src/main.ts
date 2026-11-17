@@ -375,7 +375,7 @@ export default defineAgent({
         preemptiveGeneration: { enabled: false },
       },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, replies_in_scene: 0, described: [], world: worldAt(process.env.STORY_START), soundtrack: undefined, pixel_cooldown: new Map(), turn_no: 0, last_speaker_name: undefined },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, replies_in_scene: 0, described: [], world: worldAt(process.env.STORY_START, process.env.STORY_ITEMS), soundtrack: undefined, pixel_cooldown: new Map(), turn_no: 0, last_speaker_name: undefined },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {

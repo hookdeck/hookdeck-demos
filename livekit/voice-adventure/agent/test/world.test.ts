@@ -111,7 +111,7 @@ test('lighting: only at the lighthouse with the Lantern and the flint and wick, 
 });
 
 test('resolver JSON: parsed from the model text, bad shapes dropped, unreadable is no actions; the prompt carries place, exits, items and the words', () => {
-  assert.deepEqual(parseActions('{"move":"boat","take":["lantern"],"use":[{"item":"key","target":"chest"}],"give":[{"item":"map","to":"stranger"}]}'), { move: 'boat', take: ['lantern'], use: [{ item: 'key', target: 'chest' }], give: [{ item: 'map', to: 'stranger' }] });
+  assert.deepEqual(parseActions('{"move":"boat","take":["lantern"],"use":[{"item":"key","target":"chest"}],"give":[{"item":"map","to":"stranger"}]}'), { move: 'boat', blocked: null, take: ['lantern'], use: [{ item: 'key', target: 'chest' }], give: [{ item: 'map', to: 'stranger' }] });
   assert.deepEqual(parseActions('```json\n{"move": null, "take": [], "use": [], "give": []}\n```'), noActions());
   assert.deepEqual(parseActions('{"move": 3, "take": "map", "use": [{"item": "key"}], "give": [{"to": "x"}]}'), noActions());
   for (const bad of ['', 'no', '{broken', '[1]', 'null']) assert.deepEqual(parseActions(bad), noActions());
@@ -224,10 +224,27 @@ test('Pixel takes a turn about every third round, not every rotation', () => {
   assert.equal(onPlayout(only, [players[1]])!.name, 'Pixel');
 });
 
+test('an exit the player names that does not exist is refused, not guessed; flint and wick are one take', () => {
+  const w = at('cave');
+  const r = applyActions(w, act({ blocked: 'the shore path' }));
+  assert.equal(r.moved, false);
+  assert.equal(w.location, 'cave');
+  assert.match(r.outcomes[0], /no way to the shore path from here.*rowing the boat/);
+  assert.deepEqual(parseActions('{"move": null, "blocked": "the hollow oak", "take": [], "use": [], "give": []}').blocked, 'the hollow oak');
+  const v = at('tavern', ['brass_key']);
+  v.chest_open = true;
+  const t = applyActions(v, act({ take: ['flint', 'wick'] }));
+  assert.equal(t.outcomes.length, 1);
+  assert.deepEqual(v.satchel, ['brass_key', 'flint_and_wick']);
+  assert.match(actionPrompt(v, 'x').system, /Never pick the nearest exit as a guess/);
+  assert.match(applyActions(at('tavern'), act({ take: ['chest'] })).outcomes[0], /bolted to the floor/);
+});
+
 test('test starts: STORY_START puts the party elsewhere with the map', () => {
   assert.equal(worldAt('cave').location, 'cave');
   assert.deepEqual(worldAt('cave').satchel, ['map']);
   assert.equal(worldAt(undefined).location, 'tavern');
   assert.equal(worldAt('nowhere').location, 'tavern');
+  assert.deepEqual(worldAt('lighthouse', 'lantern,bogus').satchel, ['map', 'lantern']);
   assert.equal(ITEMS.length, 4);
 });
