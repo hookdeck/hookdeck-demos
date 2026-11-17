@@ -1,27 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-demo-theme="open-house" data-demo-theme-label="Open house" data-demo-theme-default="true">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hookdeck + Retell outbound lead calling</title>
   <link rel="icon" href="/ds/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&amp;family=Figtree:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/theme-open-house.css">
   <link rel="stylesheet" href="/scenes/scenes.css">
   <link rel="stylesheet" href="/topology-pane/topology-pane.css">
+  <script src="/theme-open-house.copy.js"></script>
   <script src="/theme.js"></script>
 </head>
 <body>
   <main>
     <section class="hero lined">
       <div class="lined__box">
-        <span class="eyebrow mono-xs">{ Hookdeck + Retell }</span>
-        <h1 class="title-2xl">A lead arrives. Retell <em>calls</em>. Hookdeck reports back.</h1>
-        <p class="body-m">
-          Start a call from the browser (or, optionally, from a phone number) and Retell's agent talks to the lead with the lead's details as dynamic variables. The call's
-          <code>call_started</code>, <code>call_ended</code> and <code>call_analyzed</code> events come back through
-          Hookdeck, which verifies <code>x-retell-signature</code>, deduplicates and retries, and update the lead below. Watch it happen in the <strong>Data flow</strong> pane at the bottom of the page.
-        </p>
+        <span class="eyebrow mono-xs" data-copy="eyebrow">{ Hookdeck + Retell }</span>
+        <h1 class="title-2xl" data-copy="hero_title">A lead arrives. Retell <em>calls</em>. Hookdeck reports back.</h1>
+        <div class="hero__line">
+          <p class="body-m">Sam calls the lead. Retell runs the call; Hookdeck reports the result.</p>
+          <button type="button" class="info" data-info="hero" aria-label="How it works" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+        </div>
       </div>
       <span class="lined__dots lined__dots--top_left"></span>
       <span class="lined__dots lined__dots--top_right"></span>
@@ -30,34 +34,77 @@
     </section>
 
     <section class="card">
-      <h2 class="title-l">New lead</h2>
+      <div class="section-head">
+        <h2 class="title-l">New website enquiry</h2>
+        <span class="body-xs muted">From the Acme Realty website</span>
+      </div>
       <form id="leadForm" class="form">
-        <label class="field"><span class="subtitle-xs">Name</span><input class="input" name="name" value="Alex" required></label>
-        <label class="field"><span class="subtitle-xs">Property</span><input class="input" name="property_interest" value="14 Oak Lane" required></label>
-        <label class="field"><span class="subtitle-xs">Notes from the form</span><textarea name="notes">Looking for a 3-bedroom house with a garden.</textarea></label>
-        <div class="actions web-call">
-          <button class="button" id="webCallBtn" type="button" disabled>Start call in the browser</button>
-          <span id="webCallStatus" class="body-xs muted">Talks to the agent from your microphone. No phone number needed.</span>
+        <div class="form__row">
+          <label class="field"><span class="subtitle-xs">Lead's name</span><input class="input" id="leadName" name="name" value="Alex" required></label>
+          <label class="field"><span class="subtitle-xs">Property asked about</span><input class="input" id="leadProperty" name="property_interest" value="14 Oak Lane" required></label>
         </div>
-        <div id="webCallHelp" class="message info body-s" hidden></div>
-        <div class="optional">
-          <p class="body-xs muted"><strong>Optional: call a phone instead.</strong> Needs a Retell phone number you bought (<code>RETELL_FROM_NUMBER</code>). There is no phone field: the call goes to <code>TEST_LEAD_PHONE_NUMBER</code> from <code>.env</code>.</p>
-          <div class="actions">
-            <button class="button button--secondary" id="callBtn" type="submit">Submit lead and call</button>
-            <button class="button button--secondary" id="demoBtn" type="button">Add a lead without calling</button>
+        <label class="field"><span class="subtitle-xs">Notes from the form</span><textarea name="notes">Looking for a 3-bedroom house with a garden.</textarea></label>
+
+        <div class="roles">
+          <div class="role">
+            <span class="role__avatar role__avatar--caller" aria-hidden="true">S</span>
+            <div class="role__text">
+              <span class="role__label">The caller</span>
+              <strong class="role__name">Sam</strong>
+              <span class="body-xs muted">Friendly assistant · Acme Realty</span>
+            </div>
+            <button type="button" class="info" data-info="sam" aria-label="About Sam" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
           </div>
-          <div id="config" class="body-xs muted"></div>
+          <div class="roles__link">
+            <svg class="roles__arrow" aria-hidden="true" width="64" height="16" viewBox="0 0 64 16"><path d="M2 8 H58 M51 2 L58 8 L51 14"></path></svg>
+            <span class="pill" id="callPill" role="status">Sam → Alex · ready</span>
+          </div>
+          <div class="role">
+            <span class="role__avatar" id="leadInitial" aria-hidden="true">A</span>
+            <div class="role__text">
+              <span class="role__label">The lead · you</span>
+              <strong class="role__name" id="leadCardName">Alex</strong>
+              <span class="body-xs muted">Enquired about <span id="leadCardProperty">14 Oak Lane</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions web-call">
+          <span class="tip">
+            <button class="button" id="webCallBtn" type="button" aria-describedby="tipCall" disabled>Have Sam call Alex</button>
+            <span class="tip-bubble" id="tipCall" role="tooltip">Sam rings you in this browser. Allow your microphone, then answer as <span data-lead-name>Alex</span>. No phone number needed.</span>
+          </span>
+          <button class="button button--secondary" id="endCallBtn" type="button" hidden>End call</button>
+          <span class="cue body-xs"><svg aria-hidden="true" width="14" height="18" viewBox="0 0 14 18"><rect class="ring" x="4.5" y="1.5" width="5" height="9" rx="2.5"></rect><path class="ring" d="M2 8.5 a5 5 0 0 0 10 0 M7 13.5 V16.5"></path></svg>You answer as <span data-lead-name>Alex</span></span>
+          <span class="tag" id="webCallStatus">Browser call not set up yet</span>
+          <button type="button" class="info" data-info="setup" aria-label="Set up the browser call" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+          <span class="tip">
+            <button class="button button--secondary" id="noAnswerBtn" type="button" aria-describedby="tipNoAnswer" disabled>Lead does not answer</button>
+            <span class="tip-bubble" id="tipNoAnswer" role="tooltip">Sends a signed no-answer event through Hookdeck. No call is placed.</span>
+          </span>
+        </div>
+
+        <div class="optional">
+          <div class="actions">
+            <span class="role__label">Optional: call a phone</span>
+            <button type="button" class="info" data-info="phone" aria-label="About calling a phone" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+            <button class="button button--secondary" id="callBtn" type="submit">Submit enquiry and have Sam call</button>
+            <span class="tip">
+              <button class="button button--secondary" id="demoBtn" type="button" aria-describedby="tipDemo">Add an enquiry without a call</button>
+              <span class="tip-bubble" id="tipDemo" role="tooltip">Adds a lead with a simulated call. Run <code>npm run simulate</code> to send it signed events.</span>
+            </span>
+            <span class="tag tag--bad" id="phoneStatus"></span>
+          </div>
         </div>
       </form>
       <div id="message" class="message body-s"></div>
     </section>
 
     <section class="card">
-      <h2 class="title-l">Failure injection</h2>
-      <p class="body-s muted">
-        Make this app misbehave, then watch Hookdeck absorb it: the event stays queued and is retried until the app
-        answers 2xx. Retell itself is never kept waiting.
-      </p>
+      <div class="heading-row">
+        <h2 class="title-l" data-copy="failure_title">Failure injection</h2>
+        <button type="button" class="info" data-info="failure" aria-label="About failure injection" aria-haspopup="dialog" aria-expanded="false"><svg class="info__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle class="ring" cx="9" cy="9" r="7.5"></circle><path class="stem" d="M9 8 V12.5"></path><circle cx="9" cy="5.2" r="1.05"></circle></svg></button>
+      </div>
       <div class="actions">
         <label class="field inline"><span class="subtitle-xs">Fail the next</span><input class="input narrow" id="failNext" type="number" min="0" max="10" value="2"></label>
         <label class="field inline"><span class="subtitle-xs">Delay each answer (s)</span><input class="input narrow" id="delay" type="number" min="0" max="60" value="0"></label>
@@ -68,12 +115,48 @@
 
     <section class="card">
       <div class="section-head">
-        <h2 class="title-l">Leads</h2>
+        <h2 class="title-l" data-copy="leads_title">Leads</h2>
         <label class="check body-xs"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 1s</label>
       </div>
       <div id="leads" class="requests"></div>
     </section>
   </main>
+
+  <!-- ⓘ dialogs: one is open at a time. Esc, the Close button and a click outside close it (info.js). -->
+  <dialog class="info-dialog" id="info-hero" aria-labelledby="info-hero-title">
+    <h3 id="info-hero-title">How it works</h3>
+    <p data-copy="hero_dialog">Retell's agent, Sam, calls the lead with the lead's details as dynamic variables. In the browser you answer as the lead through your microphone, or optionally take the call on a phone. The call's <code>call_started</code>, <code>call_ended</code> and <code>call_analyzed</code> events come back through Hookdeck, which verifies <code>x-retell-signature</code>, deduplicates and retries, and update the leads below. Watch it in the <strong>Data flow</strong> pane.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-sam" aria-labelledby="info-sam-title">
+    <h3 id="info-sam-title">About Sam</h3>
+    <p>Sam opens with "Hi, is that <span data-lead-name>Alex</span>?" and then confirms it is the right person, asks whether now is a good time, confirms interest in the property, asks about budget and move date, and offers a viewing. Replies stay short, one question at a time. Sam never invents property details; anything unknown goes to a colleague.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-setup" aria-labelledby="info-setup-title">
+    <h3 id="info-setup-title">Set up the browser call</h3>
+    <p>Add <code>RETELL_PUBLIC_KEY</code> to <code>.env</code>: in the Retell dashboard open API Keys, then Public Keys, create a key, add "localhost" to its allowed domains, and copy the key (starts with <code>public_key_</code>). It is safe in the browser; it only works on the domains you allow. Then restart the app.</p>
+    <p id="setupMissing" hidden></p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-phone" aria-labelledby="info-phone-title">
+    <h3 id="info-phone-title">Call a phone instead</h3>
+    <p>Needs a Retell phone number you bought (<code>RETELL_FROM_NUMBER</code>). There is no phone field: Sam calls <code>TEST_LEAD_PHONE_NUMBER</code> from <code>.env</code>.</p>
+    <p id="phoneMissing" hidden></p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-failure" aria-labelledby="info-failure-title">
+    <h3 id="info-failure-title">Failure injection</h3>
+    <p>Make this app misbehave, then watch Hookdeck absorb it: the event stays queued and is retried until the app answers 2xx. Retell itself is never kept waiting.</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+  <dialog class="info-dialog" id="info-retry" aria-labelledby="info-retry-title">
+    <h3 id="info-retry-title">Retry ladder</h3>
+    <p>When a call ends with <code>dial_no_answer</code>, <code>dial_busy</code> or <code>voicemail_reached</code>, the app schedules the next attempt <span id="retryDelay">2 minutes</span> later, up to <span id="retryMax">three</span> attempts. It does not dial by itself: when the countdown ends, the call button rings the lead again. After the last miss, the lead reads "Gave up".</p>
+    <form method="dialog"><button class="button button--secondary">Close</button></form>
+  </dialog>
+
+  <script src="/info.js"></script>
   <script src="/app.js"></script>
   <script type="module" src="/call.js"></script>
   <script src="/scenes/scenes.js"></script>

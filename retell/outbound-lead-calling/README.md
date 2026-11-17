@@ -48,11 +48,11 @@ npm run listen    # terminal 1: forwards events to http://localhost:4000/webhook
 npm start         # terminal 2: the app on http://localhost:4000
 ```
 
-Open <http://localhost:4000>, fill in the lead and choose **Start call in the browser**. Allow the microphone and talk to the agent as the lead. The browser uses Retell's [`RetellClient`](https://docs.retellai.com/deploy/web-call) (`retell-client-js-sdk` 3.0.4, loaded pinned from esm.sh) with your public key; the lead's details and `metadata.lead_id` go with the call, so the same three webhooks come back for it. The lead moves through **Calling**, **In call**, **Call ended** and **Analyzed**, with each event on its timeline. The summary and the extracted fields (budget, move-in timeline, whether a viewing was requested) appear when `call_analyzed` arrives, shortly after the call ends.
+Open <http://localhost:4000>, fill in the enquiry and choose **Have Sam call Alex** (the lead's name comes from the form). Allow the microphone and answer as the lead: Sam is the agent, you play the lead. The browser uses Retell's [`RetellClient`](https://docs.retellai.com/deploy/web-call) (`retell-client-js-sdk` 3.0.4, loaded pinned from esm.sh) with your public key; the lead's details and `metadata.lead_id` go with the call, so the same three webhooks come back for it. The lead moves through **Calling**, **In call**, **Call ended** and **Analyzed**, with each event on its timeline. The summary and the extracted fields (budget, move-in timeline, whether a viewing was requested) appear when `call_analyzed` arrives, shortly after the call ends.
 
 If `RETELL_PUBLIC_KEY` is missing, the page says what to add and where to find it.
 
-**Optional: a phone call.** With `RETELL_FROM_NUMBER` and `TEST_LEAD_PHONE_NUMBER` set, **Submit lead and call** places an outbound call with `POST /v2/create-phone-call` and your phone rings.
+**Optional: a phone call.** With `RETELL_FROM_NUMBER` and `TEST_LEAD_PHONE_NUMBER` set, **Submit enquiry and have Sam call** places an outbound call with `POST /v2/create-phone-call` and your phone rings.
 
 ### What `npm run setup` creates
 
@@ -71,6 +71,14 @@ The pane is fed by the app's own record of what it handled (`/api/deliveries`, `
 
 The scenes live in `scenes/retell-calls.ts` (the kit in `scenes/kit/` is synced from `_shared/scenes`). MP4 captures of the four scenes, landscape and square, are in `scenes/captures/`. To render them again: `npm run capture -- retell-call-lifecycle`.
 
+## The page: layout, themes and the retry ladder
+
+**Focused layout.** The main view keeps labels, data, actions and status. Explanations sit behind ⓘ buttons (a dialog: Esc, the Close button or a click outside closes it, and focus returns to the button) and hover tips on single controls (also shown on keyboard focus). `public/info.js` is the small script behind both.
+
+**Themes.** The switch has System, Light, Dark and **Open house** (the default: Acme Realty, with ivory, forest green and brass, set in Fraunces). Open house is `public/theme-open-house.css`, which overrides the design-system tokens only under `html[data-theme="open-house"] main` and on the dialogs, so the Data flow pane never changes, and `public/theme-open-house.copy.js`, the wording only that theme changes (the title, the card headings, the status badge labels). Roles wording (Sam, the lead, the enquiry) is in `index.html` and applies in every theme. The mechanism is `_shared/theme/theme.js`, synced to `public/theme.js`.
+
+**Retry ladder.** When a verified `call_ended` has a `disconnection_reason` of `dial_no_answer`, `dial_busy` or `voicemail_reached`, `src/retry.ts` schedules the next attempt (`RETRY_DELAY_SECONDS`, default 120) up to three attempts, then marks the lead "Gave up". The lead card shows "Attempt 2 of 3", a countdown and the attempts as dots. The app never dials by itself: when the countdown ends the call button is ready, and pressing it starts the next web call on the same lead. To see it without a paid call, press **Lead does not answer** (or run `npm run simulate -- --no-answer`): a signed `call_ended` with `dial_no_answer` goes to your Hookdeck source, so it is verified, delivered and applied like Retell's own. When attempt 2 rings, `npm run simulate` answers and analyzes it. The ladder does not redial a phone-call lead on its own.
+
 ## Try the reliability features
 
 **Verification and deduplication, without a call.** With the app and `npm run listen` running:
@@ -79,6 +87,7 @@ The scenes live in `scenes/retell-calls.ts` (the kit in `scenes/kit/` is synced 
 npm run simulate                          # signed call_started, call_ended, call_analyzed
 npm run simulate -- call_ended --twice    # second one is deduplicated
 npm run simulate -- call_ended --bad-signature
+npm run simulate -- --no-answer           # the lead did not pick up: starts the retry ladder
 ```
 
 In the Hookdeck dashboard, the duplicate appears as an ignored event and the bad signature as a rejected request.
@@ -107,11 +116,13 @@ retell/outbound-lead-calling/
 ├── src/
 │   ├── server.ts         # form API, webhook endpoints, failure injection
 │   ├── retell.ts         # create-phone-call and update-live-call (the web call runs in the browser)
-│   ├── events.ts         # call events -> lead status, summary, analysis (idempotent)
+│   ├── events.ts         # call events -> lead status, summary, analysis (idempotent per call)
+│   ├── retry.ts          # the retry ladder: which calls are retried, when, and when to give up
+│   ├── simulated.ts      # signed stand-in events, for simulate and "Lead does not answer"
 │   ├── retell-signature.ts
 │   └── store.ts          # leads in data/leads.json
-├── public/               # the form and lead list
-└── test/events.test.ts   # npm test
+├── public/               # the page: form, roles, lead list, ⓘ dialogs, Open house theme
+└── test/                 # npm test: events, retry ladder, theme wording
 ```
 
 ## Troubleshooting
@@ -128,7 +139,7 @@ retell/outbound-lead-calling/
 npm test
 ```
 
-Covers the event handling and the signature scheme with payloads signed by the test itself.
+Covers the event handling and the signature scheme with payloads signed by the test itself, the retry ladder, and the theme wording swap (the scene tests need a Playwright browser).
 
 ## Learn more
 

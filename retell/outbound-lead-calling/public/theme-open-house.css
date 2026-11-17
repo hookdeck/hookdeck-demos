@@ -1,0 +1,110 @@
+/*
+ * Open house: the Acme Realty theme for this page, over the Hookdeck design system.
+ *
+ * It applies only when <html data-theme="open-house"> (set by theme.js, the "Open house" option of the theme
+ * switch, the default for this demo). The design-system tokens are overridden on `main` (and on the ⓘ dialogs, which
+ * sit outside it), so the Data flow pane, which is also outside `main`, keeps the standard look. The layout is the
+ * demo's focused layout in every theme; this file only changes how it looks.
+ *
+ * Palette: ivory ground, forest green, brass rule. Type: Fraunces (headings and names), Figtree (body and labels);
+ * technical data keeps --font-mono. Text pairs were checked at 4.5:1 or better (the lowest is #6A6551 on #EFE8D4, 4.8:1).
+ */
+html[data-theme="open-house"] {
+  --font-display: "Fraunces", Georgia, serif;
+  --oh-ivory: #F4EFE3;
+  --oh-forest: #1F4D3A;
+  --oh-forest-deep: #1B3B2D;
+  --oh-brass: #C9A24B;
+  --oh-brass-light: #E4C06A;
+}
+html[data-theme="open-house"], html[data-theme="open-house"] body { background-color: var(--oh-ivory); }
+
+/* Tokens: ivory card, forest buttons, brass rules */
+html[data-theme="open-house"] main,
+html[data-theme="open-house"] .info-dialog {
+  --tan-bg: #F4EFE3; --bg-0: #FFFDF7; --bg-0-hover: #F6F0DE; --bg-1: #FBF7EA; --bg-2: #F4EFE3; --bg-3: #EFE8D4;
+  --bg-contrast: #1B3B2D; --bg-contrast-2: #1F4D3A;
+  --neutral-fg-1: #1B1A14; --neutral-fg-2: #4A4637; --neutral-fg-3: #6A6551; --disabled-fg: #6A6551;
+  --neutral-outline-1: #E6DFC9; --neutral-outline-2: #B9AE92; --neutral-outline-3: #C9BC98;
+  --primary-blue-bg: #1F4D3A; --primary-blue-bg-hover: #143527; --primary-fg: #1F4D3A;
+  --primary-badge-fg: #5A4208; --primary-badge-outline: #D9B85A; --blue-badge-bg: #FFF1C9;
+  --focused-outline: #8A6A1E;
+  --on-hue-fg: #FFFFFF; --on-contrast-fg: #FBF6E8;
+  --color-success: #1F4D3A; --color-success-outline: #A9C0B1; --color-success-surface: #E4EBDD;
+  --color-warning: #5A4208; --color-warning-outline: #D9B85A; --color-warning-surface: #FFF1C9;
+  --color-danger: #8A2A1A; --color-danger-outline: #E3B2A7; --color-danger-surface: #FBE7E2;
+  --tooltip-bg: #1B3B2D; --tooltip-fg: #FBF6E8;
+  --font-sans: "Figtree", system-ui, sans-serif;
+  --radius: 4px; --radius-s: 3px;
+  font-family: var(--font-sans);
+}
+html[data-theme="open-house"] .info-dialog { --elevation-large: 0 18px 40px rgb(60 48 20 / 0.28); }
+
+html[data-theme="open-house"] main h1, html[data-theme="open-house"] main h2, html[data-theme="open-house"] .info-dialog h3,
+html[data-theme="open-house"] .role__name, html[data-theme="open-house"] .role__avatar, html[data-theme="open-house"] .request-text {
+  font-family: var(--font-display); font-weight: 700;
+}
+html[data-theme="open-house"] main h2, html[data-theme="open-house"] .info-dialog h3 { color: var(--oh-forest-deep); letter-spacing: -0.01em; }
+html[data-theme="open-house"] .role__name, html[data-theme="open-house"] .request-text { color: var(--oh-forest-deep); letter-spacing: 0; }
+html[data-theme="open-house"] .role__label { color: #6B5420; }
+
+/* Hero: a forest panel with a brass inset rule */
+html[data-theme="open-house"] .hero .lined__box {
+  background: var(--oh-forest); border: 0; border-radius: var(--radius); padding: var(--s10) var(--s12);
+  box-shadow: inset 0 0 0 6px var(--oh-forest), inset 0 0 0 7px var(--oh-brass);
+}
+html[data-theme="open-house"] .hero .lined__dots { display: none; }
+html[data-theme="open-house"] .hero .eyebrow { color: var(--oh-brass-light); letter-spacing: 0.22em; font-family: var(--font-sans); font-weight: 600; font-size: 12px; }
+html[data-theme="open-house"] .hero h1 { color: #FBF6E8; max-width: 700px; line-height: 1.08; letter-spacing: -0.01em; font-size: clamp(30px, 5vw, 50px); }
+html[data-theme="open-house"] .hero h1 em { color: var(--oh-brass-light); font-family: var(--font-display); font-weight: 500; font-style: italic; }
+html[data-theme="open-house"] .hero p { color: #D9E3DC; max-width: none; }
+html[data-theme="open-house"] .hero button.info, html[data-theme="open-house"] .hero .info__icon { color: var(--oh-brass-light); }
+html[data-theme="open-house"] .hero button.info:hover .info__icon, html[data-theme="open-house"] .hero button.info[aria-expanded="true"] .info__icon { background: var(--oh-brass-light); color: var(--oh-forest); }
+@media (max-width: 744px) { html[data-theme="open-house"] .hero .lined__box { padding: var(--s6); } }
+
+/* Cards: ivory with a brass hairline */
+html[data-theme="open-house"] main .card:not(.flex) {
+  background: var(--bg-0); border: 1px solid #D9D0BA; border-radius: var(--radius);
+  box-shadow: 0 1px 0 #D9D0BA, 0 6px 16px rgb(60 48 20 / 0.08);
+}
+html[data-theme="open-house"] .role { background: #FBF7EA; border-color: #D9D0BA; }
+html[data-theme="open-house"] .roles { border-top-color: #D9D0BA; }
+html[data-theme="open-house"] .role__avatar { background: #EFE8D4; border-color: var(--oh-brass); color: var(--oh-forest-deep); }
+html[data-theme="open-house"] .role__avatar--caller { background: var(--oh-forest); color: #FBF6E8; box-shadow: 0 0 0 2px #FBF7EA, 0 0 0 3px var(--oh-brass); border-color: var(--oh-forest); }
+html[data-theme="open-house"] .roles__arrow { color: var(--oh-brass); }
+
+/* Controls */
+html[data-theme="open-house"] main .button { min-height: 44px; padding: 0 20px; font-weight: 600 !important; font-size: 15px; border-radius: var(--radius); box-shadow: none; }
+html[data-theme="open-house"] main .button--secondary { background: transparent; color: var(--oh-forest); border: 1px solid var(--oh-forest); }
+html[data-theme="open-house"] main .button--secondary:hover { background: #EFE8D4; color: var(--oh-forest); }
+html[data-theme="open-house"] main .button:disabled { background: #EFE8D4; color: var(--disabled-fg); border: 1px solid #D9D0BA; }
+html[data-theme="open-house"] .info-dialog .button { background: transparent; color: var(--oh-forest); border: 1px solid var(--oh-forest); box-shadow: none; font-weight: 600 !important; font-size: 14px; }
+html[data-theme="open-house"] main .input, html[data-theme="open-house"] main textarea { background: #FFFFFF; min-height: 44px; border-color: var(--neutral-outline-2); box-shadow: none; font-size: 15px; }
+html[data-theme="open-house"] main textarea { min-height: 72px; }
+html[data-theme="open-house"] main .field > span { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6B5420; }
+html[data-theme="open-house"] main .field.inline > span { white-space: nowrap; }
+html[data-theme="open-house"] main .tag, html[data-theme="open-house"] main .pill { border-radius: 2px; letter-spacing: 0.04em; text-transform: uppercase; font-size: 12px; }
+html[data-theme="open-house"] main .message.info { background: #FFF1C9; }
+
+/* Dialog: ivory note card with a brass top rule */
+html[data-theme="open-house"] .info-dialog { border: 1px solid #D9D0BA; border-top: 4px solid var(--oh-brass); border-radius: var(--radius); background: var(--bg-0); }
+html[data-theme="open-house"] .info-dialog::backdrop { background: rgb(27 59 45 / 0.45); }
+html[data-theme="open-house"] .info-dialog code, html[data-theme="open-house"] main code { background: #EFE8D4; color: var(--oh-forest-deep); padding: 1px 5px; border-radius: 3px; }
+html[data-theme="open-house"] .tip-bubble { border-bottom: 3px solid var(--oh-brass); }
+html[data-theme="open-house"] .tip-bubble code { background: rgb(255 255 255 / 0.12); color: inherit; }
+
+/* Leads: each one is a property particular, with a house line icon */
+html[data-theme="open-house"] .request {
+  position: relative; padding-left: calc(92px + var(--s8)); min-height: 124px; background: #FBF7EA; border: 1px solid #D9D0BA; border-radius: 3px;
+}
+html[data-theme="open-house"] .request::before {
+  content: ""; position: absolute; left: var(--s4); top: var(--s4); width: 92px; height: 92px; border-radius: 3px; background: #E4EBDD
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 92 92' fill='none' stroke='%231F4D3A' stroke-width='3' stroke-linejoin='round'%3E%3Cpath d='M14 46 L46 18 L78 46'/%3E%3Cpath d='M22 42 V74 H70 V42'/%3E%3Crect x='40' y='52' width='12' height='22'/%3E%3Crect x='56' y='14' width='8' height='14'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+@media (max-width: 560px) {
+  html[data-theme="open-house"] .request { padding-left: var(--s4); padding-top: calc(92px + var(--s8)); min-height: 0; }
+}
+html[data-theme="open-house"] .timeline, html[data-theme="open-house"] .timeline code { font-family: var(--font-mono); font-size: 12px; line-height: 18px; }
+html[data-theme="open-house"] .timeline code { padding: 0 4px; }
+html[data-theme="open-house"] .ladder__wait { color: var(--oh-forest-deep); }
+html[data-theme="open-house"] .dot--missed .dot__fill { fill: #8A2A1A; }

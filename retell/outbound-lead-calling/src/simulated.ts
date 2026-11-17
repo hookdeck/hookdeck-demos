@@ -13,7 +13,8 @@ export const simulatedCallId = (lead: Pick<Lead, 'id' | 'attempt'>): string =>
 export type SimulatedEvent = 'call_started' | 'call_ended' | 'call_analyzed';
 
 export function simulatedPayload(event: SimulatedEvent, lead: Pick<Lead, 'id' | 'name' | 'property_interest'>, call_id: string, disconnection_reason = 'agent_hangup'): object {
-  const start = Date.now() - 95_000;
+  // A call nobody picked up rang for about half a minute; a conversation here lasted about a minute and a half
+  const start = Date.now() - (disconnection_reason.startsWith('dial_') ? 30_000 : 95_000);
   const call: any = {
     call_type: 'phone_call',
     direction: 'outbound',
