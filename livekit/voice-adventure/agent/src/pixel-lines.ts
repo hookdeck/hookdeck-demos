@@ -1,71 +1,79 @@
 /**
- * Pixel is a mute traveller: it never speaks, it gestures. These are the short scripted gesture lines it
- * sends as a chat message when the storyteller gives it the turn, so Pixel takes part with no model call
- * of its own. The storyteller then reacts to the gesture on his normal turn.
+ * Pixel is a mute traveller: it never speaks, it gestures. The story agent picks the gesture line for Pixel's turn (so the line fits
+ * the place and what the party carries) and publishes it; Pixel sends it as a chat message after a short delay. The storyteller
+ * reacts to the gesture on his normal turn.
  */
-/** A gesture line, and the items the party must already carry for it to make sense (a gesture never refers to something the party lacks). */
+import { itemsHere, type ItemId, type PlaceId, type World } from './world.ts';
+
+/** A gesture line, and what must be true for it to make sense. A gesture never refers to something the party does not have. */
 export interface GestureLine {
   text: string;
-  needs?: string[];
+  /** Items the party must already carry. */
+  needs?: ItemId[];
+  /** Items that must still be lying in this place (so Pixel points at something that is there). */
+  here?: ItemId[];
 }
 
-const L = (text: string, ...needs: string[]): GestureLine => ({ text, needs: needs.length ? needs : undefined });
+const L = (text: string, o: { needs?: ItemId[]; here?: ItemId[] } = {}): GestureLine => ({ text, ...o });
 
-export const SCENE_LINES: Record<string, GestureLine[]> = {
+export const SCENE_LINES: Record<PlaceId, GestureLine[]> = {
   tavern: [
-    L('*Pixel taps the salt-stained map and points at a small drawing of a lantern.*'),
+    L('*Pixel taps the salt-stained map and points at a small drawing of a lantern.*', { here: ['map'] }),
     L('*Pixel slides the hooded stranger\'s mug a little closer, then raises one eyebrow.*'),
-    L('*Pixel unfolds the map flat on the table and holds the corners down with two spoons.*'),
     L('*Pixel nods slowly at the stranger and taps two fingers on the table, once.*'),
-    L('*Pixel points at the storm outside, then at the map, then at the door.*'),
-    L('*Pixel crouches by the small iron chest and gives its lock a puzzled tug.*'),
+    L('*Pixel points at the north door, then at the storm outside.*'),
+    L('*Pixel gives the lock of the small iron chest a puzzled tug.*'),
+    L('*Pixel peers at the back door and the dark shore beyond it.*'),
   ],
   forest: [
     L('*Pixel presses a palm to a tree trunk and tilts an ear to the bark.*'),
     L('*Pixel crouches, brushes the leaves aside and points at a trail of silver footprints.*'),
     L('*Pixel holds a finger to the wind, then points deeper into the trees.*'),
-    L('*Pixel whistles nothing at all, only mimes it, and the branches seem to lean closer.*'),
+    L('*Pixel points at the hollow oak and its small door.*'),
+    L('*Pixel peers over the rope bridge at the stream below.*'),
     L('*Pixel ties a scrap of cloth to a low branch to mark the way back.*'),
-    L('*Pixel peers into the hollow oak and points at its small door.*'),
-    L('*Pixel turns the small brass key over in its fingers and tilts its head.*', 'brass_key'),
+  ],
+  oak: [
+    L('*Pixel runs a finger along the root shelf and taps it twice.*'),
+    L('*Pixel points at the small brass key on the shelf.*', { here: ['brass_key'] }),
+    L('*Pixel sniffs the resin-scented air and wrinkles its nose.*'),
+    L('*Pixel peeks back out through the little door at the storm.*'),
   ],
   cave: [
     L('*Pixel counts the drips from the ceiling on four fingers, then points at the dark.*'),
-    L('*Pixel presses a hand to the cold stone and shakes its head, then points left.*'),
-    L('*Pixel cups a hand around its ear, then holds up a finger: something is breathing.*'),
-    L('*Pixel steps forward, stops, and gently sets a spoon on the ground as an offering.*'),
     L('*Pixel runs a finger along the carving of a boat on the wall.*'),
-    L('*Pixel holds the Lantern up to the cave wall and taps a carving.*', 'lantern'),
+    L('*Pixel points at the Lantern on the stone ledge.*', { here: ['lantern'] }),
+    L('*Pixel presses a hand to the cold stone and shakes its head.*'),
+    L('*Pixel points at the rowboat on the pool.*'),
+    L('*Pixel holds the Lantern up to the cave wall and taps the carving.*', { needs: ['lantern'] }),
   ],
-  finale: [
-    L('*Pixel points back at the cave, then at the others, then at the sky, and smiles.*'),
+  lighthouse: [
     L('*Pixel looks up at the dark lamp, then out at the clearing storm.*'),
-    L('*Pixel taps the iron chest and mimes turning a key.*', 'brass_key'),
-    L('*Pixel lifts the Lantern high and walks in front so the others can see the way.*', 'lantern'),
-    L('*Pixel cups both hands around the Lantern and nods: nearly home.*', 'lantern'),
+    L('*Pixel runs a hand along the salt-streaked wall and smiles.*'),
+    L('*Pixel cups both hands around the Lantern and nods: nearly home.*', { needs: ['lantern'] }),
+    L('*Pixel points down the shore path to the Drowned Bell.*'),
   ],
 };
 
-export const FALLBACK_LINES = [
-  '*Pixel looks around, gives a small shrug and points ahead.*',
-  '*Pixel nods and makes a slow, thoughtful gesture.*',
-  '*Pixel steps closer and offers a small, silent smile.*',
-];
+/** A line is not used again for this many turns. */
+export const COOLDOWN_TURNS = 6;
 
 /**
- * Picks a gesture for the scene that has not been used yet. `used` is updated. When a scene's lines run out
- * it falls back to the generic lines, and when those run out too it starts the generic lines again.
+ * Picks a gesture for Pixel's turn: a line for this place that makes sense for what the party carries and what still lies here, and
+ * that has not been used in the last COOLDOWN_TURNS turns. When no line qualifies it returns undefined and Pixel skips the turn
+ * (there is no filler gesture). `cooldown` is updated with the turn the line was used on.
  */
-export function pickGesture(scene: string | undefined, used: Set<string>, random: () => number = Math.random, satchel: readonly string[] = []): string {
-  const pool = (SCENE_LINES[scene ?? ''] ?? []).filter((line) => (line.needs ?? []).every((id) => satchel.includes(id))).map((line) => line.text).filter((line) => !used.has(line));
-  let candidates = pool;
-  if (!candidates.length) candidates = FALLBACK_LINES.filter((line) => !used.has(line));
-  if (!candidates.length) {
-    for (const line of FALLBACK_LINES) used.delete(line);
-    candidates = FALLBACK_LINES;
-  }
-  const line = candidates[Math.floor(random() * candidates.length)];
-  used.add(line);
+export function pickGesture(world: World, cooldown: Map<string, number>, turn_no: number, random: () => number = Math.random): string | undefined {
+  const here = new Set(itemsHere(world).map((i) => i.id));
+  const eligible = SCENE_LINES[world.location].filter((line) => {
+    if (!(line.needs ?? []).every((id) => world.satchel.includes(id))) return false;
+    if (!(line.here ?? []).every((id) => here.has(id))) return false;
+    const last = cooldown.get(line.text);
+    return last === undefined || turn_no - last >= COOLDOWN_TURNS;
+  });
+  if (!eligible.length) return undefined;
+  const line = eligible[Math.floor(random() * eligible.length)].text;
+  cooldown.set(line, turn_no);
   return line;
 }
 
@@ -76,8 +84,8 @@ export interface StoryAttributes {
   scene?: string;
   state?: string;
   agent_state?: string;
-  /** Item ids the party carries (JSON array in the `story.satchel` attribute). */
-  satchel?: string[];
+  /** The gesture the story agent chose for Pixel's turn. */
+  line?: string;
 }
 
 export const PIXEL_IDENTITY = 'bot-pixel';
@@ -88,7 +96,7 @@ export const readAttributes = (a: Record<string, string>): StoryAttributes => ({
   scene: a['story.scene'],
   state: a['story.state'],
   agent_state: a['lk.agent.state'],
-  satchel: (() => { try { const v = JSON.parse(a['story.satchel'] || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; } })(),
+  line: a['story.pixel_line'],
 });
 
 /**

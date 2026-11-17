@@ -1,0 +1,338 @@
+/**
+ * The world of "The Lantern of Hollow Mere", as code. The code decides what happens; Bram only narrates it.
+ *
+ * Places are joined by named exits in both directions:
+ *
+ *   tavern (map, locked chest) <-north door-> forest <-oak door-> hollow oak (brass key)
+ *   forest <-rope bridge / steps-> cave (the Lantern, a boat) -boat-> lighthouse
+ *   lighthouse <-shore path-> tavern,  lighthouse <-headland track-> forest
+ *
+ * Items stay where they are until taken. The party shares one satchel. The chest stays in the tavern: it opens with the brass key
+ * and holds flint and a wick. The quest is done when the Lantern is lit with them at the lighthouse. The items can be gathered in any
+ * order and meet at the lighthouse.
+ */
+
+export type PlaceId = 'tavern' | 'forest' | 'oak' | 'cave' | 'lighthouse';
+export type ItemId = 'map' | 'brass_key' | 'lantern' | 'flint_and_wick';
+
+export interface ExitDef {
+  /** What the resolver and the code call this way out. */
+  id: string;
+  to: PlaceId;
+  /** How it is described, as part of the place. */
+  text: string;
+}
+
+export interface PlaceDef {
+  id: PlaceId;
+  /** Shown on the page. */
+  name: string;
+  /** The soundtrack file (scene name) played here. Places that share one keep it playing. */
+  soundtrack: 'tavern' | 'forest' | 'cave' | 'finale';
+  place: string;
+  /** Observations only, never an action to take. */
+  sights: string;
+  exits: ExitDef[];
+  /** Things to find, revealed only when a player investigates that thing. */
+  clue: string;
+}
+
+export const PLACES: Record<PlaceId, PlaceDef> = {
+  tavern: {
+    id: 'tavern',
+    name: 'The Drowned Bell',
+    soundtrack: 'tavern',
+    place: 'the common room of the Drowned Bell on a stormy night, with a fire, a long table and a hooded stranger',
+    sights: 'rain on the shutters, the fire popping, a salt-stained map on the table in front of the stranger, a small iron chest under the bench, locked',
+    exits: [
+      { id: 'north_door', to: 'forest', text: 'a north door leads out into the storm toward the Hollow Wood' },
+      { id: 'shore_door', to: 'lighthouse', text: 'a back door opens onto a shore path that climbs to the lighthouse' },
+    ],
+    clue: 'the map has a lantern drawn near the Hollow Mere and a margin note about dripping water; the stranger knows the way and says so only if asked; the chest is locked and needs a key',
+  },
+  forest: {
+    id: 'forest',
+    name: 'The Hollow Wood',
+    soundtrack: 'forest',
+    place: 'the Hollow Wood, a damp pine forest',
+    sights: 'a rope bridge over a stream, a muddy path under the pines, silver footprints in the mud, a hollow oak with a small door in its trunk',
+    exits: [
+      { id: 'oak_door', to: 'oak', text: 'the small door in the hollow oak' },
+      { id: 'rope_bridge', to: 'cave', text: 'the rope bridge and stone steps beside a waterfall lead down toward the Mere, following the dripping water' },
+      { id: 'inn_path', to: 'tavern', text: 'the lit windows of the Drowned Bell show back down the path' },
+      { id: 'headland_track', to: 'lighthouse', text: 'a headland track leads out toward the lighthouse' },
+    ],
+    clue: 'the footprints are small and lead to the door in the oak',
+  },
+  oak: {
+    id: 'oak',
+    name: 'The Hollow Oak',
+    soundtrack: 'forest',
+    place: 'inside the hollow oak, a cramped, dry hollow that smells of resin',
+    sights: 'a root shelf along the wall with a small brass key on it, the storm muffled outside the little door',
+    exits: [{ id: 'out', to: 'forest', text: 'the small door leads back out to the wood' }],
+    clue: 'the brass key looks the right size for a small lock',
+  },
+  cave: {
+    id: 'cave',
+    name: 'The Cave under the Mere',
+    soundtrack: 'cave',
+    place: 'the cave under the Hollow Mere, dripping and dark',
+    sights: 'a stone ledge with the Lantern of Hollow Mere on it, unlit, drips from the ceiling, a carving of a boat crossing a pool on the wall, a small rowboat on the underground pool',
+    exits: [
+      { id: 'steps_up', to: 'forest', text: 'stone steps beside the waterfall lead back up to the wood' },
+      { id: 'boat', to: 'lighthouse', text: 'rowing the boat across the pool leads out to the shore below the lighthouse' },
+    ],
+    clue: 'the carving shows a boat crossing the pool toward a light; the Lantern is cold and unlit',
+  },
+  lighthouse: {
+    id: 'lighthouse',
+    name: 'The Lighthouse',
+    soundtrack: 'finale',
+    place: 'the lamp room of Old Bram\'s lighthouse at dawn, the great lamp dark',
+    sights: 'the storm clearing outside, the dark lamp, the stone walls streaked with salt, the Drowned Bell far below',
+    exits: [
+      { id: 'shore_path', to: 'tavern', text: 'a shore path leads down to the Drowned Bell' },
+      { id: 'headland_track', to: 'forest', text: 'a headland track leads back to the Hollow Wood' },
+    ],
+    clue: 'the Lantern is lit here, at the lighthouse, with flint and a wick',
+  },
+};
+
+export interface ItemDef {
+  id: ItemId;
+  /** How Bram and the page name it. */
+  label: string;
+  place: PlaceId;
+  aliases: string[];
+}
+
+export const ITEMS: readonly ItemDef[] = [
+  { id: 'map', label: 'the salt-stained map', place: 'tavern', aliases: ['map', 'salt-stained map'] },
+  { id: 'brass_key', label: 'the small brass key', place: 'oak', aliases: ['key', 'brass key', 'small brass key'] },
+  { id: 'lantern', label: 'the Lantern of Hollow Mere', place: 'cave', aliases: ['lantern', 'lantern of hollow mere', 'lamp'] },
+  { id: 'flint_and_wick', label: 'the flint and wick', place: 'tavern', aliases: ['flint', 'wick', 'flint and wick'] },
+];
+
+export interface World {
+  location: PlaceId;
+  satchel: ItemId[];
+  chest_open: boolean;
+  lantern_lit: boolean;
+}
+
+export const newWorld = (): World => ({ location: 'tavern', satchel: [], chest_open: false, lantern_lit: false });
+
+/** Test starts (STORY_START=<place>): begin elsewhere with the map in the satchel. */
+export const worldAt = (place: string | undefined): World => {
+  const w = newWorld();
+  if (place && place in PLACES && place !== 'tavern') {
+    w.location = place as PlaceId;
+    w.satchel = ['map'];
+  }
+  return w;
+};
+
+export const goalDone = (w: World) => w.lantern_lit;
+export const itemById = (id: string): ItemDef | undefined => ITEMS.find((i) => i.id === id);
+export const placeOf = (w: World): PlaceDef => PLACES[w.location];
+export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Maps what the resolver wrote ("brass key", "the Lantern") to an item id, or 'chest'. */
+export function normalizeItem(text: unknown): ItemId | 'chest' | undefined {
+  if (typeof text !== 'string') return undefined;
+  const t = text.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(the|a|an|my|our) /, '');
+  if (/\bchest\b|\bbox\b/.test(t)) return 'chest';
+  for (const item of ITEMS) if (item.id.replace(/_/g, ' ') === t || item.aliases.includes(t)) return item.id;
+  if (/\bflint\b|\bwick\b/.test(t)) return 'flint_and_wick';
+  if (/\bkey\b/.test(t)) return 'brass_key';
+  if (/\blantern\b/.test(t)) return 'lantern';
+  if (/\bmap\b/.test(t)) return 'map';
+  return undefined;
+}
+
+/** Items lying here that nobody has taken. The flint and wick are visible only once the chest is open. */
+export function itemsHere(w: World): ItemDef[] {
+  return ITEMS.filter((i) => i.place === w.location && !w.satchel.includes(i.id) && (i.id !== 'flint_and_wick' || w.chest_open));
+}
+
+export const chestHere = (w: World) => w.location === 'tavern';
+
+// ---- What the resolver returns, and what the code makes of it ----
+
+export interface Actions {
+  move: string | null;
+  take: string[];
+  use: Array<{ item: string; target: string }>;
+  give: Array<{ item: string; to: string }>;
+}
+
+export const noActions = (): Actions => ({ move: null, take: [], use: [], give: [] });
+
+const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+
+/** Reads the resolver's answer: the first JSON object in the text, with anything of the wrong shape dropped. Anything unreadable is no actions. */
+export function parseActions(raw: string): Actions {
+  const out = noActions();
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) return out;
+  let json: any;
+  try {
+    json = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return out;
+  }
+  if (!json || typeof json !== 'object') return out;
+  out.move = str(json.move) ?? null;
+  if (Array.isArray(json.take)) out.take = json.take.map(str).filter((x: string | undefined): x is string => !!x);
+  if (Array.isArray(json.use)) out.use = json.use.map((u: any) => ({ item: str(u?.item), target: str(u?.target) })).filter((u: any) => u.item && u.target);
+  if (Array.isArray(json.give)) out.give = json.give.map((g: any) => ({ item: str(g?.item), to: str(g?.to) ?? 'stranger' })).filter((g: any) => g.item);
+  return out;
+}
+
+/** The question for the resolver: the place, its exits, what lies here, what the party carries, and the player's words. */
+export function actionPrompt(w: World, words: string): { system: string; user: string } {
+  const p = placeOf(w);
+  const here = itemsHere(w).map((i) => `${i.id} (${i.label})`);
+  const carried = w.satchel.map((id) => `${id} (${itemById(id)!.label})`);
+  return {
+    system: 'You read what a player says in a spoken adventure and list only what they clearly do right now. Reply with one JSON object and nothing else: {"move": exit id or null, "take": [item ids], "use": [{"item": id, "target": id or "chest"}], "give": [{"item": id, "to": "stranger"}]}. Use empty arrays and null when the player does none of these. Handing an item to someone is "give". Exploring, asking, looking and talking are none of these.',
+    user: `Place: ${p.place}.
+Exits (use the id): ${p.exits.map((e) => `${e.id}: ${e.text}`).join('; ')}.
+Items lying here: ${here.join('; ') || 'none'}.${chestHere(w) ? ` An iron chest is here, ${w.chest_open ? 'open' : 'locked'}.` : ''}
+The party carries: ${carried.join('; ') || 'nothing'}.
+The player said: "${words.trim().slice(0, 300)}"`,
+  };
+}
+
+export interface Resolution {
+  /** One short factual sentence per thing that happened or was refused, for Bram to narrate. */
+  outcomes: string[];
+  moved: boolean;
+  opened: boolean;
+  lit: boolean;
+  took: ItemId[];
+}
+
+/** Validates and applies the resolver's actions in order: take, give, use, then move. Anything that does not hold becomes a refusal outcome. */
+export function applyActions(w: World, actions: Actions): Resolution {
+  const r: Resolution = { outcomes: [], moved: false, opened: false, lit: false, took: [] };
+  const take = (raw: string, via_stranger = false) => {
+    const id = normalizeItem(raw);
+    if (id === 'chest') return r.outcomes.push('The iron chest is far too heavy to take. It stays where it is.');
+    const item = id ? itemById(id) : undefined;
+    if (!item) return r.outcomes.push(`There is no "${raw}" here that can be taken.`);
+    if (w.satchel.includes(item.id)) return r.outcomes.push(`${cap(item.label)} is already in the satchel.`);
+    if (!itemsHere(w).some((i) => i.id === item.id)) return r.outcomes.push(`${cap(item.label)} is not in this place.`);
+    w.satchel.push(item.id);
+    r.took.push(item.id);
+    r.outcomes.push(via_stranger ? `The party gave ${item.label} to the stranger, who carries it: it is in the party's satchel.` : `The party took ${item.label}. It is in the satchel.`);
+  };
+  for (const raw of actions.take) take(raw);
+  for (const g of actions.give) {
+    const id = normalizeItem(g.item);
+    const item = id && id !== 'chest' ? itemById(id) : undefined;
+    if (item && w.satchel.includes(item.id)) r.outcomes.push(`The party handed ${item.label} to the stranger, who carries it: it stays in the party's satchel.`);
+    else take(g.item, true);
+  }
+  for (const u of actions.use) {
+    const a = normalizeItem(u.item);
+    const b = normalizeItem(u.target);
+    const pair = (x: string, y: string) => (a === x && b === y) || (a === y && b === x);
+    if (pair('brass_key', 'chest') || a === 'chest' || b === 'chest') {
+      if (!chestHere(w)) r.outcomes.push('There is no chest in this place.');
+      else if (w.chest_open) r.outcomes.push('The chest is already open.');
+      else if (!pair('brass_key', 'chest')) r.outcomes.push('The chest is locked and does not open that way. It needs a key.');
+      else if (!w.satchel.includes('brass_key')) r.outcomes.push('The party tried to open the chest: it is locked and the party has no key.');
+      else { w.chest_open = true; r.opened = true; r.outcomes.push('The brass key turns and the chest opens. Inside lie flint and a wick, now in plain sight.'); }
+    } else if (pair('lantern', 'flint_and_wick')) {
+      if (!w.satchel.includes('lantern')) r.outcomes.push('The party is not carrying the Lantern.');
+      else if (!w.satchel.includes('flint_and_wick')) r.outcomes.push('There is nothing to light the Lantern with: the party has no flint and wick.');
+      else if (w.location !== 'lighthouse') r.outcomes.push('This is not the place to light the Lantern. It must be lit at the lighthouse.');
+      else if (w.lantern_lit) r.outcomes.push('The Lantern is already lit.');
+      else { w.lantern_lit = true; r.lit = true; r.outcomes.push('The wick catches. The Lantern is lit and the lighthouse lamp blazes: the quest is done.'); }
+    } else if (a && itemById(a) && !w.satchel.includes(a)) r.outcomes.push(`${cap(itemById(a)!.label)} is not in the satchel.`);
+    else r.outcomes.push('Nothing happens: that does not work here.');
+  }
+  if (actions.move) {
+    const here = placeOf(w);
+    const wanted = actions.move.toLowerCase().replace(/[\s-]+/g, '_');
+    const exit = here.exits.find((e) => e.id === wanted) ?? here.exits.find((e) => e.to === wanted);
+    if (!exit) r.outcomes.push(`There is no way "${actions.move}" from here.`);
+    else {
+      w.location = exit.to;
+      r.moved = true;
+      r.outcomes.push(`The party moved to ${PLACES[exit.to].name}.`);
+    }
+  }
+  return r;
+}
+
+/** Whether the story ends now: the Lantern is lit (at the lighthouse, the only place it can be). */
+export const endTriggered = (r: Resolution) => r.lit;
+
+// ---- What Bram is told ----
+
+/** The scene note for one reply: where the party is, what lies here, what is carried, the exits as description, what just happened. */
+export function placeNote(w: World, opts: { full: boolean; described?: string[]; replies?: number; outcomes?: string[]; music?: string; arriving?: boolean }): string {
+  const p = placeOf(w);
+  const replies = opts.replies ?? 0;
+  const parts: string[] = [];
+  parts.push(`You are at ${p.name}: ${p.place}. Never describe being anywhere else, and never describe the party moving, unless this note says the party moved.`);
+  if (opts.music) parts.push(`The place has started ${opts.music}.`);
+  if (opts.full) parts.push(`What can be seen and heard: ${p.sights}.`);
+  else {
+    const described = opts.described ?? [];
+    const fresh = p.sights.split(/,\s*/).filter((d) => !described.includes(d));
+    parts.push(`You have already described this place${described.length ? `: already described, so do not repeat it unless something about it changes or it matters to what the player just did: ${described.join('; ')}` : ''}.${fresh.length ? ` Not yet mentioned: ${fresh.join('; ')}.` : ''}`);
+  }
+  parts.push(`Ways out, to describe only as part of the place: ${p.exits.map((e) => e.text).join('; ')}.`);
+  if (p.clue && !w.lantern_lit) parts.push(`Things to find, revealed only when a player investigates that thing: ${p.clue}.`);
+  const here = itemsHere(w);
+  parts.push(here.length ? `Lying here, not yet taken: ${here.map((i) => i.label).join('; ')}. Describe each where it lies and never tell the players to take it.` : 'Nothing here is left to take.');
+  parts.push(`In the satchel: ${w.satchel.length ? w.satchel.map((id) => itemById(id)!.label).join('; ') : 'nothing'}.`);
+  if (chestHere(w)) parts.push(`The iron chest is here, ${w.chest_open ? 'open' : 'locked'}.`);
+  if (opts.outcomes?.length) parts.push(`What just happened, resolved by the story (state it plainly as fact, never contradict it): ${opts.outcomes.join(' ')}`);
+  if (opts.arriving) parts.push('Describe the place in two short plain sentences using some of what can be seen and heard, then stop on a short open line with no name and no question.');
+  else if (replies >= 4) parts.push('Give the shortest reply now: one sentence about what happens, and no atmosphere at all.');
+  else if (replies >= 1) parts.push('Answer only what the player did, in one or two sentences, with no recap of the scene.');
+  return parts.join(' ');
+}
+
+/** The closing note once the Lantern is lit: Bram speaks his closing and nothing more. */
+export const closingNote = (outcomes: string[]) => `The quest is complete: ${outcomes.join(' ')} Speak your closing now: at most three plain sentences that say what the players did and end the story. Do not say anything after it.`;
+
+const STOP = new Set(['the', 'and', 'with', 'its', 'on', 'in', 'of', 'a', 'an', 'to', 'it', 'from', 'under', 'over', 'into', 'across', 'near', 'that', 'small', 'front']);
+
+/** The sights (comma-separated details) that a reply mentions: a detail counts as used when one of its key words appears. */
+export function usedDetails(sights: string, reply: string): string[] {
+  const text = reply.toLowerCase();
+  return sights.split(/,\s*/).filter((detail) => detail.toLowerCase().match(/[a-z]+/g)?.some((word) => word.length >= 3 && !STOP.has(word) && new RegExp(`\\b${word}(?:s|es)?\\b`).test(text)));
+}
+
+export const satchelAttribute = (w: World): string => JSON.stringify(w.satchel);
+
+export function parseSatchel(value: string | undefined): ItemId[] {
+  if (!value) return [];
+  try {
+    const raw = JSON.parse(value);
+    return Array.isArray(raw) ? raw.filter((id): id is ItemId => typeof id === 'string' && !!itemById(id)) : [];
+  } catch {
+    return [];
+  }
+}
+
+// ---- Names ----
+
+const NAME_STOP = new Set(['not', 'going', 'ready', 'here', 'sorry', 'fine', 'good', 'done', 'sure', 'afraid', 'looking', 'trying', 'taking', 'using', 'stuck', 'lost', 'tired', 'back', 'just', 'still', 'also', 'in', 'at', 'on', 'the', 'a', 'an', 'so', 'very', 'really', 'now', 'with', 'for', 'to']);
+
+/** "I'm Snaggle", "my name is Snaggle", "call me Snaggle": the name a player gave, or undefined. Only a capitalised word counts. */
+export function parseNameCorrection(text: string): string | undefined {
+  const m = text.match(/\b(?:[Ii]['’]?m|[Ii] am|[Mm]y name(?:['’]s| is)|[Cc]all me|[Ii]t['’]?s|[Tt]his is)\s+([A-Z][A-Za-z'’-]{1,19})\b/);
+  if (!m) return undefined;
+  return NAME_STOP.has(m[1].toLowerCase()) ? undefined : m[1];
+}
+
+/** True when a reply uses the player's name as a word (so the check can log it). */
+export const usesName = (reply: string, name: string | undefined): boolean => !!name && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(reply);

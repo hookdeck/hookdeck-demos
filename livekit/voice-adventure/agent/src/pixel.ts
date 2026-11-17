@@ -1,14 +1,14 @@
 /**
  * Pixel: a silent, scripted player. The demo app starts this process when someone selects "Add a bot player".
  * It joins the room as `bot-pixel` (name "Pixel"), publishes no audio or video, and when the storyteller gives
- * it the turn (`story.turn` on the story agent's participant) it waits a moment and sends one gesture line as a
+ * it the turn (`story.turn` on the story agent's participant) it waits a moment and sends the gesture line the agent chose (`story.pixel_line`) as a
  * chat message on the `lk.chat` topic. That is the standard text input of an agent session, so the storyteller
  * reacts to it exactly as he would to a player's spoken answer, with no model call of Pixel's own.
  *
  * It is started with PIXEL_URL and PIXEL_TOKEN (a short-lived token the app minted: no key or secret here).
  */
 import { ParticipantKind, Room, RoomEvent } from '@livekit/rtc-node';
-import { gestureDelayMs, pickGesture, readAttributes, shouldGesture } from './pixel-lines.ts';
+import { gestureDelayMs, readAttributes, shouldGesture } from './pixel-lines.ts';
 
 const url = process.env.PIXEL_URL;
 const token = process.env.PIXEL_TOKEN;
@@ -18,7 +18,6 @@ if (!url || !token) {
 }
 
 const room = new Room();
-const used = new Set<string>();
 let last_answered_seq: string | undefined;
 let busy = false;
 
@@ -47,9 +46,12 @@ setInterval(async () => {
   busy = true;
   last_answered_seq = attrs.turn_seq;
   setTimeout(async () => {
-    const line = pickGesture(attrs.scene, used, Math.random, attrs.satchel);
-    await room.localParticipant!.sendText(line, { topic: 'lk.chat' });
-    console.log('Pixel:', line);
+    // The story agent chose the line for this place and satchel; with none, Pixel stays quiet
+    const line = attrs.line;
+    if (line) {
+      await room.localParticipant!.sendText(line, { topic: 'lk.chat' });
+      console.log('Pixel:', line);
+    }
     busy = false;
   }, gestureDelayMs());
 }, 500);

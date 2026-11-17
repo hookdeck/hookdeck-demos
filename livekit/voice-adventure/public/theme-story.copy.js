@@ -32,6 +32,7 @@ window.HookdeckThemeCopies.story = {
   "item_brass_key": "A small brass key",
   "item_lantern": "The Lantern of Hollow Mere",
   "item_flint_and_wick": "Flint and a wick",
+  "place_label": "{place}",
   "quiet_title": "Old Bram has fallen silent",
   "quiet_sub": "The tale is waiting where it stopped."
 };

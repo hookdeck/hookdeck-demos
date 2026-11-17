@@ -1,60 +1,5 @@
-import { questNote, type QuestState } from './quest.ts';
+import { PLACES, usedDetails, type PlaceId } from './world.ts';
 import { ReadableStream, TransformStream, type TransformStreamDefaultController } from 'node:stream/web';
-
-/**
- * The story's shape and pacing, as plain functions so they can be tested without a model.
- *
- * Players drive the pace, with no timing pressure. A scene changes only when a player clearly chooses to move on.
- */
-
-export interface SceneDef {
-  /** The soundtrack the app pulls into the room. */
-  scene: 'tavern' | 'forest' | 'cave' | 'finale';
-  /** What the players are in, in plain words. */
-  place: string;
-  /** What they can see, hear and notice: observations only, never an action to take. */
-  sights: string;
-  /** The exits, described as part of the place. Empty for the finale. */
-  onward: string;
-  /** Things to find. Bram reveals one only when a player investigates that thing. */
-  clue: string;
-}
-
-export const SCENES: readonly SceneDef[] = [
-  {
-    scene: 'tavern',
-    place: 'the common room of the Drowned Bell on a stormy night, with a fire, a long table and a hooded stranger',
-    sights: 'rain on the shutters, the fire popping, a salt-stained map on the table in front of the stranger, a small iron chest under the bench, locked',
-    onward: 'a north door leads out into the storm toward the Hollow Wood',
-    clue: 'the map has a lantern drawn near the Hollow Mere and a margin note about dripping water; the stranger knows the way and says so only if asked; the chest is locked and needs a key',
-  },
-  {
-    scene: 'forest',
-    place: 'the Hollow Wood, a damp pine forest',
-    sights: 'a rope bridge over a stream, a muddy path under the pines, silver footprints in the mud, a hollow oak with a small door in its trunk',
-    onward: 'the rope bridge leads to stone steps beside a waterfall, and the footprints go on through the pines',
-    clue: 'the small door in the oak opens on a root shelf with a small brass key on it; the steps beside the waterfall go down toward the Mere',
-  },
-  {
-    scene: 'cave',
-    place: 'the cave under the Hollow Mere, dripping and dark',
-    sights: 'a stone ledge with the Lantern of Hollow Mere on it, unlit, drips from the ceiling, a carving on the wall, a small rowboat on the underground pool',
-    onward: 'rowing the boat across the pool leads out to the shore and the road back to the lighthouse',
-    clue: 'the carving shows a boat crossing the pool toward a light; the Lantern is cold and unlit',
-  },
-  {
-    scene: 'finale',
-    place: 'the lamp room of Old Bram\'s lighthouse above the Drowned Bell at dawn, the great lamp dark',
-    sights: 'the storm clearing outside, the dark lamp, the iron chest from the tavern set down beside it (the stranger carried it up)',
-    onward: '',
-    clue: 'the chest opens with the small brass key and holds flint and a wick; the Lantern is lit at the lighthouse with them, which completes the quest',
-  },
-];
-
-/** Test-only short mode (STORY_SHORT=1): after the first scene the story jumps to the finale. */
-export function nextSceneIndex(scenes_started: number, short_mode: boolean): number {
-  return short_mode && scenes_started === 1 ? SCENES.length - 1 : scenes_started;
-}
 
 /**
  * Waits for the end of the story's last speech before it finishes. `armed` is set when end_story is called. Whenever the
@@ -107,20 +52,9 @@ export function nextSpeakerIndex<T extends Addressable>(players: T[], last_index
   return named ? players.indexOf(named) : (last_index + 1) % players.length;
 }
 
-export type MoveOnVerdict = 'ok' | 'no_new_input';
-
-/**
- * next_scene (and end_story) are allowed only in the reply that answers a player's input, never chained after another
- * call. There is no minimum number of exchanges and no nudge: the players are free to explore, and a scene changes when a
- * player clearly chooses to move on. A refusal returns nothing, so Bram does not speak again.
- */
-export function moveOnVerdict(input_since_last_call: boolean): MoveOnVerdict {
-  return input_since_last_call ? 'ok' : 'no_new_input';
-}
-
 // ---- A backstop so the model never speaks a tool name ----
 
-export const TOOL_NAMES = ['next_scene', 'end_story', 'take_item', 'use_item', 'write_in_ledger', 'fetch_bram', 'give_turn'];
+export const TOOL_NAMES = ['next_scene', 'end_story', 'take_item', 'use_item', 'move_to', 'write_in_ledger', 'fetch_bram', 'give_turn'];
 const SPOKEN_CALL = new RegExp(`(?:functions\\.)?(?:${TOOL_NAMES.join('|')})(?:\\s*\\([^)]*\\)?)?|functions\\.\\w*(?:\\s*\\([^)]*\\)?)?`, 'gi');
 
 /** Removes tool calls and tool names from text that is about to be spoken. Returns the cleaned text and whether it removed anything. */
@@ -165,7 +99,11 @@ export interface TurnState {
   /** Index of the player who had the last turn. */
   rotation: number;
   ending: boolean;
-  short_mode: boolean;
+  short_mode?: boolean;
+  /** Where the party is. */
+  location?: PlaceId;
+  /** Turns given to a human since the mute player last had one. */
+  since_bot?: number;
   /** Bram's replies since the scene began (the arrival description is the first), and the sights he has already used in them. */
   replies_in_scene?: number;
   described?: string[];
@@ -183,30 +121,34 @@ export function onPlayerInput(s: TurnState) {
 export function onBramReply(s: TurnState, text: string) {
   s.last_reply = text;
   s.replies_in_scene = (s.replies_in_scene ?? 0) + 1;
-  const scene = s.scene_index > 0 ? SCENES[Math.min(s.scene_index, SCENES.length) - 1] : undefined;
-  if (scene) s.described = [...new Set([...(s.described ?? []), ...usedDetails(scene.sights, text)])];
-}
-
-const DETAIL_STOP = new Set(['the', 'and', 'with', 'its', 'on', 'in', 'of', 'a', 'an', 'to', 'it', 'from', 'under', 'over', 'into', 'across', 'near', 'that', 'small', 'front']);
-
-/** The sights (the scene's comma-separated details) that a reply mentions: a detail counts as used when one of its key words appears. */
-export function usedDetails(sights: string, reply: string): string[] {
-  const text = reply.toLowerCase();
-  return sights.split(/,\s*/).filter((detail) => detail.toLowerCase().match(/[a-z]+/g)?.some((word) => word.length >= 3 && !DETAIL_STOP.has(word) && new RegExp(`\\b${word}(?:s|es)?\\b`).test(text)));
+  const place = s.location ? PLACES[s.location] : undefined;
+  if (place) s.described = [...new Set([...(s.described ?? []), ...usedDetails(place.sights, text)])];
 }
 
 /** Bram has finished speaking: who gets the turn now (the player he named, or the next in rotation), or nobody. */
+/** The mute player gets a turn after this many turns (about every third round). */
+export const BOT_EVERY = 3;
+
 export function onPlayout<T extends Addressable>(s: TurnState, players: T[]): T | undefined {
   if (s.ending || s.scene_index === 0) return undefined;
-  const index = nextSpeakerIndex(players, s.rotation, s.last_reply);
+  let index = nextSpeakerIndex(players, s.rotation, s.last_reply);
   if (index < 0) return undefined;
+  // The mute player takes a turn about every third round, not every rotation: other turns go to the next human
+  if (players[index].bot && players.some((p) => !p.bot)) {
+    if ((s.since_bot ?? 0) < BOT_EVERY - 1) {
+      for (let step = 1; step <= players.length && players[index].bot; step++) index = (index + 1) % players.length;
+    }
+  }
+  if (players[index].bot) s.since_bot = 0;
+  else s.since_bot = (s.since_bot ?? 0) + 1;
   s.rotation = index;
   return players[index];
 }
 
-/** Starts a scene: the scene's own count of inputs starts over. */
-export function onSceneStart(s: TurnState, index: number) {
-  s.scene_index = index + 1;
+/** The party arrives at a place: this place's own count of inputs and replies starts over. */
+export function onSceneStart(s: TurnState, location: PlaceId) {
+  s.scene_index += 1;
+  s.location = location;
   s.inputs = 0;
   s.input_since_call = false;
   s.replies_in_scene = 0;
@@ -252,35 +194,6 @@ export const BREVITY = 'You speak aloud, so keep to two short sentences at a tim
 export const LEADING_BLOCK_START = '[never say lines like these]';
 export const LEADING_BLOCK_END = '[end of lines never to say]';
 
-/** What is true of the scene right now, given to Bram as a system message before each reply to a player. */
-export function sceneHint(scene_index: number, ending: boolean, atmo?: { replies_in_scene?: number; described?: string[]; quest?: QuestState }): string {
-  const scene = scene_index > 0 ? SCENES[Math.min(scene_index, SCENES.length) - 1] : undefined;
-  const finale = scene_index >= SCENES.length;
-  const replies = atmo?.replies_in_scene ?? 0;
-  const way_out = finale ? '' : ` The way out, to mention only as part of the place: ${scene?.onward}.`;
-  const clue = scene?.clue ? ` Things to find, revealed only when a player investigates that thing: ${scene.clue}.` : '';
-  let where: string;
-  if (!scene) where = 'The story has not started: call next_scene.';
-  else if (replies === 0) where = `Current scene (${scene_index} of ${SCENES.length}): ${scene.place}. What can be seen and heard: ${scene.sights}.${way_out}${clue}`;
-  else {
-    // The place has been described: do not do it again. Name what has been used, and what is still unmentioned.
-    const described = atmo?.described ?? [];
-    const fresh = scene.sights.split(/,\s*/).filter((d) => !described.includes(d));
-    where = `Current scene (${scene_index} of ${SCENES.length}): ${scene.place}. You have already described this place${described.length ? `: already described, so do not repeat it unless something about it changes or it matters to what the player just did: ${described.join('; ')}` : ''}.${fresh.length ? ` Not yet mentioned: ${fresh.join('; ')}.` : ''}${way_out}${clue}`;
-  }
-  const length = replies >= 4
-    ? ' Give the shortest reply now: one sentence about what happens, and no atmosphere at all.'
-    : replies >= 1
-      ? ' Answer only what the player did, in one or two sentences, with no recap of the scene.'
-      : '';
-  const phase = ending
-    ? 'The story is ending: speak your closing only.'
-    : finale
-      ? `This is the finale. Let the players take their time and respond to what they try. The quest ends only when the Lantern is lit at the lighthouse: never call end_story before that. Once it is lit and the players have had their moment, call end_story, and after it answers speak your closing.${length}`
-      : `Let the players explore as long as they like. Respond to what they actually try, including the unexpected: say what happens and let consequences follow. Moving on is handled for you. Never narrate arriving somewhere new, or leaving this place, yourself: the place changes only when the scene note changes, so until then describe what happens here, and if the players head for the way out say only that they set off.${length}`;
-  const quest = atmo?.quest && !ending && scene ? ` ${questNote(atmo.quest, scene_index)}` : '';
-  return `${where} ${phase}${quest}`;
-}
 
 /** Bram's standing instructions: who he is, how he speaks, how he describes and hands over. */
 export function bramInstructions(players: Array<{ name: string; bot: boolean }>): string {
@@ -291,26 +204,18 @@ export function bramInstructions(players: Array<{ name: string; bot: boolean }>)
     ? 'There is more than one human player: address the player who just spoke as "you", and use a name only when you need to say which of the players you mean.'
     : 'There is one human player: after your greeting never use their name at all. Address them as "you".';
   return `You are Old Bram Tallow, a retired lighthouse keeper who tells stories at the Drowned Bell: warm, gravelly and kind. You are a fictional character telling "The Lantern of Hollow Mere" to these travellers and only these: ${roster}. ${BREVITY}
-The goal, which you state plainly once when you open: your lighthouse went dark in the storm, and only the Lantern of Hollow Mere can relight it.
+The goal, which you state plainly once when you open: your lighthouse went dark in the storm, and only the Lantern of Hollow Mere can relight it. Say it as "my lighthouse".
 Speak plainly, with at most one sea-worn phrase per reply, and none is fine. No riddles.
 Describe, don't direct. Say what the players see, hear and notice, and where each thing lies. Never tell them what to do, never ask whether they would like to do something, and never put an object next to the action that solves it. Write "A small iron chest sits under the bench, locked." and stop there.
 ${LEADING_BLOCK_START} "Would you like to search the room to find something to open the chest?" "Why not follow the footprints?" "Maybe you could use the key on the door." ${LEADING_BLOCK_END}
 Good lines describe only: "A small iron chest sits under the bench, locked." "Silver footprints lead off into the pines." "The stranger watches you over the rim of his mug."
 Clues sit in the scene for the players to find. Reveal a clue only when a player investigates that thing. If a player says they are stuck or asks for a hint, give one gentle nudge about something to look at, never the solution.
-Respond to what the players actually try, including the unexpected: say what happens and let consequences follow. Never invent items, doors or puzzles that the scene note does not give you.
+Respond to what the players actually try, including the unexpected: say what happens and let consequences follow. Never invent items, doors, places or puzzles that the scene note does not give you, and never describe the party being anywhere but where the note says.
 Describe a place in full only when you arrive in it. After that, never restate the setting (the weather, the fire, the map): answer what the player did, in one or two sentences, and mention a sight or sound only if it is new, has changed, or matters to what they just did.
 Names. Speak to the player as "you": never talk about the player you are answering in the third person ("Snaggle is beside you now", "the stranger falls in behind Snaggle"). ${names} Never put a name at the start or the end of a reply ("Snaggle, the way is before you"). If a player tells you their name or corrects it ("I'm Snaggle"), acknowledge it in a few words and use it from then on only as the rules above allow. Use only the names of the travellers listed above.
 End each reply on the description or on what happens, with no question and no name tacked on: the page already shows whose turn it is. Never point at an action. Then stop and wait: you never answer for the players and never continue until a player has spoken. Rotate between the players.${mute} Never ask two questions in one reply.
-Each reply to a player is preceded by a system note about the current scene and the satchel: follow it. You have four tools: next_scene, end_story, take_item and use_item. Call a tool only as the note says, never write or say a tool name or function call in your speech, and when a tool answers that something cannot be done, narrate that fact plainly.`;
+Each reply to a player is preceded by a system note: it says where the party is, what lies here, what is in the satchel, the ways out and what just happened. Follow it exactly and narrate what it says happened, plainly, as fact. You have no tools: never write or say a tool name or function call in your speech.`;
 }
-
-/** What next_scene returns to Bram when a scene starts. */
-export function sceneStartNote(index: number, music: string, quest?: QuestState): string {
-  const { place, sights, onward, clue } = SCENES[index];
-  const finale = index === SCENES.length - 1;
-  return `Scene ${index + 1} of ${SCENES.length} has started ${music}. Place: ${place}. What can be seen and heard: ${sights}.${finale ? ' This is the finale.' : ` The way out, to mention only as part of the place: ${onward}.`}${clue ? ` Things to find, revealed only when a player investigates that thing: ${clue}.` : ''} Describe the place in two short plain sentences using some of what can be seen and heard, then stop on a short open line with no name and no question.${quest ? ` ${questNote(quest, index + 1)}` : ''}`;
-}
-
 
 /**
  * Recovery for a user turn that never ends. A final transcript arms it; when the agent starts thinking or speaking, or the
@@ -336,48 +241,3 @@ export function createTurnRecovery(actions: { commit: () => void; say_again: () 
   };
 }
 
-
-// ---- Deciding, in code, that the players have left the scene ----
-
-/** The question for the small separate model call: has the player chosen to leave by the way out, now? */
-export function leavePrompt(scene_index: number, words: string): { system: string; user: string } | undefined {
-  if (scene_index < 1 || scene_index >= SCENES.length || !words.trim()) return undefined;
-  const scene = SCENES[scene_index - 1];
-  return {
-    system: 'You judge one thing in a spoken adventure. Answer with exactly one word: yes or no.',
-    user: `The players are in ${scene.place}. The way out is: ${scene.onward}. A player just said: "${words.trim().slice(0, 300)}". Has the player chosen to leave this place by that way out now? Answer no for exploring, asking questions, or only mentioning the way out. Answer yes only for a clear decision to go.`,
-  };
-}
-
-export const parseYesNo = (answer: string): boolean => /^\W*yes\b/i.test(answer.trim());
-
-/** Asks the small model whether the players leave. Any error, an empty answer or a missing question counts as no. */
-export async function decideLeave(ask: (prompt: { system: string; user: string }) => Promise<string>, scene_index: number, words: string, log: (line: string) => void = () => undefined): Promise<boolean> {
-  const prompt = leavePrompt(scene_index, words);
-  if (!prompt) return false;
-  try {
-    const answer = await ask(prompt);
-    const yes = parseYesNo(answer);
-    log(`leave check (scene ${scene_index}): "${words.trim().slice(0, 80)}" -> ${yes ? 'yes' : 'no'}`);
-    return yes;
-  } catch (error: any) {
-    log(`leave check failed (${error?.message ?? error}): treated as no`);
-    return false;
-  }
-}
-
-/**
- * After a player's input and before Bram replies: if the check says the players leave, `move` runs the scene change once. A flag
- * on the state stops the next_scene tool moving the scene a second time in the same turn.
- */
-export async function maybeMoveScene(s: { scene_index: number; moved_turn: boolean }, words: string, ask: Parameters<typeof decideLeave>[0], move: () => Promise<void>, log?: (line: string) => void): Promise<boolean> {
-  s.moved_turn = false;
-  if (!(await decideLeave(ask, s.scene_index, words, log))) return false;
-  if (s.moved_turn) return false;
-  s.moved_turn = true;
-  await move();
-  return true;
-}
-
-/** What the next_scene tool answers when code already moved the scene this turn. */
-export const ALREADY_MOVED = 'The scene has already changed this turn. Do not call any tool: describe the new place as the scene note says.';

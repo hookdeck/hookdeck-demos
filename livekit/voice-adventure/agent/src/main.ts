@@ -2,15 +2,16 @@
  * The two characters of story night: Hester Pennywhistle, the innkeeper of the Drowned Bell, who greets
  * travellers at the door and writes each name in her ledger, and Old Bram Tallow, a retired lighthouse
  * keeper who tells the adventure. Both are fictional. They are one agent participant in the room, handed
- * off with `llm.handoff` when Hester says she will fetch Bram. At each new scene Bram calls `next_scene`,
- * which asks the demo app to pull that scene's soundtrack into the room with LiveKit's Ingress API.
+ * off when Hester says she will fetch Bram. The code decides what happens (a small model call reads each player input into
+ * moves, takes, uses and gives, and the code validates and applies them); Bram only narrates. When the party moves to a place with a
+ * different soundtrack, the demo app pulls it into the room with LiveKit's Ingress API.
  *
  * Speech-to-text, the language model and text-to-speech all run on LiveKit Inference, so the only
  * credentials are the LiveKit project's API key and secret. Run it with `npm run agent`.
  *
  * The agent publishes what the page needs as participant attributes on its own participant:
  * `story.character` (who is speaking), `story.turn` and `story.turn_name` (whose turn it is),
- * `story.scene` and `story.state` (`playing` or `ended`).
+ * `story.scene` and `story.place` (the place id and its name), `story.satchel`, `story.state` (`playing` or `ended`).
  */
 import { type JobContext, ServerOptions, cli, defineAgent, inference, llm, voice } from '@livekit/agents';
 import { ParticipantKind, type RemoteParticipant } from '@livekit/rtc-node';
@@ -18,11 +19,12 @@ import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { endAllowed, newQuest, parseNameCorrection, satchelAttribute, shortModeQuest, takeItem, useItem, usesName, type QuestState } from './quest.ts';
+import { PLACES, actionPrompt, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
 import { askShort, describeLlm, makeLlm } from './llm.ts';
 import { fetchLine, planLedger, shouldFetchBram } from './names.ts';
+import { pickGesture } from './pixel-lines.ts';
 import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
-import { SCENES, BREVITY, bramInstructions, createEndWatcher, moveOnVerdict, sceneHint, sceneStartNote, nextSceneIndex, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, maybeMoveScene, ALREADY_MOVED, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
+import { BREVITY, bramInstructions, createEndWatcher, BOT_EVERY, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -55,8 +57,6 @@ interface StoryData {
   /** Bram's last spoken reply, and who had the last turn (an index into players): code picks the next speaker after playout. */
   last_reply: string;
   rotation: number;
-  /** Test only (STORY_SHORT=1): jump to the finale after the first scene. */
-  short_mode: boolean;
   /** Finishes the story once the last speech has played out and a short pause has passed. */
   end_watcher: ReturnType<typeof createEndWatcher> | undefined;
   /** The storyteller agent. */
@@ -70,14 +70,18 @@ interface StoryData {
   handed_off: boolean;
   /** The last few exchanges, one line each, saved with the story state. */
   summary: string[];
-  /** The scene was changed by the leave check this turn: the next_scene tool must not move it again. */
-  moved_turn: boolean;
   replies_in_scene: number;
   described: string[];
-  /** Where the quest stands: shared satchel, chest, lantern. */
-  quest: QuestState;
-  /** An item tool already ran for this player input. */
-  item_acted: boolean;
+  /** Where the party is and what it carries: the code's state of the world. */
+  world: World;
+  /** The soundtrack that is playing (a place that shares it keeps it going). */
+  soundtrack: string | undefined;
+  /** Where the party is (for the reply's atmosphere tracking) and turns given to a human since the mute player last had one. */
+  location?: PlaceId;
+  since_bot?: number;
+  /** Pixel's gesture cooldown: line to the turn it was last used, and a count of turns given. */
+  pixel_cooldown: Map<string, number>;
+  turn_no: number;
   /** Who the current reply answers, for the name check. */
   last_speaker_name: string | undefined;
   /** This agent picked up a story another agent left. */
@@ -150,7 +154,7 @@ function saveState(data: StoryData, ended = false) {
   save_timer = setTimeout(async () => {
     try {
       room_client ??= new RoomServiceClient((process.env.LIVEKIT_URL || '').replace(/^ws/, 'http'), process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
-      const state = buildState({ scene_index: data.scene_index, players: data.players, summary: data.summary, ended, quest: data.quest });
+      const state = buildState({ scene_index: data.scene_index, players: data.players, summary: data.summary, ended, world: data.world });
       await room_client.updateRoomMetadata(data.ctx.room.name!, encodeState(state));
       console.log(`story state saved: scene ${state.scene_index}, ${state.summary.length} summary lines`);
     } catch (error: any) {
@@ -172,40 +176,61 @@ async function fetchBram(session: voice.AgentSession<StoryData>, greet: string[]
   session.updateAgent(Bram.build(data.players));
 }
 
-/** The satchel, as item ids on the agent's participant: the page lists it, and Pixel picks gestures from it. */
-const publishSatchel = (data: StoryData) => publish(data.ctx, { 'story.satchel': satchelAttribute(data.quest) });
+/** The satchel, as item ids on the agent's participant: the page lists it. */
+const publishSatchel = (data: StoryData) => publish(data.ctx, { 'story.satchel': satchelAttribute(data.world) });
 
-/** Runs an item action: one per player input, and only after a player has spoken. Answers with a short factual sentence for Bram to narrate. */
-function itemAction(data: StoryData, name: string, run: () => { ok: boolean; message: string }): string {
-  if (!data.input_since_call) return 'No player has asked for this: do nothing.';
-  if (data.item_acted) return 'Only one item action happens per reply. Narrate what already happened and stop.';
-  data.item_acted = true;
-  const result = run();
-  console.log(`${name}: ${result.ok ? 'ok' : 'refused'}: ${result.message}`);
-  if (result.ok) {
-    publishSatchel(data);
-    saveState(data);
-  }
-  return result.message;
-}
+/** The place the party is in: its id (for Pixel) and name (for the page). The turn is cleared until Bram has spoken. */
+const publishPlace = (data: StoryData) => {
+  const place = PLACES[data.world.location];
+  return publish(data.ctx, { 'story.scene': place.id, 'story.place': place.name, 'story.turn': '', 'story.turn_name': '' });
+};
 
-/** Starts the next scene: state, saved story, the page's scene attribute, and the soundtrack through the app's Ingress call. Returns its start note. */
-async function changeScene(data: StoryData): Promise<string> {
-  const index = nextSceneIndex(data.scene_index, data.short_mode);
-  onSceneStart(data, index);
-  const { scene } = SCENES[index];
+/** The party is at (a new) place: counts, saved story, attributes, and the soundtrack when it differs from the one playing. Returns what to tell Bram about the music. */
+async function arrive(data: StoryData): Promise<string | undefined> {
+  onSceneStart(data, data.world.location);
   data.last_scene_at = Date.now();
   saveState(data);
-  publish(data.ctx, { 'story.scene': scene, 'story.turn': '', 'story.turn_name': '' });
-  let music = 'with its soundtrack';
+  publishPlace(data);
+  publishSatchel(data);
+  const place = PLACES[data.world.location];
+  if (place.soundtrack === data.soundtrack) return undefined;
+  data.soundtrack = place.soundtrack;
   try {
-    const response = await fetch(`${APP_URL}/api/scene`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: data.ctx.room.name, scene }), signal: AbortSignal.timeout(15000) });
-    if (!response.ok) music = 'without music';
+    const response = await fetch(`${APP_URL}/api/scene`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: data.ctx.room.name, scene: place.soundtrack }), signal: AbortSignal.timeout(15000) });
+    return response.ok ? 'with its soundtrack' : 'without music';
   } catch {
-    music = 'without music';
+    return 'without music';
   }
-  console.log(`scene change accepted: scene ${index + 1} ${scene}`);
-  return sceneStartNote(index, music, data.quest);
+}
+
+/**
+ * One player input (a spoken answer or Pixel's gesture): a small separate model call reads it into moves, takes, uses and gives, and the
+ * code validates and applies them. Returns the note Bram narrates from. Any failure of the call counts as no actions.
+ */
+async function resolveTurn(data: StoryData, words: string): Promise<string> {
+  let actions = noActions();
+  try {
+    actions = parseActions(await askShort(actionPrompt(data.world, words), 6000, 160));
+  } catch (error: any) {
+    console.log(`resolver failed (${error?.message ?? error}): treated as no actions`);
+  }
+  console.log(`resolver at ${data.world.location}: "${words.trim().slice(0, 80)}" -> ${JSON.stringify(actions)}`);
+  const result = applyActions(data.world, actions);
+  if (result.outcomes.length) console.log(`resolved: ${result.outcomes.join(' | ')}`);
+  let music: string | undefined;
+  if (result.moved) music = await arrive(data);
+  else if (result.took.length || result.opened || result.lit) {
+    publishSatchel(data);
+    saveState(data, endTriggered(result));
+  }
+  if (endTriggered(result)) {
+    // The Lantern is lit at the lighthouse: the story ends once Bram's closing has played out
+    data.ending = true;
+    data.end_watcher?.arm();
+    console.log(`the Lantern is lit: ending the story at ${new Date().toISOString()}`);
+    return closingNote(result.outcomes);
+  }
+  return placeNote(data.world, { full: result.moved, described: data.described, replies: data.replies_in_scene, outcomes: result.outcomes, music, arriving: result.moved });
 }
 
 class Hester extends voice.Agent<StoryData> {
@@ -279,8 +304,14 @@ class Bram extends voice.Agent<StoryData> {
       this.session.generateReply({ instructions: recapInstructions(this.resume_state, this.session.userData.players), toolChoice: 'none' });
       return;
     }
-    this.session.generateReply({
-      instructions: 'You have just come in from the fire at Hester\'s call. Call next_scene now, before you say anything. When it answers, introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name once, state the goal plainly in one sentence (your lighthouse went dark in the storm, and only the Lantern of Hollow Mere can relight it), then describe the first scene as the tool says and stop on a short open line with no name.',
+    // The story starts: the party is in its first place, and the code tells Bram what is there
+    const data = this.session.userData;
+    arrive(data).then((music) => {
+      const note = placeNote(data.world, { full: true, music, arriving: true });
+      this.session.generateReply({
+        instructions: `You have just come in from the fire at Hester's call. Introduce yourself in one plain sentence as Old Bram, retired keeper of the Hollow Light, greet the travellers by name once, state the goal plainly in one sentence (my lighthouse went dark in the storm, and only the Lantern of Hollow Mere can relight it), then describe where the party is. Do not call any tool. ${note}`,
+        toolChoice: 'none',
+      });
     });
   }
 
@@ -296,8 +327,7 @@ class Bram extends voice.Agent<StoryData> {
     console.log(`player input counted: inputs=${data.inputs}`);
     data.summary = addSummaryLine(data.summary, data.players.find((p) => p.identity === listening_to(this.session))?.name ?? 'Player', new_message.textContent);
     saveState(data);
-    // A small separate check decides whether the player has chosen to leave by the way out; the code then changes the scene itself
-    // and Bram describes arriving. Otherwise he stays in this scene.
+    // A small separate model call reads the words into actions; the code applies them and tells Bram what happened
     const words = new_message.textContent;
     const speaker = data.players.find((p) => p.identity === listening_to(this.session));
     // A player who gives or corrects their name ("I'm Snaggle"): the ledger follows, and Bram acknowledges it
@@ -311,9 +341,8 @@ class Bram extends voice.Agent<StoryData> {
       name_note = ` The player has just told you their name is ${given}: acknowledge it in a few words and carry on.`;
     }
     data.last_speaker_name = speaker?.name;
-    let moved_note: string | undefined;
-    await maybeMoveScene(data, words, askShort, async () => { moved_note = await changeScene(data); }, (line) => console.log(line));
-    chat_ctx.addMessage({ role: 'system', content: `${moved_note ? `${moved_note} Do not call any tool.` : sceneHint(data.scene_index, data.ending, data)}${name_note}` });
+    const note = await resolveTurn(data, words);
+    chat_ctx.addMessage({ role: 'system', content: `${note}${name_note}` });
   }
 
   static build(players: Player[], resume?: StoryState) {
@@ -327,61 +356,6 @@ class Bram extends voice.Agent<StoryData> {
       instructions: bramInstructions(players),
       tts: new inference.TTS({ model: BRAM_VOICE as any }),
       allowInterruptions: false,
-      tools: {
-        next_scene: llm.tool({
-          description: 'Start the next scene and its soundtrack. Call it only in the reply that answers a player who chose to move on.',
-          parameters: z.object({}),
-          execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
-            const data = ctx.userData;
-            if (data.moved_turn) return ALREADY_MOVED;
-            // Not chained after another call, and not before the scene has had its real player inputs. A refusal returns nothing, so Bram does not speak again.
-            const verdict = data.scene_index === 0 ? 'ok' : moveOnVerdict(data.input_since_call);
-            if (verdict !== 'ok' || data.scene_index >= SCENES.length) {
-              console.log(`next_scene refused (${verdict === 'ok' ? 'story over' : verdict}), inputs=${data.inputs}`);
-              // Nothing is returned, so the model gets no follow-up of its own. The player still gets an answer: one reply, with no tools.
-              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending, data)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
-              return undefined;
-            }
-            return changeScene(data);
-          },
-        }),
-        take_item: llm.tool({
-          description: 'Put an item into the satchel. Call it only in the reply to a player who says they take or pick up that item.',
-          parameters: z.object({ item: z.string().describe('The item, for example "brass key"') }),
-          execute: async ({ item }, { ctx }: llm.ToolOptions<StoryData>) => {
-            const data = ctx.userData;
-            return itemAction(data, `take_item(${item})`, () => takeItem(data.quest, data.scene_index, item));
-          },
-        }),
-        use_item: llm.tool({
-          description: 'Use one item on another thing, for example the key on the chest or the flint and wick on the Lantern. Call it only in the reply to a player who says they do that.',
-          parameters: z.object({ item: z.string().describe('The item being used'), target: z.string().describe('What it is used on') }),
-          execute: async ({ item, target }, { ctx }: llm.ToolOptions<StoryData>) => {
-            const data = ctx.userData;
-            return itemAction(data, `use_item(${item}, ${target})`, () => useItem(data.quest, data.scene_index, item, target));
-          },
-        }),
-        end_story: llm.tool({
-          description: 'End the story. Call it before your closing; it tells you when to speak the closing.',
-          parameters: z.object({}),
-          execute: async (_args, { ctx }: llm.ToolOptions<StoryData>) => {
-            const data = ctx.userData;
-            const verdict = moveOnVerdict(data.input_since_call);
-            if (data.scene_index < SCENES.length || verdict !== 'ok' || !endAllowed(data.quest)) {
-              console.log(`end_story refused (${endAllowed(data.quest) ? verdict : 'the Lantern is not lit'}), scene ${data.scene_index}, inputs=${data.inputs}`);
-              ctx.session.generateReply({ instructions: `${sceneHint(data.scene_index, data.ending, data)} React to what the player just said in one or two plain sentences that keep the scene going, and end with a short open prompt that names the player or the table. Do not call a tool.`, toolChoice: 'none' });
-              return undefined;
-            }
-            data.ending = true;
-            data.input_since_call = false;
-            saveState(data, true);
-            // The story is marked ended, and the agent leaves, only after the closing has played out in full and a short pause
-            data.end_watcher?.arm();
-            console.log(`end_story accepted at ${new Date().toISOString()}`);
-            return 'Speak your closing now: at most three plain sentences that say what the players did and end the story. Do not call any tool afterwards and do not say anything after it.';
-          },
-        }),
-      },
     });
   }
 }
@@ -401,7 +375,7 @@ export default defineAgent({
         preemptiveGeneration: { enabled: false },
       },
       ttsTextTransforms: ['filter_markdown', 'filter_emoji', speechFilter((what) => console.log(`speech filter removed a tool name from: ${what.slice(0, 120)}`))],
-      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, short_mode: process.env.STORY_SHORT === '1', end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, moved_turn: false, replies_in_scene: 0, described: [], quest: process.env.STORY_SHORT === '1' ? shortModeQuest() : newQuest(), item_acted: false, last_speaker_name: undefined },
+      userData: { ctx, players: [], scene_index: 0, last_scene_at: 0, inputs: 0, input_since_call: false, last_reply: '', rotation: -1, end_watcher: undefined, bram: undefined, watchdog: undefined, ending: false, handoff_pending: false, pending_bots: [], handed_off: false, summary: [], resumed: false, replies_in_scene: 0, described: [], world: worldAt(process.env.STORY_START), soundtrack: undefined, pixel_cooldown: new Map(), turn_no: 0, last_speaker_name: undefined },
     });
     const job_ctx = ctx;
     session.userData.end_watcher = createEndWatcher(() => {
@@ -463,12 +437,27 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => {
       const data = session.userData;
       if (e.oldState !== 'speaking' || e.newState !== 'listening' || !data.handed_off || data.ending || !data.bram || data.scene_index === 0) return;
-      const next = onPlayout(data, data.players);
+      let next = onPlayout(data, data.players);
       if (!next) return;
+      // Pixel's gesture is chosen here, from this place and the satchel, with a cooldown; with no fitting line Pixel skips and the next human goes
+      let pixel_line = '';
+      if (next.bot) {
+        const line = pickGesture(data.world, data.pixel_cooldown, data.turn_no);
+        if (line) pixel_line = line;
+        else {
+          const human = data.players.find((p) => !p.bot);
+          if (!human) return;
+          console.log('Pixel has no fitting gesture here: its turn is skipped');
+          next = human;
+          data.rotation = data.players.indexOf(human);
+          data.since_bot = BOT_EVERY - 1;
+        }
+      }
+      data.turn_no += 1;
       const index = data.rotation;
       // Text input (a mute player's chat gesture) is accepted only from the participant being listened to, so link whoever's turn it is
       switchListener(session, next.identity);
-      publish(data.ctx, { 'story.turn': next.identity, 'story.turn_name': next.name, 'story.turn_seq': String(data.inputs + data.scene_index * 100 + index) });
+      publish(data.ctx, { 'story.turn': next.identity, 'story.turn_name': next.name, 'story.turn_seq': String(data.turn_no * 1000 + data.inputs * 10 + index), 'story.pixel_line': pixel_line });
       console.log(`turn given to ${next.name} after playout (inputs=${data.inputs})`);
     });
 
@@ -498,7 +487,10 @@ export default defineAgent({
             saveState(data);
           }
           sess.interrupt();
-          sess.generateReply({ userInput: ev.text, instructions: data.handed_off && !data.ending ? sceneHint(data.scene_index, data.ending, data) : undefined });
+          // A gesture is read into actions like a spoken answer (Pixel can point at an exit or an item), then Bram narrates from the note
+          const reply = (instructions: string | undefined) => sess.generateReply({ userInput: ev.text, instructions });
+          if (data.handed_off && !data.ending) resolveTurn(data, ev.text).then(reply, () => reply(undefined));
+          else reply(undefined);
         },
       },
     });
@@ -524,10 +516,14 @@ export default defineAgent({
       data.summary = saved.summary;
       data.handed_off = true;
       data.resumed = true;
-      data.quest = saved.quest ?? data.quest;
+      data.world = saved.world;
+      data.soundtrack = PLACES[saved.world.location].soundtrack;
+      data.replies_in_scene = 0;
+      data.described = [];
+      data.location = saved.world.location;
       const first = data.players.find((p) => !p.bot);
       if (first) switchListener(session, first.identity);
-      publish(ctx, { 'story.scene': SCENES[Math.min(saved.scene_index, SCENES.length) - 1].scene });
+      publish(ctx, { 'story.scene': saved.world.location, 'story.place': PLACES[saved.world.location].name });
       console.log(`story state found in the room: resuming at scene ${saved.scene_index}`);
       publishLedger(data);
       publishSatchel(data);

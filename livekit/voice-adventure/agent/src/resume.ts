@@ -1,10 +1,9 @@
 /**
  * Story state kept in the LiveKit room's metadata, so a story survives its agent: when LiveKit re-dispatches a dead
  * job, or someone presses "Continue the story", the new agent reads this and picks the story up where it stopped.
- * Small JSON: the scene, who is in the ledger, the clues the players have been shown, and a few lines of running summary.
+ * Small JSON: where the party is, the satchel and the puzzle flags, who is in the ledger, and a few lines of running summary.
  */
-import { SCENES } from './story.ts';
-import { itemById, newQuest, questNote, type ItemId, type QuestState } from './quest.ts';
+import { PLACES, goalDone, itemById, placeNote, type ItemId, type PlaceId, type World } from './world.ts';
 
 export interface SavedPlayer {
   identity: string;
@@ -13,17 +12,15 @@ export interface SavedPlayer {
 }
 
 export interface StoryState {
-  v: 1;
-  /** Scenes started so far (1 means the tavern is under way). */
+  v: 2;
+  /** Places entered so far (1 means the story has started). */
   scene_index: number;
   players: SavedPlayer[];
-  /** One line per scene that has started: what the players were shown there. */
-  clues: string[];
   /** The last few exchanges, one short line each, oldest first. */
   summary: string[];
   ended: boolean;
-  /** Where the quest stands: the satchel, whether the chest is open, whether the Lantern is lit. */
-  quest?: QuestState;
+  /** Where the party is, what it carries, and the puzzle flags. */
+  world: World;
   saved_at: number;
 }
 
@@ -37,9 +34,6 @@ const clip = (text: string, max: number) => {
   return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
 };
 
-/** The clue lines for the scenes started so far. */
-export const cluesFor = (scene_index: number): string[] => SCENES.slice(0, Math.max(0, scene_index)).map((s) => `${s.scene}: ${s.clue}`);
-
 /** Adds one exchange to the running summary, keeping the most recent lines. */
 export function addSummaryLine(lines: readonly string[], speaker: string, text: string): string[] {
   const line = clip(text, LINE_MAX);
@@ -47,15 +41,14 @@ export function addSummaryLine(lines: readonly string[], speaker: string, text: 
   return [...lines, `${speaker}: ${line}`].slice(-SUMMARY_LINES);
 }
 
-export function buildState(input: { scene_index: number; players: readonly SavedPlayer[]; summary: readonly string[]; ended?: boolean; quest?: QuestState }, now = Date.now()): StoryState {
+export function buildState(input: { scene_index: number; players: readonly SavedPlayer[]; summary: readonly string[]; ended?: boolean; world: World }, now = Date.now()): StoryState {
   return {
-    v: 1,
+    v: 2,
     scene_index: input.scene_index,
     players: input.players.map((p) => ({ identity: p.identity, name: p.name, bot: p.bot })),
-    clues: cluesFor(input.scene_index),
     summary: [...input.summary],
     ended: Boolean(input.ended),
-    quest: input.quest ? { satchel: [...input.quest.satchel], chest_open: input.quest.chest_open, lantern_lit: input.quest.lantern_lit } : undefined,
+    world: { location: input.world.location, satchel: [...input.world.satchel], chest_open: input.world.chest_open, lantern_lit: input.world.lantern_lit },
     saved_at: now,
   };
 }
@@ -71,22 +64,24 @@ export function encodeState(state: StoryState): string {
   return json;
 }
 
-/** Reads room metadata; anything that is not this demo's state (empty, other JSON, broken JSON) gives null. */
+/** Reads room metadata; anything that is not this demo's current state (empty, other JSON, broken JSON, the older scene-based state) gives null. */
 export function decodeState(metadata: string | undefined | null): StoryState | null {
   if (!metadata) return null;
   try {
     const raw = JSON.parse(metadata);
-    if (!raw || raw.v !== 1 || typeof raw.scene_index !== 'number' || !Array.isArray(raw.players)) return null;
+    if (!raw || raw.v !== 2 || typeof raw.scene_index !== 'number' || !Array.isArray(raw.players) || !raw.world || !(raw.world.location in PLACES)) return null;
     return {
-      v: 1,
+      v: 2,
       scene_index: Math.max(0, Math.floor(raw.scene_index)),
       players: raw.players.filter((p: any) => p && typeof p.identity === 'string' && typeof p.name === 'string').map((p: any) => ({ identity: p.identity, name: p.name, bot: Boolean(p.bot) })),
-      clues: Array.isArray(raw.clues) ? raw.clues.filter((c: unknown) => typeof c === 'string') : [],
       summary: Array.isArray(raw.summary) ? raw.summary.filter((c: unknown) => typeof c === 'string').slice(-SUMMARY_LINES) : [],
       ended: Boolean(raw.ended),
-      quest: raw.quest && typeof raw.quest === 'object'
-        ? { satchel: (Array.isArray(raw.quest.satchel) ? raw.quest.satchel : []).filter((id: unknown): id is ItemId => typeof id === 'string' && !!itemById(id)), chest_open: Boolean(raw.quest.chest_open), lantern_lit: Boolean(raw.quest.lantern_lit) }
-        : undefined,
+      world: {
+        location: raw.world.location as PlaceId,
+        satchel: (Array.isArray(raw.world.satchel) ? raw.world.satchel : []).filter((id: unknown): id is ItemId => typeof id === 'string' && !!itemById(id)),
+        chest_open: Boolean(raw.world.chest_open),
+        lantern_lit: Boolean(raw.world.lantern_lit),
+      },
       saved_at: typeof raw.saved_at === 'number' ? raw.saved_at : 0,
     };
   } catch {
@@ -108,12 +103,12 @@ export function resumePlayers(saved: readonly SavedPlayer[], here: readonly Save
   return (humans.length ? humans : saved).map((p) => ({ ...p }));
 }
 
-/** What Old Bram does when he walks back in: a short recap in character, then the same scene carries on. */
+/** What Old Bram does when he walks back in: a short recap in character, then the story carries on where it stopped. */
 export function recapInstructions(state: StoryState, players: readonly SavedPlayer[]): string {
-  const scene = SCENES[Math.min(state.scene_index, SCENES.length) - 1];
   const names = players.map((p) => p.name).join(' and ');
   const recent = state.summary.length ? `\nWhat was said last:\n${state.summary.join('\n')}` : '';
-  return `You have been away from the fire for a moment and you are back. The story is in scene ${state.scene_index} of ${SCENES.length}: ${scene.place}. The travellers are ${names || 'the players'}.
-What they have been shown so far: ${state.clues.join('; ') || 'nothing yet'}.${recent}
-Do not call any tool now. In one or two plain sentences, in character, say where the tale had got to ("Now, where were we?") and what is in front of the travellers. Do not start a new scene and do not repeat the earlier lines. ${questNote(state.quest ?? newQuest(), state.scene_index)} Speak to the player as "you" and use no name. End on a short open line with no question.`;
+  const note = placeNote(state.world, { full: false, described: [], replies: 1 });
+  return `You have been away from the fire for a moment and you are back. The travellers are ${names || 'the players'}.${recent}
+${note}
+Do not call any tool. In one or two plain sentences, in character, say where the tale had got to ("Now, where were we?") and what is in front of the travellers. Do not repeat the earlier lines. Speak to the player as "you" and use no name. End on a short open line with no question.${goalDone(state.world) ? ' The quest is already complete.' : ''}`;
 }

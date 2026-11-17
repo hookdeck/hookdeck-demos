@@ -15,7 +15,7 @@ describe('topology scenes', () => {
     const root = path.join(__dirname, '..');
     const built = spawnSync('node', [path.join(root, 'scripts', 'build-scenes.mjs')], { cwd: root });
     assert.equal(built.status, 0, String(built.stderr));
-    browser = await chromium.launch();
+    browser = await chromium.launch().catch(() => chromium.launch({ channel: 'chrome' }));
     page = await browser.newPage();
     await page.setContent('<div id="host"></div>');
     await page.addScriptTag({ path: path.join(root, 'public', 'scenes', 'scenes.js') });

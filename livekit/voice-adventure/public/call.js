@@ -115,6 +115,7 @@ function renderBanner() {
   const attrs = agent?.attributes || {};
   const turn = attrs['story.turn'];
   const sound = [...(room?.remoteParticipants.values() || [])].find((p) => p.identity.startsWith('soundtrack-'));
+  const place = attrs['story.place'] || '';
   const scene = sound ? sound.identity.slice('soundtrack-'.length) : '';
   let tone = 'info';
   let title = '';
@@ -132,7 +133,7 @@ function renderBanner() {
   }
   box.hidden = !(title || scene);
   box.className = `message ${tone} body-m story-banner${mine ? ' your-turn' : ''}`;
-  box.innerHTML = `<span class="story-turn-body">${mine ? FLAME : ''}${title ? `<strong class="turn-title">${title}</strong>` : ''}${sub ? `<span class="turn-sub">${sub}</span>` : ''}${scene ? `<span class="turn-playing badge badge--primary">Now playing: ${esc(scene)}</span>` : ''}</span>`;
+  box.innerHTML = `<span class="story-turn-body">${mine ? FLAME : ''}${title ? `<strong class="turn-title">${title}</strong>` : ''}${sub ? `<span class="turn-sub">${sub}</span>` : ''}${place ? `<span class="turn-playing badge badge--primary">${esc(T('place_label', 'Place: {place}', { place }))}</span>` : scene ? `<span class="turn-playing badge badge--primary">Now playing: ${esc(scene)}</span>` : ''}</span>`;
 }
 
 // Who is in the call, what each one is, and who is speaking right now. An agent's own state
@@ -355,6 +356,7 @@ if (demo_state) {
   room = { localParticipant: person('web-1', 'Priya'), remoteParticipants: new Map(remotes.map((p) => [p.identity, p])), activeSpeakers: [agent] };
   // As if joined without a name: the agent's ledger fills the read-only name field
   agent.attributes['story.ledger'] = JSON.stringify({ 'web-1': 'Priya' });
+  agent.attributes['story.place'] = 'The Cave under the Mere';
   agent.attributes['story.satchel'] = JSON.stringify(demo_state === 'quiet' ? [] : ['map', 'brass_key']);
   set_state(true);
   say_copy('status_connected', 'Connected to story-demo as web-1, microphone on.', { name: 'Priya' });
