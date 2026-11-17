@@ -10,7 +10,7 @@ window.HookdeckThemeCopies.story = {
   "chronicle_hint": "Written only from the webhooks this app receives.",
   "failure_title": "Trouble at the Door",
   "eyebrow": "A tale in four scenes",
-  "name_placeholder": "Hester will ask at the door",
+  "name_placeholder": "optional",
   "join_btn": "Enter the inn",
   "pixel_add": "Bring Pixel along",
   "pixel_here": "Pixel travels with you",
