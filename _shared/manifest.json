@@ -6,7 +6,8 @@
     "flow-drawer": "_shared/flow-drawer/client",
     "flow-drawer-server": "_shared/flow-drawer/server.ts",
     "scenes": "_shared/scenes",
-    "topology-pane": "_shared/topology-pane"
+    "topology-pane": "_shared/topology-pane",
+    "theme": "_shared/theme/theme.js"
   },
   "demos": {
     "deepgram/stt-tts": {
@@ -29,7 +30,8 @@
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
       "scenes": "scenes/kit",
-      "topology-pane": "public/topology-pane"
+      "topology-pane": "public/topology-pane",
+      "theme": "public/theme.js"
     }
   }
 }
