@@ -41,6 +41,7 @@ export function transcriptionEvent(conversation_id = conversationId(), agent_id 
         data_collection_results: {
           caller_name: { data_collection_id: 'caller_name', value: 'Sam', rationale: 'The caller gave their name.' },
           requested_service: { data_collection_id: 'requested_service', value: 'haircut' },
+          requested_time: { data_collection_id: 'requested_time', value: 'Friday 3 pm' },
         },
       },
       has_audio: true,
