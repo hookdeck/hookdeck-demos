@@ -131,3 +131,6 @@ html[data-theme="story"] .end-sub { display: initial; }
 .satchel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s2) 0; }
 .satchel-items { display: flex; flex-wrap: wrap; gap: var(--s1-5); list-style: none; margin: 0; padding: 0; }
 .satchel-empty { color: var(--neutral-fg-2); }
+
+/* The connection status gets its own line, so a longer label or message never pushes the buttons onto a new row */
+#callStatus { flex-basis: 100%; }

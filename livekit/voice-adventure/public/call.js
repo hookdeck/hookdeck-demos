@@ -338,7 +338,7 @@ $('testBtn').addEventListener('click', async () => {
   const response = await fetch('/api/test-participant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: room_name }) });
   const data = await response.json();
   if (!response.ok) { $('testBtn').disabled = false; return fail(data.error); }
-  say(`Connected to ${room_name}. Pixel, a mute traveller, has joined.`);
+  say_copy('status_pixel', `Connected to ${room_name}. Pixel, a mute traveller, has joined.`, { room: room_name });
 });
 
 document.addEventListener('hookdeck-theme', () => { $('callStatus').dataset.themed && say_themed(); renderPeople(); });
