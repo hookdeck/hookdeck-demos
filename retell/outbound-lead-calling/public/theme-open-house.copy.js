@@ -4,7 +4,7 @@
 window.HookdeckThemeCopies = window.HookdeckThemeCopies || {};
 window.HookdeckThemeCopies["open-house"] = {
   "eyebrow": "Acme Realty · Hookdeck + Retell",
-  "hero_title": "A lead enquires. Retell <em>rings</em>. Hookdeck reports back.",
+  "hero_title": "Acme Realty lead follow-up",
   "hero_dialog": "Retell's agent, Sam, calls the lead with the lead's details as dynamic variables. In the browser you answer as the lead through your microphone, or optionally take the call on a phone. The call's <code>call_started</code>, <code>call_ended</code> and <code>call_analyzed</code> events come back through Hookdeck, which verifies <code>x-retell-signature</code>, deduplicates and retries, and update the enquiries below. Watch it in the <strong>Data flow</strong> pane.",
   "failure_title": "Office phones down",
   "leads_title": "Enquiries book",

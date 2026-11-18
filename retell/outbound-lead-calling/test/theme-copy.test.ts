@@ -20,7 +20,7 @@ function setup(saved: string | null) {
     el.setAttribute = (n: string, v: string) => { el.attrs[n] = v; };
     return el;
   };
-  const title = make({ 'data-copy': 'hero_title' }, 'A lead arrives. Retell <em>calls</em>. Hookdeck reports back.');
+  const title = make({ 'data-copy': 'hero_title' }, 'Retell outbound lead calling with Hookdeck');
   const heading = make({ 'data-copy': 'leads_title' }, 'Leads');
   const root = make({ 'data-demo-theme': 'open-house', 'data-demo-theme-default': 'true' });
   const document: any = {
@@ -40,7 +40,7 @@ function setup(saved: string | null) {
 test('Open house is the default theme: with no saved choice its wording is on', () => {
   const { window, title, heading, root } = setup(null);
   assert.equal(root.dataset.theme, 'open-house');
-  assert.match(title.html, /A lead enquires\. Retell <em>rings<\/em>/);
+  assert.match(title.html, /Acme Realty lead follow-up/);
   assert.equal(heading.html, 'Enquiries book');
   assert.equal(window.HookdeckTheme.copy('badge_analyzed', 'Analyzed'), 'Particulars filed');
   assert.equal(window.HookdeckTheme.copy('badge_unknown', 'Fallback'), 'Fallback');
@@ -51,7 +51,7 @@ test('another mode restores the plain wording; Open house brings it back', () =>
   for (const mode of ['light', 'dark', 'system']) {
     store['hookdeck-demo-theme'] = mode;
     window.HookdeckTheme.apply();
-    assert.equal(title.html, 'A lead arrives. Retell <em>calls</em>. Hookdeck reports back.', mode);
+    assert.equal(title.html, 'Retell outbound lead calling with Hookdeck', mode);
     assert.equal(heading.html, 'Leads', mode);
     assert.equal(window.HookdeckTheme.copy('badge_analyzed', 'Analyzed'), 'Analyzed', mode);
   }

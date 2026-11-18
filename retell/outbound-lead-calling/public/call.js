@@ -70,10 +70,13 @@ function paint() {
   if (!config.ready) setText(status_el, 'Browser call not set up yet');
   else if (phase === 'ended' && lead && lead.next_attempt_at) {
     const left = Date.parse(lead.next_attempt_at) - Date.now();
-    setText(status_el, `Attempt ${lead.attempt} of ${config.max_attempts}: ${left > 0 ? `next ring ${clock(left)}` : 'ready'}`);
+    // The lead card shows the attempt number; beside the button only the time to the next ring
+    setText(status_el, left > 0 ? `Next ring ${clock(left)}` : '');
   } else if (phase === 'ended' && lead && lead.gave_up) setText(status_el, 'Gave up');
-  else setText(status_el, note || 'Browser call ready');
+  // When the call is ready the Sam → lead pill already says so: the tag only shows a note, a problem or the retry state
+  else setText(status_el, note || '');
   status_el.className = `tag ${config.ready ? '' : 'tag--bad'}`;
+  status_el.hidden = !status_el.textContent;
 }
 
 async function init() {
