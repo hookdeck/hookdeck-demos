@@ -1,0 +1,28 @@
+/* Generated from `_shared/scenes/scenes.css`; edit there and run `npm run sync-shared`. */
+/*
+ * Styles for scene SVG text. A scene sets its colors through CSS variables of the Hookdeck design
+ * system (`--bg-0`, `--neutral-fg-1`, ...), so light and dark mode follow the host. Fonts come
+ * from the design system too: Figtree for sans text, JetBrains Mono for mono. A host that does not
+ * load the design system gets the fallbacks below and the light colors in tokens.ts.
+ */
+:root {
+  --sc-connector: #e4e4e1;
+  --sc-blue-soft: #99b4eb;
+  --sc-warn: #8a5a00;
+  --sc-warn-outline: #f0dcae;
+  --sc-warn-surface: #fbf1d9;
+}
+.dark {
+  --sc-connector: #353533;
+  --sc-blue-soft: #3369d6;
+  --sc-warn: #e8c46a;
+  --sc-warn-outline: #5c4310;
+  --sc-warn-surface: #2e2209;
+}
+svg.stage { display: block; width: 100%; height: auto; overflow: visible; }
+svg.stage text { font-family: var(--font-sans, 'Figtree', system-ui, sans-serif); }
+svg.stage .mono { font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace); font-weight: 500; }
+svg.stage .sans-title { font-weight: 500; letter-spacing: -0.01em; }
+svg.stage .caption { fill: var(--neutral-fg-1, #141412); font-weight: 450; }
+svg.stage .caption-step { fill: var(--primary-fg, #0044cc); font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace); font-weight: 600; }
+svg.stage .node-click { cursor: pointer; }

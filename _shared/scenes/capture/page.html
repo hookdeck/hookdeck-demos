@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!--
+  The page the capture script screenshots. It mounts one scene and exposes `window.__capture`
+  (stepTimes, seek) so the script can seek the scene's GSAP timeline frame by frame.
+
+    /capture?scene=delivery&aspect=wide|square&theme=light|dark
+
+  wide    1920x1080, the desktop layout, captions drawn in the SVG.
+  square  1080x1080, the phone layout on the left and a large numbered caption on the right.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Scene capture</title>
+  <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="stylesheet" href="/scenes/scenes.css">
+  <style>
+    html, body { margin: 0; background: var(--tan-bg); overflow: hidden; }
+    #frame { box-sizing: border-box; display: grid; background: var(--tan-bg); color: var(--neutral-fg-1); }
+    body[data-aspect="wide"] #frame { width: 1920px; height: 1080px; }
+    body[data-aspect="square"] #frame { width: 1080px; height: 1080px; grid-template-columns: 604px 1fr; gap: 0; padding: 20px 36px 20px 24px; }
+    #host { align-self: center; }
+    body[data-aspect="wide"] #host { width: 1920px; height: 1080px; }
+    body[data-aspect="square"] #host { width: 604px; }
+    #side { display: none; align-self: center; padding-left: 28px; }
+    body[data-aspect="square"] #side { display: grid; gap: 22px; }
+    #side .eyebrow { font-family: var(--font-mono); font-size: 20px; letter-spacing: .08em; text-transform: uppercase; color: var(--neutral-fg-3); }
+    #side .title { font-size: 44px; line-height: 1.08; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+    #side .step { font-family: var(--font-mono); font-size: 26px; font-weight: 600; color: var(--primary-fg); }
+    #side .text { font-size: 33px; line-height: 1.32; font-weight: 450; min-height: 8.5em; }
+    #side code { font-family: var(--font-mono); font-size: .86em; padding: 0 6px; border-radius: 6px; background: var(--bg-3); }
+    #side .brand { display: flex; align-items: center; gap: 12px; color: var(--neutral-fg-3); font-size: 22px; }
+    #side .brand img { height: 22px; }
+  </style>
+</head>
+<body>
+  <div id="frame">
+    <div id="host"></div>
+    <aside id="side">
+      <div class="eyebrow" id="eyebrow">{ Hookdeck }</div>
+      <h1 class="title" id="title"></h1>
+      <div class="step" id="step"></div>
+      <div class="text" id="text"></div>
+      <div class="brand"><img src="/ds/assets/brand/logo-icon.svg" alt=""> Event Gateway</div>
+    </aside>
+  </div>
+  <script src="/scenes/scenes.js"></script>
+  <script>
+    (async () => {
+      const q = new URLSearchParams(location.search);
+      const aspect = q.get('aspect') === 'square' ? 'square' : 'wide';
+      const name = q.get('scene') || 'delivery';
+      document.body.dataset.aspect = aspect;
+      document.documentElement.classList.toggle('dark', q.get('theme') === 'dark');
+      const { scenes, scenarios, brand } = window.HookdeckScenes;
+      if (q.get('list')) {
+        window.__scenarioIds = scenarios.map((s) => s.id);
+        return;
+      }
+      // The platform's name for the square captures' eyebrow, from the demo's scenes/entry.ts.
+      if (brand) document.getElementById('eyebrow').textContent = '{ Hookdeck + ' + brand + ' }';
+      const info = scenarios.find((s) => s.id === name);
+      const create = scenes[aspect === 'square' ? name + '-mobile' : name];
+      if (!create) throw new Error('Unknown scene ' + name);
+      const scene = create(document.getElementById('host'), { captions: aspect === 'wide' });
+      scene.stop();
+      const times = scene.stepTimes;
+      const GAP = 0.05;
+      const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+      const render = (idx) => {
+        document.getElementById('title').textContent = info ? info.title : name;
+        document.getElementById('step').textContent = idx === 0 ? '' : idx + ' / ' + (times.length - 1);
+        document.getElementById('text').innerHTML = esc(scene.captions[idx] || '').replace(/`([^`]+)`/g, '<code>$1</code>');
+      };
+      let shown = -1;
+      window.__capture = {
+        aspect,
+        stepTimes: times,
+        duration: scene.timeline.duration(),
+        seek(t) {
+          scene.timeline.seek(t, false);
+          let idx = 0;
+          for (let k = 0; k < times.length - 1; k++) if (t >= times[k] + GAP) idx = k + 1;
+          if (idx !== shown) { shown = idx; render(idx); }
+        },
+      };
+      window.__capture.seek(0);
+      await document.fonts.ready;
+      window.__captureReady = true;
+    })();
+  </script>
+</body>
+</html>
