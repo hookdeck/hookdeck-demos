@@ -55,6 +55,8 @@
       const { scenes, scenarios, brand } = window.HookdeckScenes;
       if (q.get('list')) {
         window.__scenarioIds = scenarios.map((s) => s.id);
+        // Every desktop scene, so the script can also capture one that is not a tab (a tutorial's deployed view).
+        window.__sceneIds = Object.keys(scenes).filter((k) => k !== 'live' && !k.endsWith('-mobile'));
         return;
       }
       // The platform's name for the square captures' eyebrow, from the demo's scenes/entry.ts.

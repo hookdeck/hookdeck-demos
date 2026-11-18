@@ -25,7 +25,7 @@ describe('topology scenes', () => {
     await browser?.close();
   });
 
-  for (const id of ['vapi-call-and-tool', 'vapi-two-clients', 'vapi-duplicate-dropped', 'vapi-bad-signature', 'vapi-app-down']) {
+  for (const id of ['vapi-call-and-tool', 'vapi-two-clients', 'vapi-duplicate-dropped', 'vapi-bad-signature', 'vapi-app-down', 'vapi-deployed']) {
     it(`${id}: desktop and phone layouts share steps and captions`, async () => {
       const result = await page.evaluate((scene_id) => {
         const { scenes } = (window as any).HookdeckScenes;
@@ -48,6 +48,37 @@ describe('topology scenes', () => {
       assert.ok(desktop.times.every((t: number, i: number) => i === 0 || t > desktop.times[i - 1]));
     });
   }
+
+  it('tutorial flag relabels the app in a step diagram and the demo keeps its name', async () => {
+    const titles = await page.evaluate((scene_id) => {
+      const { scenes } = (window as any).HookdeckScenes;
+      const host = document.getElementById('host')!;
+      const read = (flags?: Record<string, boolean>) => {
+        const scene = scenes[scene_id](host, { captions: false, flags });
+        const text = host.textContent ?? '';
+        scene.destroy();
+        return text;
+      };
+      return { demo: read(), tutorial: read({ tutorial: true }) };
+    }, 'vapi-call-and-tool');
+    assert.match(titles.demo, /Acme endpoint/);
+    assert.match(titles.tutorial, /Acme's app/);
+    assert.doesNotMatch(titles.tutorial, /Acme endpoint/);
+  });
+
+  it('deployed scene shows both client apps and no hookdeck listen node', async () => {
+    const text = await page.evaluate((scene_id) => {
+      const { scenes } = (window as any).HookdeckScenes;
+      const host = document.getElementById('host')!;
+      const scene = scenes[scene_id](host, { captions: false });
+      const out = host.textContent ?? '';
+      scene.destroy();
+      return out;
+    }, 'vapi-deployed');
+    assert.match(text, /Acme Dental's app/);
+    assert.match(text, /Globex Plumbing's app/);
+    assert.doesNotMatch(text, /hookdeck listen|Localhost/i);
+  });
 
   it('live scene has a driver, queues packets on one edge, and has a return edge per client', async () => {
     const result = await page.evaluate(async () => {

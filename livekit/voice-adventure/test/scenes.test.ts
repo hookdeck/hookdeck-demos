@@ -25,7 +25,7 @@ describe('topology scenes', () => {
     await browser?.close();
   });
 
-  for (const id of ['livekit-call-lifecycle', 'livekit-duplicate-dropped', 'livekit-bad-signature', 'livekit-app-down']) {
+  for (const id of ['livekit-call-lifecycle', 'livekit-duplicate-dropped', 'livekit-bad-signature', 'livekit-app-down', 'livekit-deployed']) {
     it(`${id}: desktop and phone layouts share steps and captions`, async () => {
       const result = await page.evaluate((scene_id) => {
         const { scenes } = (window as any).HookdeckScenes;
@@ -48,6 +48,35 @@ describe('topology scenes', () => {
       assert.ok(desktop.times.every((t: number, i: number) => i === 0 || t > desktop.times[i - 1]));
     });
   }
+
+  it('tutorial flag relabels the app in a step diagram and the demo keeps its name', async () => {
+    const titles = await page.evaluate((scene_id) => {
+      const { scenes } = (window as any).HookdeckScenes;
+      const host = document.getElementById('host')!;
+      const read = (flags?: Record<string, boolean>) => {
+        const scene = scenes[scene_id](host, { captions: false, flags });
+        const text = host.textContent ?? '';
+        scene.destroy();
+        return text;
+      };
+      return { demo: read(), tutorial: read({ tutorial: true }) };
+    }, 'livekit-call-lifecycle');
+    assert.doesNotMatch(titles.demo, /Your app/);
+    assert.match(titles.tutorial, /Your app/);
+  });
+
+  it('deployed scene shows your app and no hookdeck listen node', async () => {
+    const text = await page.evaluate((scene_id) => {
+      const { scenes } = (window as any).HookdeckScenes;
+      const host = document.getElementById('host')!;
+      const scene = scenes[scene_id](host, { captions: false });
+      const out = host.textContent ?? '';
+      scene.destroy();
+      return out;
+    }, 'livekit-deployed');
+    assert.match(text, /Your app/);
+    assert.doesNotMatch(text, /hookdeck listen|Localhost/i);
+  });
 
   it('live scene has a driver and queues packets on one edge', async () => {
     const result = await page.evaluate(async () => {

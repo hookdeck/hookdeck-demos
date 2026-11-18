@@ -89,6 +89,17 @@ export const captionsBy = {
   ],
 } as const
 
+// The opening diagram of a tutorial: the flow as it runs once the apps are deployed. No
+// `hookdeck listen`: Event Gateway delivers to each client's app over HTTPS. Not a tab in the demo
+// page, which shows what the demo runs.
+export const deployedCaptionsBy = [
+  'Acme Dental and Globex Plumbing each have a Vapi assistant. Each assistant\'s Server URL is that client\'s own Event Gateway source, and each source delivers to that client\'s app over HTTPS.',
+  `A caller reaches Acme Dental. Vapi sends \`status-update\` (${facts.statusSize}) to the Acme Dental source, and Event Gateway delivers it to Acme Dental\'s app over HTTPS and signs the delivery. The app verifies the Hookdeck signature.`,
+  'A caller then reaches Globex Plumbing. Its `status-update` goes to the Globex Plumbing source and on to Globex Plumbing\'s app. Acme Dental\'s app does not see it.',
+  `Each assistant calls \`lookup_customer\`. The \`tool-calls\` (${facts.toolCallsSize} and ${facts.globexToolCallsSize}) follow the same routes, each to its own client\'s app.`,
+  'Each app posts its result to the `controlUrl` of its own call, so Acme Dental\'s result reaches Acme Dental\'s caller and Globex Plumbing\'s reaches Globex Plumbing\'s.',
+] as const
+
 export type ScenarioId = keyof typeof captionsBy
 
 // ---- Layouts: where the components sit ----
@@ -97,6 +108,7 @@ type ClientId = 'acme' | 'globex'
 const CLIENT_IDS: ClientId[] = ['acme', 'globex']
 const CLIENT_NAMES: Record<ClientId, string> = { acme: 'Acme Dental', globex: 'Globex Plumbing' }
 const ENDPOINT_NAMES: Record<ClientId, string> = { acme: 'Acme endpoint', globex: 'Globex endpoint' }
+const SHORT_APP_NAMES: Record<ClientId, string> = { acme: 'Acme\'s app', globex: 'Globex\'s app' }
 
 interface Box { x: number, y: number, w: number, h: number }
 
@@ -214,13 +226,18 @@ function loopConnector(stage: Stage, from: Point, to: Point, dir: 'h' | 'v', bul
   return { path: base.path, d, length: base.path.getTotalLength(), dir: 'h' }
 }
 
-function buildParts(build: Pick<SceneBuild, 'stage'>, layout: Layout): Parts {
+/**
+ * The `tutorial` flag is set by the website for the step diagrams of the guide: each client's
+ * endpoint is that client's app there, because the reader runs them. The demo page leaves it off
+ * and keeps "Acme endpoint" and "Globex endpoint".
+ */
+function buildParts(build: Pick<SceneBuild, 'stage' | 'options'>, layout: Layout): Parts {
   const { stage } = build
   const L = layout
   const nodes = {} as Record<NodeId, Node>
   for (const id of CLIENT_IDS) {
     nodes[`agent_${id}`] = node(stage, { ...L.agent[id], eyebrow: 'Vapi assistant', title: CLIENT_NAMES[id], icon: 'mic', scale: L.k_client, status: L.status.agent[id] })
-    nodes[`app_${id}`] = node(stage, { ...L.app[id], eyebrow: 'Localhost', title: ENDPOINT_NAMES[id], icon: 'dns', scale: L.k_client, status: L.status.app[id] })
+    nodes[`app_${id}`] = node(stage, { ...L.app[id], eyebrow: 'Localhost', title: build.options.flags?.tutorial ? SHORT_APP_NAMES[id] : ENDPOINT_NAMES[id], icon: 'dns', scale: L.k_client, status: L.status.app[id] })
   }
   nodes.gateway = node(stage, { ...L.gateway, eyebrow: 'Hookdeck', title: 'Event Gateway', icon: 'hookdeck', variant: 'work', scale: L.k_shared, status: L.status.gateway })
   nodes.listen = node(stage, { ...L.listen, eyebrow: 'Hookdeck CLI', title: 'hookdeck listen', icon: 'terminal', scale: L.k_shared, status: L.status.listen })
@@ -509,6 +526,201 @@ const scenarios: Record<ScenarioId, (b: SceneBuild, c: Ctx) => void> = {
     })
   },
 }
+
+// ---- The deployed view: Vapi -> Event Gateway -> each client's app, no `hookdeck listen` ----
+
+interface DeployedLayout {
+  canvas: Canvas
+  dir: 'h' | 'v'
+  k_client: number
+  k_shared: number
+  agent: Record<ClientId, Box>
+  app: Record<ClientId, Box>
+  gateway: Box
+  status: { agent: Record<ClientId, Point>, app: Record<ClientId, Point>, gateway: Point }
+  chips: Point
+  chip_size: number
+  edgeLabels: { in: Record<ClientId, Point>, out: Record<ClientId, Point>, return: Record<ClientId, Point | null> }
+  returnBulge: Record<ClientId, number>
+  appNames: Record<ClientId, string>
+  caption: { x: number, y: number, max: number, size: number }
+  crop: string
+}
+
+const DEPLOYED_DESKTOP: DeployedLayout = {
+  canvas: { width: 1920, height: 1080 },
+  dir: 'h',
+  k_client: 0.8,
+  k_shared: 1,
+  agent: { acme: { x: 195, y: 250, w: 330, h: 130 }, globex: { x: 195, y: 520, w: 330, h: 130 } },
+  app: { acme: { x: 1670, y: 250, w: 440, h: 130 }, globex: { x: 1670, y: 520, w: 440, h: 130 } },
+  gateway: { x: 950, y: 385, w: 380, h: 380 },
+  status: {
+    agent: { acme: { x: 0, y: 100 }, globex: { x: 0, y: -100 } },
+    app: { acme: { x: 0, y: 100 }, globex: { x: 0, y: -100 } },
+    gateway: { x: 0, y: -240 },
+  },
+  chips: { x: 950, y: 622 },
+  chip_size: 20,
+  edgeLabels: {
+    in: { acme: { x: 560, y: 292 }, globex: { x: 560, y: 562 } },
+    out: { acme: { x: 1295, y: 292 }, globex: { x: 1295, y: 562 } },
+    return: { acme: { x: 932, y: 88 }, globex: { x: 932, y: 682 } },
+  },
+  returnBulge: { acme: -130, globex: 130 },
+  appNames: { acme: 'Acme Dental\'s app', globex: 'Globex Plumbing\'s app' },
+  caption: { x: 60, y: 800, max: 78, size: 38 },
+  crop: '30 55 1860 655',
+}
+
+const DEPLOYED_PHONE: DeployedLayout = {
+  canvas: { width: 640, height: 780 },
+  dir: 'v',
+  k_client: 0.55,
+  k_shared: 0.7,
+  agent: { acme: { x: 195, y: 115, w: 220, h: 110 }, globex: { x: 445, y: 115, w: 220, h: 110 } },
+  app: { acme: { x: 195, y: 640, w: 220, h: 110 }, globex: { x: 445, y: 640, w: 220, h: 110 } },
+  gateway: { x: 320, y: 360, w: 480, h: 250 },
+  status: {
+    agent: { acme: { x: 0, y: -85 }, globex: { x: 0, y: -85 } },
+    app: { acme: { x: 0, y: 85 }, globex: { x: 0, y: 85 } },
+    gateway: { x: 0, y: -88 },
+  },
+  chips: { x: 320, y: 448 },
+  chip_size: 16,
+  edgeLabels: {
+    in: { acme: { x: 195, y: 203 }, globex: { x: 445, y: 203 } },
+    out: { acme: { x: 195, y: 537 }, globex: { x: 445, y: 537 } },
+    return: { acme: null, globex: null },
+  },
+  returnBulge: { acme: -55, globex: 55 },
+  appNames: { acme: 'Acme\'s app', globex: 'Globex\'s app' },
+  caption: { x: 0, y: 0, max: 0, size: 0 },
+  crop: '0 0 640 780',
+}
+
+function deployedScene(layout: DeployedLayout, name: string) {
+  return defineScene(name, (b) => {
+    const { stage, tl } = b
+    const L = layout
+    const nodes = {} as Record<'agent_acme' | 'agent_globex' | 'gateway' | 'app_acme' | 'app_globex', Node>
+    for (const id of CLIENT_IDS) {
+      nodes[`agent_${id}`] = node(stage, { ...L.agent[id], eyebrow: 'Vapi assistant', title: CLIENT_NAMES[id], icon: 'mic', scale: L.k_client, status: L.status.agent[id] })
+      nodes[`app_${id}`] = node(stage, { ...L.app[id], eyebrow: 'Deployed', title: L.appNames[id], icon: 'dns', scale: L.k_client, status: L.status.app[id] })
+    }
+    nodes.gateway = node(stage, { ...L.gateway, eyebrow: 'Hookdeck', title: 'Event Gateway', icon: 'hookdeck', variant: 'work', scale: L.k_shared, status: L.status.gateway })
+
+    const at = (n: Node, side: 'left' | 'right' | 'top' | 'bottom', client: Box): Point =>
+      L.dir === 'h' ? { x: n[side].x, y: client.y } : { x: client.x, y: n[side].y }
+    const edges = {} as Record<`${'in' | 'out' | 'return'}_${ClientId}`, Connector>
+    const edgeLabels: SVGGElement[] = []
+    for (const id of CLIENT_IDS) {
+      const agent = nodes[`agent_${id}`]
+      const app = nodes[`app_${id}`]
+      const [out_a, out_b] = L.dir === 'h' ? (['right', 'left'] as const) : (['bottom', 'top'] as const)
+      edges[`in_${id}`] = connector(stage, agent[out_a], at(nodes.gateway, out_b, L.agent[id]), L.dir)
+      edges[`out_${id}`] = connector(stage, at(nodes.gateway, out_a, L.agent[id]), app[out_b], L.dir)
+      const side = id === 'acme' ? (L.dir === 'h' ? 'top' : 'left') : (L.dir === 'h' ? 'bottom' : 'right')
+      edges[`return_${id}`] = loopConnector(stage, app[side], agent[side], L.dir, L.returnBulge[id])
+      edgeLabels.push(connectorLabel(stage, { ...L.edgeLabels.in[id], label: 'POST' }))
+      edgeLabels.push(connectorLabel(stage, { ...L.edgeLabels.out[id], label: 'HTTPS' }))
+      const return_at = L.edgeLabels.return[id]
+      if (return_at) edgeLabels.push(connectorLabel(stage, { ...return_at, label: 'controlUrl' }))
+    }
+    const chips = chipRow(stage.overlay, { ...L.chips, items: [...CAPABILITIES], size: L.chip_size, gap: L.dir === 'h' ? 14 : 8 })
+
+    for (const n of Object.values(nodes))
+      gsap.set(n.g, { autoAlpha: 0 })
+    for (const e of Object.values(edges))
+      drawable(e.path)
+    for (const l of edgeLabels)
+      gsap.set(l, { autoAlpha: 0 })
+    for (const c of Object.values(chips))
+      gsap.set(c.g, { autoAlpha: 0 })
+
+    const size = L.dir === 'h' ? 21 : 17
+    const status = {} as Record<keyof typeof nodes, { set: (at: number, label: string, tone?: Tone) => number }>
+    for (const key of Object.keys(nodes) as (keyof typeof nodes)[]) {
+      let current: SVGGElement | null = null
+      status[key] = {
+        set(at, label, tone = 'neutral') {
+          const chip = statusChip(stage, nodes[key], label, tone, size)
+          const t = swap(tl, current, chip, at)
+          current = chip
+          return t
+        },
+      }
+    }
+    const caption = captions(stage, [...deployedCaptionsBy], { x: L.caption.x, y: L.caption.y }, b.options.captions && L.dir === 'h', { max: L.caption.max, size: L.caption.size })
+    const send = (edge: keyof typeof edges, start: number, label: string) =>
+      travel(tl, packet(stage, edges[edge], { label, labelClear: true }), start, 'into', 1.2)
+    const work = (ids: string[], start: number) => {
+      let t = start
+      for (const id of ids) {
+        toneTo(tl, chips[id], 'success', t)
+        pulse(tl, chips[id].g, t)
+        t += 0.4
+      }
+      return t
+    }
+    const resetChips = (start: number) => {
+      for (const chip of Object.values(chips))
+        toneTo(tl, chip, 'neutral', start)
+    }
+    /** One webhook's whole delivery for a client: in to Event Gateway (verify and store), out to the client's app over HTTPS. */
+    const deliver = (start: number, who: ClientId, label: string, lead: { text: string, tone?: Tone }) => {
+      let t = send(`in_${who}`, start, label)
+      status[`agent_${who}`].set(t - 0.1, 'sent', 'blue')
+      t = work(['verify', 'store'], t)
+      status.gateway.set(t - 0.3, 'verified · stored', 'success')
+      status[`agent_${who}`].set(t, 'got 200', 'success')
+      t = send(`out_${who}`, t, label)
+      accepted(tl, nodes[`app_${who}`], t - 0.15)
+      return status[`app_${who}`].set(t, lead.text, lead.tone ?? 'success')
+    }
+    const returnResult = (start: number, who: ClientId) => {
+      status[`app_${who}`].set(start + 0.1, 'result ready', 'blue')
+      const t = send(`return_${who}`, start, 'add-message')
+      return status[`agent_${who}`].set(t - 0.1, 'result spoken', 'success')
+    }
+
+    b.intro(() => {
+      const order = ['agent_acme', 'agent_globex', 'gateway', 'app_acme', 'app_globex'] as const
+      order.forEach((id, i) => show(tl, nodes[id].g, 0.15 + i * 0.14))
+      const edge_order = ['in_acme', 'in_globex', 'out_acme', 'out_globex', 'return_acme', 'return_globex'] as const
+      edge_order.forEach((id, i) => draw(tl, edges[id].path, 0.55 + i * 0.12, 0.5))
+      edgeLabels.forEach((l, i) => show(tl, l, 0.95 + i * 0.08))
+      return Math.max(show(tl, Object.values(chips).map(c => c.g), 1.0), 1.9)
+    })
+    b.step((start) => {
+      caption.to(tl, 1, start)
+      return deliver(start, 'acme', IN_PROGRESS, { text: 'In call' })
+    })
+    b.step((start) => {
+      caption.to(tl, 2, start)
+      resetChips(start)
+      return deliver(start + 0.2, 'globex', IN_PROGRESS, { text: 'In call' })
+    })
+    b.step((start) => {
+      caption.to(tl, 3, start)
+      resetChips(start)
+      const t = deliver(start + 0.2, 'acme', TOOL_CALLS, { text: 'Looking up', tone: 'blue' })
+      resetChips(t)
+      return deliver(t + 0.1, 'globex', GLOBEX_TOOL_CALLS, { text: 'Looking up', tone: 'blue' })
+    })
+    b.step((start) => {
+      caption.to(tl, 4, start)
+      resetChips(start)
+      const t = returnResult(start + 0.2, 'acme')
+      return Math.max(t, returnResult(start + 0.7, 'globex'))
+    })
+  }, { canvas: layout.canvas })
+}
+
+export const createDeployedScene = deployedScene(DEPLOYED_DESKTOP, 'vapi-deployed')
+export const createDeployedMobileScene = deployedScene(DEPLOYED_PHONE, 'vapi-deployed-mobile')
+export const deployedCaptions = deployedCaptionsBy
+export const deployedCrop = DEPLOYED_DESKTOP.crop
 
 // ---- Scene factories ----
 

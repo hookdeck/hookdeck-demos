@@ -30,6 +30,14 @@ Built from the `hookdeck-presentations` skill's scene kit (TypeScript, SVG, GSAP
 4. **A phone layout for every scripted scene**, 640 units wide, with the same steps and captions. Share the builder and pass a layout, as `scenes/post-call.ts` does.
 5. **Show the live view with `scene.live`**, and keep the live scene's node, edge and chip ids stable (`agent`, `gateway`, `listen`, `app`; `in`, `out`, `local`; `verify`, `store`, `dedup`, `retry`).
 
+## Two modes: local and deployed
+
+A demo runs locally (`hookdeck listen`, the app on localhost), and a tutorial's opening diagram shows the flow as it runs in production. A scene file carries both, with no new kit code:
+
+- **Local** is the demo page's view and the tutorial's step diagrams. The tutorial passes `flags: { tutorial: true }`, which only relabels the app ("Your app", or each client's app for Vapi). The demo page leaves the flag off and keeps its names.
+- **Deployed** is its own scene, `<vendor>-deployed` (`deployed` for ElevenLabs), with a `deployedCaptions` export: provider, Event Gateway and your app, joined by an HTTPS edge, and no CLI node. Event Gateway signs each delivery, and your app verifies the Hookdeck signature. It is in the bundle's `scenes` map for the website and the capture script, and not in `scenarios`, so the demo page has no tab for it.
+- Capture it by name: `npm run capture -- vapi-deployed`.
+
 ## Adding a demo
 
 See the notes in `docs`-style form in the demo that pilots it: `elevenlabs/post-call-transcripts/scenes/post-call.ts`. In short: add `"scenes": "scenes/kit"` to the demo in `_shared/manifest.json`, run `sync-shared`, write `scenes/<demo>.ts` (layouts, `buildParts`, scenarios), an `entry.ts`, copy `scripts/build-scenes.mjs`, and add `build:scenes` and `capture` scripts.

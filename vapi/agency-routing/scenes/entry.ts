@@ -17,6 +17,9 @@ export const scenes = {
   'vapi-bad-signature-mobile': vr.createBadSignatureMobileScene,
   'vapi-app-down': vr.createAppDownScene,
   'vapi-app-down-mobile': vr.createAppDownMobileScene,
+  // The tutorial's opening diagram (deployed). Not a tab in the demo page, which shows what runs.
+  'vapi-deployed': vr.createDeployedScene,
+  'vapi-deployed-mobile': vr.createDeployedMobileScene,
 }
 
 /** The platform's name, shown in the square captures' eyebrow: "{ Hookdeck + Vapi }". */

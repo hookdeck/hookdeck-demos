@@ -74,6 +74,17 @@ export const captionsBy = {
   ],
 } as const
 
+// The opening diagram of a tutorial: the flow as it runs once your app is deployed. No
+// `hookdeck listen`: Event Gateway delivers to your app's HTTPS endpoint. Not a tab in the demo
+// page, which shows what the demo runs.
+export const deployedCaptionsBy = [
+  'LiveKit sends a webhook for each room and participant event, and Event Gateway delivers each one to your app over HTTPS.',
+  'A room opens. LiveKit sends `room_started` to Event Gateway, which delivers it to your app over HTTPS. Your app checks LiveKit\'s token in the `Authorization` header, which Event Gateway forwards unchanged, and the call is in progress.',
+  'A participant joins. `participant_joined` arrives the same way, and your app adds the participant to the call.',
+  'The participant leaves. `participant_left` is delivered, and your app marks them as left.',
+  'The room closes. `room_finished` is delivered, and the call log shows the call as ended, with its start, end and duration.',
+] as const
+
 export type ScenarioId = keyof typeof captionsBy
 
 // ---- Layouts: where the components sit ----
@@ -189,14 +200,18 @@ function loopConnector(stage: Stage, from: Point, to: Point, dir: 'h' | 'v', bul
   return { path: base.path, d, length: base.path.getTotalLength(), dir: 'h' }
 }
 
-function buildParts(build: Pick<SceneBuild, 'stage'>, layout: Layout, with_start = false): Parts {
+/**
+ * The `tutorial` flag is set by the website for the step diagrams of the guide: the app is "Your
+ * app" there, because the reader runs their own. The demo page leaves it off and keeps "Call log".
+ */
+function buildParts(build: Pick<SceneBuild, 'stage' | 'options'>, layout: Layout, with_start = false): Parts {
   const { stage } = build
   const L = layout
   const nodes: Record<NodeId, Node> = {
     agent: node(stage, { ...L.agent, eyebrow: 'LiveKit Cloud', title: 'Rooms', icon: 'record_voice_over', scale: L.k, status: L.status.agent }),
     gateway: node(stage, { ...L.gateway, eyebrow: 'Hookdeck', title: 'Event Gateway', icon: 'hookdeck', variant: 'work', scale: L.k, status: L.status.gateway }),
     listen: node(stage, { ...L.listen, eyebrow: 'Hookdeck CLI', title: 'hookdeck listen', icon: 'terminal', scale: L.k, status: L.status.listen }),
-    app: node(stage, { ...L.app, eyebrow: 'Localhost', title: 'Call log', icon: 'dns', scale: L.k, status: L.status.app }),
+    app: node(stage, { ...L.app, eyebrow: 'Localhost', title: build.options.flags?.tutorial ? 'Your app' : 'Call log', icon: 'dns', scale: L.k, status: L.status.app }),
   }
   const ends = L.dir === 'h'
     ? { from: ['right', 'right', 'right'], to: ['left', 'left', 'left'] } as const
@@ -446,6 +461,156 @@ const scenarios: Record<ScenarioId, (b: SceneBuild, c: Ctx) => void> = {
     })
   },
 }
+
+// ---- The deployed view: LiveKit -> Event Gateway -> your app, no `hookdeck listen` ----
+
+interface DeployedLayout {
+  canvas: Canvas
+  dir: 'h' | 'v'
+  k: number
+  agent: { x: number, y: number, w: number, h: number }
+  gateway: { x: number, y: number, w: number, h: number }
+  app: { x: number, y: number, w: number, h: number }
+  status: { agent: Point, gateway: Point, app: Point }
+  chips: Point
+  edgeLabels: { in: Point, out: Point }
+  caption: { x: number, y: number, max: number, size: number }
+  crop: string
+}
+
+const DEPLOYED_DESKTOP: DeployedLayout = {
+  canvas: { width: 1920, height: 1080 },
+  dir: 'h',
+  k: 1,
+  agent: { x: 250, y: 470, w: 300, h: 150 },
+  gateway: { x: 960, y: 470, w: 390, h: 210 },
+  app: { x: 1670, y: 470, w: 300, h: 150 },
+  status: { agent: { x: 0, y: 118 }, gateway: { x: 0, y: -150 }, app: { x: 0, y: 118 } },
+  chips: { x: 960, y: 624 },
+  edgeLabels: { in: { x: 605, y: 512 }, out: { x: 1315, y: 512 } },
+  caption: { x: 60, y: 870, max: 78, size: 38 },
+  crop: '30 270 1860 420',
+}
+
+const DEPLOYED_PHONE: DeployedLayout = {
+  canvas: { width: 640, height: 940 },
+  dir: 'v',
+  k: 0.9,
+  agent: { x: 320, y: 150, w: 440, h: 120 },
+  gateway: { x: 320, y: 470, w: 500, h: 250 },
+  app: { x: 320, y: 805, w: 440, h: 120 },
+  // Status chips sit above Retell/the provider and below your app, and the gateway's inside its card, so a moving packet label never crosses one.
+  status: { agent: { x: 0, y: -85 }, gateway: { x: 0, y: -88 }, app: { x: 0, y: 85 } },
+  chips: { x: 320, y: 558 },
+  edgeLabels: { in: { x: 320, y: 277 }, out: { x: 320, y: 670 } },
+  caption: { x: 0, y: 0, max: 0, size: 0 },
+  crop: '0 0 640 940',
+}
+
+function deployedScene(layout: DeployedLayout, name: string) {
+  return defineScene(name, (b) => {
+    const { stage, tl } = b
+    const L = layout
+    const nodes = {
+      agent: node(stage, { ...L.agent, eyebrow: 'LiveKit Cloud', title: 'Rooms', icon: 'record_voice_over', scale: L.k, status: L.status.agent }),
+      gateway: node(stage, { ...L.gateway, eyebrow: 'Hookdeck', title: 'Event Gateway', icon: 'hookdeck', variant: 'work', scale: L.k, status: L.status.gateway }),
+      app: node(stage, { ...L.app, eyebrow: 'Deployed', title: 'Your app', icon: 'dns', scale: L.k, status: L.status.app }),
+    }
+    const ends = L.dir === 'h' ? { from: 'right', to: 'left' } as const : { from: 'bottom', to: 'top' } as const
+    const edges = {
+      in: connector(stage, nodes.agent[ends.from], nodes.gateway[ends.to], L.dir),
+      out: connector(stage, nodes.gateway[ends.from], nodes.app[ends.to], L.dir),
+    }
+    const edgeLabels = [
+      connectorLabel(stage, { ...L.edgeLabels.in, label: 'POST' }),
+      connectorLabel(stage, { ...L.edgeLabels.out, label: 'HTTPS' }),
+    ]
+    const chips = chipRow(stage.overlay, { ...L.chips, items: [...CAPABILITIES], size: L.dir === 'h' ? 20 : 17, gap: L.dir === 'h' ? 14 : 8 })
+
+    for (const n of Object.values(nodes))
+      gsap.set(n.g, { autoAlpha: 0 })
+    for (const e of Object.values(edges))
+      drawable(e.path)
+    for (const l of edgeLabels)
+      gsap.set(l, { autoAlpha: 0 })
+    for (const c of Object.values(chips))
+      gsap.set(c.g, { autoAlpha: 0 })
+
+    const size = L.dir === 'h' ? 21 : 18
+    const status = {} as Record<keyof typeof nodes, { set: (at: number, label: string, tone?: Tone) => number }>
+    for (const key of Object.keys(nodes) as (keyof typeof nodes)[]) {
+      let current: SVGGElement | null = null
+      status[key] = {
+        set(at, label, tone = 'neutral') {
+          const chip = statusChip(stage, nodes[key], label, tone, size)
+          const t = swap(tl, current, chip, at)
+          current = chip
+          return t
+        },
+      }
+    }
+    const caption = captions(stage, [...deployedCaptionsBy], { x: L.caption.x, y: L.caption.y }, b.options.captions && L.dir === 'h', { max: L.caption.max, size: L.caption.size })
+    const send = (edge: keyof typeof edges, at: number, label: string) =>
+      travel(tl, packet(stage, edges[edge], { label, labelClear: true }), at, 'into', 1.2)
+    const work = (ids: string[], at: number) => {
+      let t = at
+      for (const id of ids) {
+        toneTo(tl, chips[id], 'success', t)
+        pulse(tl, chips[id].g, t)
+        t += 0.4
+      }
+      return t
+    }
+    const resetChips = (at: number) => {
+      for (const chip of Object.values(chips))
+        toneTo(tl, chip, 'neutral', at)
+    }
+    /** One webhook's whole delivery: in to Event Gateway (receive and store), out to your app over HTTPS. */
+    const deliver = (at: number, label: string, lead: string) => {
+      let t = send('in', at, label)
+      status.agent.set(t - 0.1, 'sent', 'blue')
+      t = work(['verify', 'store'], t)
+      status.gateway.set(t - 0.3, 'stored', 'success')
+      status.agent.set(t, 'got 200', 'success')
+      t = send('out', t, label)
+      accepted(tl, nodes.app, t - 0.15)
+      return status.app.set(t, lead, 'success')
+    }
+
+    b.intro(() => {
+      ;(['agent', 'gateway', 'app'] as const).forEach((id, i) => show(tl, nodes[id].g, 0.15 + i * 0.18))
+      ;(['in', 'out'] as const).forEach((id, i) => {
+        draw(tl, edges[id].path, 0.55 + i * 0.18, 0.5)
+        show(tl, edgeLabels[i], 0.95 + i * 0.18)
+      })
+      return Math.max(show(tl, Object.values(chips).map(c => c.g), 1.0), 1.7)
+    })
+    b.step((at) => {
+      caption.to(tl, 1, at)
+      return deliver(at, STARTED, 'In progress')
+    })
+    b.step((at) => {
+      caption.to(tl, 2, at)
+      resetChips(at)
+      return deliver(at, JOINED, '1 in room')
+    })
+    b.step((at) => {
+      caption.to(tl, 3, at)
+      resetChips(at)
+      return deliver(at, LEFT, '0 in room')
+    })
+    b.step((at) => {
+      caption.to(tl, 4, at)
+      resetChips(at)
+      return deliver(at, FINISHED, 'Call ended')
+    })
+  }, { canvas: layout.canvas })
+}
+
+export const createDeployedScene = deployedScene(DEPLOYED_DESKTOP, 'livekit-deployed')
+export const createDeployedMobileScene = deployedScene(DEPLOYED_PHONE, 'livekit-deployed-mobile')
+export const deployedCaptions = deployedCaptionsBy
+export const deployedCrop = DEPLOYED_DESKTOP.crop
 
 // ---- Scene factories ----
 
