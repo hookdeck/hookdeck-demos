@@ -156,11 +156,12 @@ async function main() {
     const lister = await browser.newPage()
     await lister.goto(`${base}/capture?list=1`, { waitUntil: 'networkidle' })
     const all: string[] = await lister.evaluate(() => (window as any).__scenarioIds)
+    const known: string[] = await lister.evaluate(() => (window as any).__sceneIds)
     await lister.close()
     const names = positionals.length ? positionals : all
     for (const name of names) {
-      if (!all.includes(name))
-        throw new Error(`Unknown scene "${name}". Scenes: ${all.join(', ')}`)
+      if (!known.includes(name))
+        throw new Error(`Unknown scene "${name}". Scenes: ${known.join(', ')}`)
       await capture(browser, base, name)
     }
   }
