@@ -67,25 +67,38 @@ const sceneTitle = (name?: string) => {
   return s ? s[0].toUpperCase() + s.slice(1) : 'Scene';
 };
 
+/**
+ * The session an event belongs to. The room sid comes first: two sessions can reuse a room name (a room that finished and was
+ * opened again), and the name alone would merge them. Only an event with no sid (an ingress_started carries none) is matched by
+ * name, to the newest session of that name that has not finished. A session known only by name moves under its sid when a sid appears.
+ */
+function findSession(chronicle: Chronicle, room_name: string, sid: string | undefined): ChronicleSession {
+  const named = Object.values(chronicle.sessions).filter((s) => s.room_name === room_name);
+  if (sid) {
+    if (chronicle.sessions[sid]) return chronicle.sessions[sid];
+    const placeholder = named.find((s) => s.key.startsWith('name:'));
+    if (placeholder) {
+      delete chronicle.sessions[placeholder.key];
+      placeholder.key = sid;
+      return (chronicle.sessions[sid] = placeholder);
+    }
+    return (chronicle.sessions[sid] = { key: sid, room_name, last_event_at: 0, people: {}, scenes: {}, event_ids: [] });
+  }
+  const newest = (list: ChronicleSession[]) => list.sort((a, b) => b.last_event_at - a.last_event_at)[0];
+  const found = newest(named.filter((s) => !s.ended_at)) || newest(named);
+  if (found) return found;
+  const key = `name:${room_name}`;
+  return (chronicle.sessions[key] = { key, room_name, last_event_at: 0, people: {}, scenes: {}, event_ids: [] });
+}
+
 export function applyChronicle(chronicle: Chronicle, event: LiveKitEvent): { duplicate: boolean } {
   const info = (event as any).ingressInfo;
   const room_name = event.room?.name || info?.roomName;
   if (!room_name) return { duplicate: false };
   // Ingress events carry the room's sid in `state.roomId` (only the ended one, in practice) and its name in `roomName`
   const sid: string | undefined = event.room?.sid || info?.state?.roomId;
-  const by_name = Object.values(chronicle.sessions).find((s) => s.room_name === room_name);
-  let session = (sid && chronicle.sessions[sid]) || by_name;
-  if (!session) {
-    const key = sid || `name:${room_name}`;
-    session = chronicle.sessions[key] = { key, room_name, last_event_at: 0, people: {}, scenes: {}, event_ids: [] };
-  } else if (sid && session.key !== sid) {
-    // A placeholder keyed by name (before a room sid was seen) moves under the sid
-    delete chronicle.sessions[session.key];
-    session.key = sid;
-    chronicle.sessions[sid] = session;
-  }
+  const session = findSession(chronicle, room_name, sid);
   if (session.event_ids.includes(event.id)) return { duplicate: true };
-  session.event_ids.push(event.id);
 
   const at = toMs(event.createdAt) ?? Date.now();
   session.last_event_at = Math.max(session.last_event_at, at);
@@ -126,6 +139,8 @@ export function applyChronicle(chronicle: Chronicle, event: LiveKitEvent): { dup
     default:
       break;
   }
+  // Seen only now that it is applied: if applying threw, the retry must not count as a duplicate
+  session.event_ids.push(event.id);
   return { duplicate: false };
 }
 

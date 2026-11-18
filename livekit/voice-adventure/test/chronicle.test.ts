@@ -62,3 +62,32 @@ test('duplicates and reverse order give the same chronicle, in one session', () 
   assert.deepEqual(reversed, forward);
   assert.deepEqual(doubled, forward);
 });
+
+test('two sessions that reuse a room name stay apart: the sid decides, the name is only a fallback', () => {
+  const second = { sid: 'RM_second', name: 'story-1', creationTime: T0 + 5000 };
+  const chronicle = emptyChronicle();
+  for (const e of events) applyChronicle(chronicle, e);
+  // The same room name opens again with a new sid
+  applyChronicle(chronicle, { id: 'f1', event: 'room_started', createdAt: T0 + 5000, room: second });
+  applyChronicle(chronicle, { id: 'f2', event: 'participant_joined', createdAt: T0 + 5001, room: second, participant: player('web-c', 'Ana') });
+  // A late, replayed event of the first session still belongs to it
+  applyChronicle(chronicle, ev('e12', 'participant_left', T0 + 91, { participant: player('web-b', 'Sam') }));
+  // An ingress_started has no sid: it goes to the newest session of that name that has not finished
+  applyChronicle(chronicle, { id: 'f3', event: 'ingress_started', createdAt: T0 + 5002, ingressInfo: { ingressId: 'IN_2', name: 'scene:forest', roomName: 'story-1', state: { startedAt: String((T0 + 5002) * 1e9) } } });
+  const views = viewChronicle(chronicle);
+  assert.equal(views.length, 2);
+  const [newer, older] = views;
+  assert.equal(newer.status, 'in progress');
+  assert.deepEqual(newer.players, ['Ana']);
+  assert.equal(newer.scenes, 1);
+  assert.equal(older.status, 'ended');
+  assert.equal(older.scenes, 1);
+  assert.ok(!older.players.includes('Ana'));
+});
+
+test('an event with no sid first, then the sid: the name-only session moves under the sid', () => {
+  const chronicle = emptyChronicle();
+  applyChronicle(chronicle, { id: 'g1', event: 'ingress_started', createdAt: T0, ingressInfo: { ingressId: 'IN_1', name: 'scene:tavern', roomName: 'story-1', state: {} } });
+  applyChronicle(chronicle, ev('g2', 'room_started', T0 + 1));
+  assert.deepEqual(Object.keys(chronicle.sessions), ['RM_story']);
+});

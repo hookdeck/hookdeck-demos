@@ -126,7 +126,6 @@ export function applyEvent(log: CallLog, event: LiveKitEvent): ApplyResult {
   if (!session) return { duplicate: false };
 
   if (session.event_ids.includes(event.id)) return { duplicate: true, session_key: session.key };
-  session.event_ids.push(event.id);
   session.last_event_at = Math.max(session.last_event_at, created_ms);
 
   const room_created = toMs(event.room?.creationTimeMs) ?? toMs(event.room?.creationTime);
@@ -185,6 +184,9 @@ export function applyEvent(log: CallLog, event: LiveKitEvent): ApplyResult {
     default:
       break; // track_*, ingress_*: recorded in the delivery list only
   }
+
+  // Seen only now that it is applied: if applying threw, the retry must not count as a duplicate
+  session.event_ids.push(event.id);
 
   // A name-keyed placeholder created before any sid was seen moves under the sid
   if (session.room_sid && log.sessions[`name:${session.room_name}`] && session.key !== `name:${session.room_name}`) {
