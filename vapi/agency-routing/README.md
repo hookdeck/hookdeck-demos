@@ -7,7 +7,9 @@ A voice AI agency routes each client's Vapi call events to that client's endpoin
 1. Copy `.env.example` to `.env` and set `VAPI_API_KEY` (private), `VAPI_PUBLIC_KEY` (public, for the Start call buttons) and `HOOKDECK_API_KEY`. Both Vapi keys are at https://dashboard.vapi.ai/org/api-keys.
 2. `npm install`, then `npm run setup` (creates the Hookdeck sources and connections and the Vapi credential, tool and assistants).
 3. `npm run listen` in one terminal and `npm start` in another.
-4. Open http://localhost:4000. The **Data flow** pane at the bottom is open by default and shows each webhook moving from Vapi through Event Gateway to the client's endpoint. `npm run simulate` replays a signed sample call without a microphone (`-- globex` for the other client, `--duplicate` to send the end-of-call report twice); `npm run probe` checks that a correctly signed request is accepted and a badly signed one gets 401.
+4. Open http://localhost:4000. The **Data flow** pane at the bottom is open by default and shows each webhook moving from Vapi through Event Gateway to the client's endpoint. `npm run simulate` replays a signed sample call without a microphone (`-- globex` for the other client, `--duplicate` to send the end-of-call report twice; start the app with `ALLOW_LOCAL_CONTROL_URL=true` so it will post the result to the simulator's local stand-in for Vapi); `npm run probe` checks that a correctly signed request is accepted and a badly signed one gets 401; `npm run teardown` deletes the Vapi assistants, tool and credential the setup created (the Hookdeck connections stay).
+
+The app listens on `127.0.0.1` only, which is enough because `hookdeck listen` runs on the same machine. Set `HOST=0.0.0.0` in `.env` only if you need to reach it from another device. The app calls only `https://*.vapi.ai` control URLs (plus `http://localhost` when `ALLOW_LOCAL_CONTROL_URL=true`). `CONTROL_MODE=say` makes the app speak the result instead of adding it as a message, and `LOOKUP_DELAY_MS` changes the 6 second CRM delay. `.env.example` lists the optional `VAPI_MODEL`, `VAPI_SIGNATURE_PREFIX`, `TRIM_PAYLOAD`, `VAPI_API_BASE` and `HOOKDECK_CLI` settings too.
 
 Run one `hookdeck listen` for these sources. Each running `hookdeck listen` gets its own copy of every event, so a second one makes the app receive each webhook twice.
 
@@ -16,9 +18,9 @@ Run one `hookdeck listen` for these sources. Each running `hookdeck listen` gets
 No Vapi dashboard needed.
 
 1. Open http://localhost:4000.
-2. On the Acme Dental card, click **Call Acme Dental** (**Plug in and call** in the default Switchboard theme) and allow microphone access. You are the caller; the card names the assistant you are ringing.
-3. Say: "Hi, I'm Priya Shah, what's my next appointment?" The assistant says it is checking, then stays quiet; about 6 seconds later the CRM result is spoken into the call. The **While you wait** panel on the card shows the tool request, the CRM delay counting down and the result being posted to the call's `controlUrl`.
-4. Click **End call** (**Pull the plug**). Repeat in the Globex Plumbing column with: "Hi, I'm Maria Lopez, when is my plumber coming?"
+2. On the Acme Dental card, click **Plug in and call** (**Call Acme Dental** in the System, Light and Dark themes) and allow microphone access. You are the caller; the card names the assistant you are ringing.
+3. Say: "Hi, I'm Priya Shah, what's my next appointment?" The assistant says it is checking, then stays quiet (the prompt limits it to looking up an existing account and booking, so for anything else it says it can't do that and offers a call back); about 6 seconds later the CRM result is spoken into the call. The **While you wait** panel on the card shows the tool request, the CRM delay counting down and the result being posted to the call's `controlUrl`.
+4. Click **End call** (**Pull the plug** in Switchboard). Repeat in the Globex Plumbing column with: "Hi, I'm Maria Lopez, when is my plumber coming?"
 
 Each column shows the events that arrived through that client's Hookdeck source. The page loads the Vapi Web SDK (`@vapi-ai/web`, pinned) from esm.sh; the server only exposes `VAPI_PUBLIC_KEY` and the assistant IDs at `/api/config`.
 

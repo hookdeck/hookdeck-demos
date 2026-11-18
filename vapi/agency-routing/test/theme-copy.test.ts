@@ -91,7 +91,7 @@ test('roles wording is in the base page and the client config, not only in the t
 });
 
 test('the shared hook names no specific theme', () => {
-  const shared = fs.readFileSync(path.join(__dirname, '../../../_shared/theme/theme.js'), 'utf8');
+  const shared = fs.readFileSync(path.join(__dirname, '../public/theme.js'), 'utf8');
   assert.doesNotMatch(shared.replace(/\/\/.*$/gm, ''), /switchboard|acme|vapi/i);
 });
 
