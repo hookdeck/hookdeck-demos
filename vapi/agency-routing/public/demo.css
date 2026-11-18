@@ -1,0 +1,79 @@
+/* Focused layout: the page keeps labels, data, actions and status; explanations sit behind ⓘ dialogs and hover tips.
+   Every theme gets this layout. A theme restyles it through the design-system tokens and its own stylesheet. */
+.hero__line { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.hero__line p { margin: 0; }
+.screw { display: none; }
+
+/* ⓘ button: a 44px hit area around a smaller icon, a real button with an aria-label */
+button.info {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; margin: -13px -8px; padding: 0;
+  border: 0; background: none; box-shadow: none; color: var(--primary-fg); cursor: pointer;
+}
+button.info:hover, button.info:disabled { background: none; box-shadow: none; color: var(--primary-fg); }
+.info__icon { border-radius: 50%; color: var(--primary-fg); }
+.info__icon .ring, .info__icon .stem { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.info__icon .stem { stroke-width: 1.7; stroke-linecap: round; }
+button.info:hover .info__icon, button.info[aria-expanded="true"] .info__icon { background: var(--primary-fg); color: var(--bg-0); }
+button.info:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: -4px; border-radius: var(--radius); }
+
+/* ⓘ dialog */
+.info-dialog {
+  margin: auto; width: min(480px, calc(100% - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: var(--s6);
+  border: 1px solid var(--neutral-outline-3); border-radius: var(--radius); background: var(--bg-0); color: var(--neutral-fg-1);
+  box-shadow: var(--elevation-large, 0 18px 40px rgb(0 0 0 / 0.28));
+}
+.info-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+.info-dialog[open] { display: grid; gap: var(--s3); }
+.info-dialog h3 { margin: 0; font-size: 20px; line-height: 1.25; letter-spacing: 0; }
+.info-dialog p { margin: 0; color: var(--neutral-fg-2); font-size: 14px; line-height: 1.55; letter-spacing: 0; }
+.info-dialog code, .tip-bubble code { font-size: 0.9em; }
+.info-dialog form { display: flex; justify-content: flex-end; margin-top: var(--s2); }
+.info-dialog .button { min-height: 44px; padding: 0 var(--s4); }
+
+/* Hover tip: a few sentences about one control, on hover and on keyboard focus */
+.tip { position: relative; display: inline-flex; margin: 0 var(--s2); }
+.tip-bubble {
+  position: absolute; z-index: 20; top: calc(100% + var(--s2)); left: -20px; width: max-content; max-width: min(300px, calc(100vw - 64px)); padding: var(--s2) var(--s3);
+  border-radius: var(--radius); background: var(--tooltip-bg); color: var(--tooltip-fg); font-size: 13px; line-height: 1.45; font-weight: 400;
+  box-shadow: var(--elevation-small); text-align: left; text-transform: none; letter-spacing: 0; display: none; pointer-events: none;
+}
+.tip-bubble strong { display: block; margin-bottom: 2px; }
+.tip:hover .tip-bubble, .tip:focus-within .tip-bubble { display: block; }
+.tip.tip--off .tip-bubble { display: none; }
+.tip-bubble code { color: inherit; }
+
+/* Roles: who the agent is and who the viewer plays, on each client's card */
+.roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); }
+@media (max-width: 560px) { .roles { grid-template-columns: 1fr; } }
+.role { min-width: 0; display: flex; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); background: var(--bg-1); }
+.role__text { min-width: 0; display: grid; gap: 1px; }
+.role__label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--neutral-fg-2); }
+.role__name { font-size: 16px; line-height: 1.25; color: var(--neutral-fg-1); overflow-wrap: anywhere; }
+.role__icon {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%;
+  color: var(--on-hue-fg); background: var(--primary-blue-bg); border: 2px solid var(--primary-blue-bg); box-sizing: border-box;
+}
+.role__icon--you { color: var(--primary-fg); background: var(--blue-badge-bg); border-color: var(--primary-badge-outline); }
+.role__icon .ring { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* While you wait: the async lookup's three steps */
+.wait { display: grid; gap: var(--s2); padding: var(--s2) var(--s3); border-radius: var(--radius); background: var(--bg-1); border: 1px solid var(--neutral-outline-2); }
+.wait[hidden] { display: none; }
+.wait-head { display: flex; align-items: center; gap: var(--s2); min-height: 28px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s1-5); }
+.step { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: var(--s2); align-items: baseline; font-size: 13px; line-height: 18px; color: var(--neutral-fg-2); }
+.step__n {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 600; line-height: 1;
+  border: 1px solid var(--neutral-outline-3); color: var(--neutral-fg-2); align-self: center;
+}
+.step__meta { font-family: var(--font-mono); font-size: 12px; color: var(--neutral-fg-3); white-space: nowrap; }
+.step code { margin-left: var(--s1); }
+.step--done .step__n { border-color: var(--color-success); color: var(--color-success); }
+.step--active { color: var(--neutral-fg-1); }
+.step--active .step__n { border-color: var(--color-warning); color: var(--color-warning); }
+.step--active .step__meta { color: var(--neutral-fg-1); }
+.step--failed .step__n { border-color: var(--color-danger); color: var(--color-danger); }
+.step--failed .step__meta { color: var(--color-danger); }
+.step--wait { opacity: 0.8; }
+.bar { height: 6px; margin: 0 0 0 30px; border-radius: 3px; background: var(--neutral-outline-1); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--primary-fg); }

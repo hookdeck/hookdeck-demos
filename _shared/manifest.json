@@ -24,6 +24,15 @@
     "hookdeck/mcp-events-forward-proxy": {
       "ds": "viz/ds"
     },
+    "vapi/agency-routing": {
+      "ds": "public/ds",
+      "hookdeck-cli": "scripts/hookdeck-cli.ts",
+      "hookdeck-listen": "scripts/hookdeck-listen.ts",
+      "flow-drawer-server": "src/flow-drawer-server.ts",
+      "scenes": "scenes/kit",
+      "topology-pane": "public/topology-pane",
+      "theme": "public/theme.js"
+    },
     "elevenlabs/post-call-transcripts": {
       "ds": "public/ds",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",

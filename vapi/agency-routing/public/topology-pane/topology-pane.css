@@ -1,0 +1,75 @@
+/* Generated from `_shared/topology-pane/topology-pane.css`; edit there and run `npm run sync-shared`. */
+/*
+ * Topology pane: the scene kit's live topology (and its scripted scenes) in a pane at the bottom of
+ * the page. Uses the Hookdeck design system's tokens (load ds/styles.css first), so light and dark
+ * mode follow the page. All classes start with `tp-`.
+ *
+ * The pane is --tp-height tall when open; the page gets that much bottom padding, so nothing on the
+ * page stays hidden behind it. Closed, only the header bar shows.
+ */
+:root { --tp-height: min(46vh, 460px); --tp-bar: 44px; }
+@media (max-width: 700px) { :root { --tp-height: 60vh; } }
+
+body.tp-enabled { padding-bottom: var(--tp-bar); }
+body.tp-enabled.tp-open { padding-bottom: var(--tp-height); }
+
+.tp-root {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; height: var(--tp-height);
+  display: flex; flex-direction: column; background: var(--bg-1); border-top: 1px solid var(--neutral-outline-2);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .12); font-family: var(--font-sans); color: var(--neutral-fg-1);
+  transition: transform 260ms ease;
+}
+.tp-root:not(.tp-open) { transform: translateY(calc(100% - var(--tp-bar))); }
+.tp-root:not(.tp-open) .tp-body { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .tp-root { transition: none; } .tp-live { animation: none !important; } }
+
+/* Header: collapse control, tabs, scripted-scene controls */
+.tp-bar { flex: none; height: var(--tp-bar); display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); border-bottom: 1px dashed var(--neutral-outline-3); min-width: 0; }
+.tp-toggle { display: inline-flex; align-items: center; gap: var(--s2); flex: none; padding: 4px var(--s2); font-weight: 600; border: 0; background: transparent; box-shadow: none; color: var(--neutral-fg-1); cursor: pointer; font-family: inherit; font-size: 14px; }
+.tp-toggle:hover { background: var(--bg-2); }
+.tp-chevron { display: inline-block; transition: transform 200ms ease; color: var(--neutral-fg-3); }
+.tp-open .tp-chevron { transform: rotate(180deg); }
+.tp-live { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); animation: tp-pulse 2s infinite; }
+@keyframes tp-pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 102, 51, .45); } 70% { box-shadow: 0 0 0 7px rgba(0, 102, 51, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 102, 51, 0); } }
+
+.tp-tabs { display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
+.tp-tabs::-webkit-scrollbar { display: none; }
+.tp-tabs button { flex: none; box-shadow: none; font-family: var(--font-sans); font-size: 13px; line-height: 18px; padding: 4px 10px; border-radius: var(--radius); border: 1px solid var(--neutral-outline-2); background: var(--bg-0); color: var(--neutral-fg-2); cursor: pointer; }
+.tp-tabs button[aria-selected="true"] { color: var(--primary-badge-fg); background: var(--blue-badge-bg); border-color: var(--primary-badge-outline); }
+.tp-root:not(.tp-open) .tp-tabs { visibility: hidden; }
+.tp-controls { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.tp-controls .tp-count { color: var(--neutral-fg-3); font-size: 12px; }
+.tp-controls button { padding: 2px 10px; font-size: 13px; line-height: 20px; }
+.tp-root:not(.tp-open) .tp-controls { visibility: hidden; }
+.tp-root [hidden] { display: none !important; }
+
+/* Body */
+.tp-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tp-canvas { flex: 1; min-height: 0; padding: var(--s2) var(--s4) 0; display: flex; align-items: center; justify-content: center; }
+.tp-canvas svg.stage { width: 100%; height: 100%; max-width: 1400px; }
+.tp-caption { flex: none; margin: 0; padding: var(--s2) var(--s4); min-height: 20px; color: var(--neutral-fg-1); font-size: 14px; line-height: 20px; }
+.tp-caption code { font-family: var(--font-mono); font-size: .9em; padding: 0 4px; border-radius: 4px; background: var(--bg-3); }
+
+/* The detail strip: one message at a time */
+.tp-detail { flex: none; border-top: 1px dashed var(--neutral-outline-3); padding: var(--s2) var(--s4); display: grid; gap: var(--s1); font-size: 13px; line-height: 20px; background: var(--bg-0); min-height: 62px; align-content: center; }
+.tp-detail.tp-empty { color: var(--neutral-fg-3); }
+.tp-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); min-width: 0; }
+.tp-line .tp-label { font-family: var(--font-mono); font-weight: 600; overflow-wrap: anywhere; }
+.tp-line .tp-time, .tp-line .tp-id { font-family: var(--font-mono); font-size: 12px; color: var(--neutral-fg-3); }
+.tp-line a.tp-link { margin-left: auto; font-weight: 600; white-space: nowrap; }
+.tp-pill { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--neutral-outline-2); font-size: 12px; line-height: 18px; white-space: nowrap; background: var(--bg-1); }
+.tp-pill.tp-ok { color: var(--color-success); border-color: var(--color-success-outline); background: var(--color-success-surface); }
+.tp-pill.tp-bad { color: var(--color-danger); border-color: var(--color-danger-outline); background: var(--color-danger-surface); }
+.tp-pill.tp-warn { color: var(--sc-warn, #8a5a00); border-color: var(--sc-warn-outline, #f0dcae); background: var(--sc-warn-surface, #fbf1d9); }
+.tp-gap { color: var(--neutral-fg-3); font-size: 12px; }
+.tp-attempts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
+
+@media (max-width: 700px) {
+  .tp-bar { gap: var(--s2); padding: 0 var(--s2); }
+  .tp-toggle span.tp-title { display: none; }
+  .tp-canvas { padding: var(--s2) var(--s2) 0; }
+  .tp-caption { padding: var(--s2); font-size: 13px; line-height: 18px; }
+  .tp-detail { padding: var(--s2); }
+  .tp-line a.tp-link { margin-left: 0; }
+  .tp-controls .tp-count { display: none; }
+}
