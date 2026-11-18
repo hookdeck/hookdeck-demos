@@ -14,6 +14,7 @@ shopify/        Shopify integration demos
 deepgram/       Deepgram integration demos
 vapi/           Vapi integration demos
 elevenlabs/     ElevenLabs integration demos
+retell/         Retell AI integration demos
 _shared/        Source of truth for code shared across demos
 ```
 
@@ -81,6 +82,12 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 | Demo | Description |
 |------|-------------|
 | [post-call-transcripts](elevenlabs/post-call-transcripts/) | ElevenLabs Agents post-call webhooks through Hookdeck: signature verification, deduplication on `conversation_id`, retries and replay, and large transcript and audio payloads, stored and shown in a small app |
+
+### Retell AI
+
+| Demo | Description |
+|------|-------------|
+| [outbound-lead-calling](retell/outbound-lead-calling/) | A lead arrives, Retell places an outbound call, and the `call_started`, `call_ended` and `call_analyzed` events come back through Hookdeck (signature verification, deduplication, retries) to update the lead |
 
 ## Shared Utilities
 
