@@ -7,7 +7,7 @@ process.env.LEADS_FILE = path.join(os.tmpdir(), `retell-demo-leads-${process.pid
 
 import { applyRetellEvent, endStatus, RetellWebhook } from '../src/events';
 import { signRetellBody, verifyRetellSignature } from '../src/retell-signature';
-import { addLead, getLead } from '../src/store';
+import { addLead, getLead, updateLead } from '../src/store';
 
 function newLead(id: string) {
   addLead({
@@ -69,6 +69,48 @@ test('calls that never connect: no call_started, call_ended carries the reason',
   assert.equal(endStatus('dial_failed'), 'failed');
   assert.equal(endStatus('error_llm_websocket_open'), 'failed');
   assert.equal(endStatus('user_hangup'), 'completed');
+});
+
+test('disconnection reasons: never-connected reasons from Retell are not "completed"', () => {
+  for (const reason of ['dial_busy', 'dial_no_answer', 'voicemail_reached']) assert.equal(endStatus(reason), 'no_answer', reason);
+  for (const reason of ['invalid_destination', 'user_declined', 'telephony_provider_permission_denied', 'telephony_provider_unavailable', 'sip_routing_error', 'marked_as_spam', 'network_blocked', 'no_valid_payment', 'scam_detected'])
+    assert.equal(endStatus(reason), 'failed', reason);
+  assert.equal(endStatus('inactivity'), 'completed');
+});
+
+test('invalid bodies are rejected, not thrown on', () => {
+  for (const bad of [undefined, null, {}, { event: 'call_ended' }, { event: 'call_ended', call: {} }, { event: 5, call: { call_id: 'x' } }, { event: 'call_ended', call: { call_id: 7 } }])
+    assert.equal(applyRetellEvent(bad as any), 'invalid', JSON.stringify(bad));
+});
+
+test('stale call: a late event for an older call changes nothing', () => {
+  newLead('stale');
+  applyRetellEvent(payload('call_ended', 'stale', { disconnection_reason: 'dial_no_answer' }));
+  // The page rings attempt 2: the first call moves to past_call_ids and the lead is waiting for the new call id
+  const before = getLead('stale')!;
+  updateLead('stale', { status: 'calling', next_attempt_at: undefined, past_call_ids: [before.call_id!], call_id: undefined });
+  const snapshot = JSON.stringify({ ...getLead('stale')!, timeline: undefined });
+  for (const event of ['call_started', 'call_analyzed']) {
+    assert.equal(applyRetellEvent({ event, call: { call_id: 'call_stale', metadata: { lead_id: 'stale' }, disconnection_reason: 'user_hangup' } }), 'stale', event);
+  }
+  assert.equal(JSON.stringify({ ...getLead('stale')!, timeline: undefined }), snapshot);
+  assert.ok(getLead('stale')!.timeline.some(t => t.note === 'stale call, ignored'));
+
+  // With a current id, a different call is stale too
+  updateLead('stale', { call_id: 'call_stale_2' });
+  assert.equal(applyRetellEvent({ event: 'call_started', call: { call_id: 'call_other', metadata: { lead_id: 'stale' } } }), 'stale');
+  assert.equal(applyRetellEvent({ event: 'call_ended', call: { call_id: 'call_other', metadata: { lead_id: 'stale' }, disconnection_reason: 'dial_no_answer' } }), 'stale');
+  assert.equal(getLead('stale')!.attempt, 2, 'a stale call_ended must not advance the ladder');
+  assert.equal(applyRetellEvent({ event: 'call_started', call: { call_id: 'call_stale_2', metadata: { lead_id: 'stale' } } }), 'applied');
+  assert.equal(getLead('stale')!.status, 'in_call');
+});
+
+test('the event is recorded on the timeline only after the update succeeds', () => {
+  newLead('order2');
+  const lead = getLead('order2')!;
+  Object.defineProperty(lead, 'status', { get: () => 'calling', set: () => { throw new Error('disk full'); }, configurable: true });
+  assert.throws(() => applyRetellEvent(payload('call_started', 'order2')));
+  assert.equal(lead.timeline.length, 0, 'a failed update must not leave the duplicate marker');
 });
 
 test('unknown calls are acknowledged, not applied', () => {

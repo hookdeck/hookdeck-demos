@@ -36,6 +36,10 @@ export interface Lead {
   /** When the next attempt is due, while the app is waiting to ring the lead again */
   next_attempt_at?: string;
   gave_up?: boolean;
+  /** Call ids of earlier attempts, so a late event for one of them is recognised as stale */
+  past_call_ids?: string[];
+  /** What the lead looked like before a retry was started, restored if the new call fails to start */
+  retry_backup?: Pick<Lead, 'status' | 'next_attempt_at' | 'disconnection_reason' | 'duration_seconds' | 'call_id'>;
   /** Made by the page without a Retell call; its events come from `npm run simulate` or the page's "Lead does not answer" */
   simulated?: boolean;
   timeline: TimelineEntry[];
