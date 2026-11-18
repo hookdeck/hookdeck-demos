@@ -12,4 +12,16 @@
   };
   document.addEventListener('pointerout', clear);
   document.addEventListener('focusout', clear);
+  // Open a bubble above its control when there isn't room below it: the fixed Data flow pane covers the bottom of the window
+  const place = (event) => {
+    const tip = event.target.closest && event.target.closest('.tip');
+    const bubble = tip && tip.querySelector(':scope > .tip-bubble');
+    if (!bubble) return;
+    tip.classList.remove('tip--above');
+    const pane = document.querySelector('.tp-root');
+    const limit = Math.min(window.innerHeight, pane ? pane.getBoundingClientRect().top : window.innerHeight);
+    if (bubble.getBoundingClientRect().bottom > limit) tip.classList.add('tip--above');
+  };
+  document.addEventListener('pointerover', place);
+  document.addEventListener('focusin', place);
 })();

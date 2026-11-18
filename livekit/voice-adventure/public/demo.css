@@ -96,6 +96,8 @@ body.no-verify .tp-pill.tp-ok { display: none; }
 .timeline .dup { color: var(--color-danger); }
 
 /* Story banner, people, transcript and volume: ds tokens and the page's own .message, .badge and .request styles */
+/* An element with the hidden attribute stays hidden, even when a class gives it display: flex (the turn banner, the items box) */
+[hidden] { display: none !important; }
 .story-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
 .people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); color: var(--neutral-fg-1); }
 .people-list li { display: inline-flex; align-items: center; gap: var(--s2); }
@@ -139,7 +141,7 @@ html[data-theme="story"] .end-sub { display: initial; }
    heading that holds the control, so it stays inside the card on a phone. */
 .tip { position: relative; display: inline-flex; }
 .tip.tip--span { position: static; }
-.actions, .heading-row, .satchel { position: relative; }
+.actions, .heading-row, .satchel, .invite { position: relative; }
 .heading-row { display: flex; align-items: center; gap: var(--s2); }
 .tip-bubble {
   position: absolute; z-index: 20; top: calc(100% + var(--s2)); left: 0; width: max-content; max-width: min(300px, calc(100vw - 80px));
@@ -150,6 +152,7 @@ html[data-theme="story"] .end-sub { display: initial; }
 .tip:hover > .tip-bubble, .tip:focus-within > .tip-bubble { opacity: 1; visibility: visible; }
 .tip.tip--off > .tip-bubble { opacity: 0; visibility: hidden; }
 .tip-bubble code { color: inherit; }
+.tip.tip--above > .tip-bubble { top: auto; bottom: calc(100% + var(--s2)); }
 /* ⓘ button: a 44px hit area around a small mark */
 button.tip-i {
   display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; margin: -12px -10px; padding: 0;
