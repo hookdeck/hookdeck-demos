@@ -122,7 +122,7 @@ async function runLookup(client: Client, call_id: string | undefined, tool_call_
   try {
     const status = await sendToCall(control_url, mode === 'say'
       ? { type: 'say', content: record ? `Here is what I found. ${record.summary}` : `Sorry, I could not find ${customer_name} in our records.` }
-      : { type: 'add-message', message: { role: 'system', content: `CRM result: ${summary}` }, triggerResponseEnabled: true });
+      : { type: 'add-message', message: { role: 'system', content: `Account lookup finished. ${summary}` }, triggerResponseEnabled: true });
     log(client, { type: 'live-call-control', call_id, detail: `${mode} sent for ${tool_call_id}: ${summary}`, bytes: 0 });
     recordFlow({ source: client.source, kind: 'outbound', parent_event_id: event_id, label: `POST controlUrl ${mode}`, detail: summary, status, ok: true, duration_ms: Date.now() - started });
   } catch (error: any) {
