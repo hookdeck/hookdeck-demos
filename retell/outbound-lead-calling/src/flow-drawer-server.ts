@@ -144,6 +144,8 @@ export function createFlowState(options: FlowStateOptions) {
   const app_label = options.appLabel ?? 'App';
   const rejected_status = options.rejectedStatus ?? 401;
   const describe = options.describeRequest ?? (() => ({ label: 'request' }));
+  // An empty key would make split('') insert "[key]" between every character, so skip it.
+  const redact = (message: string): string => (options.apiKey ? message.split(options.apiKey).join('[key]') : message);
 
   async function api<T = any>(route: string): Promise<T> {
     const response = await fetch(`${api_base}${route}`, {
@@ -253,7 +255,7 @@ export function createFlowState(options: FlowStateOptions) {
           });
         }
       } catch (e) {
-        error = (e as Error).message.split(options.apiKey).join('[key]');
+        error = redact((e as Error).message);
       }
     }
     messages.sort((a, b) => b.received_at.localeCompare(a.received_at));
@@ -280,7 +282,7 @@ export function createFlowState(options: FlowStateOptions) {
       const body = JSON.stringify(await state());
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(body);
     } catch (e) {
-      res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (e as Error).message.split(options.apiKey).join('[key]') }));
+      res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: redact((e as Error).message) }));
     }
   }
 

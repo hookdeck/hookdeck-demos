@@ -213,7 +213,8 @@
       const verified = message.rejected
         ? `<span class="tp-pill tp-bad">Rejected: signature did not verify</span>`
         : message.verified === false ? `<span class="tp-pill tp-bad">Not verified</span>`
-        : `<span class="tp-pill tp-ok">Verified</span>`;
+        : message.verified === true ? `<span class="tp-pill tp-ok">Verified</span>`
+        : ''; // null: the source does not verify, so there is nothing to claim
       const sender_got = `<span class="tp-pill">${esc(sender)} got ${esc(message.sender_status)}</span>`;
       const lines = [];
       const focus = message.events.find((e) => selected.event_id && e.id === selected.event_id) || message.events[0];

@@ -91,12 +91,35 @@ export function createHookdeckCli(options: HookdeckCliOptions = {}) {
     return key;
   }
 
-  /** Logs the CLI in to the API key's project, in the demo's own config file. */
+  /** Replaces the API key in `text` with "[key]", so an error message or CLI output never prints it. */
+  function redact(text: string): string {
+    const key = process.env.HOOKDECK_API_KEY;
+    return key ? text.split(key).join('[key]') : text;
+  }
+
+  /** Rethrows a failed CLI call with the API key removed from its message and output. */
+  function scrub(error: any): never {
+    error.message = redact(String(error.message));
+    for (const stream of ['stdout', 'stderr']) if (error[stream]) error[stream] = redact(error[stream].toString());
+    throw error;
+  }
+
+  /**
+   * Logs the CLI in to the API key's project, in the demo's own config file. The key reaches the CLI
+   * as HOOKDECK_API_KEY (which `hookdeck ci` reads when --api-key is absent), not on the command line,
+   * where `ps` would show it.
+   */
   function login(): void {
     fs.mkdirSync(run_dir, { recursive: true });
-    execFileSync(bin, ['ci', '--api-key', requireApiKey(), '--hookdeck-config', cli_config], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const api_key = requireApiKey();
+    try {
+      execFileSync(bin, ['ci', '--hookdeck-config', cli_config], {
+        env: { ...process.env, HOOKDECK_API_KEY: api_key },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      scrub(error);
+    }
   }
 
   /** CLI arguments with the demo's config file appended. */
@@ -104,7 +127,11 @@ export function createHookdeckCli(options: HookdeckCliOptions = {}) {
 
   /** Runs a CLI command against the demo's project and returns stdout. */
   function run(args: string[]): string {
-    return execFileSync(bin, withConfig(args), { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+    try {
+      return execFileSync(bin, withConfig(args), { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (error) {
+      return scrub(error);
+    }
   }
 
   /** Runs a CLI command with `--output json` and parses stdout. */
