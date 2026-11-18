@@ -177,3 +177,59 @@ test('turn recovery: progress (the turn ended, or the agent started thinking or 
 
 
 
+
+import { CLOSING_LINE } from '../src/story.ts';
+
+const table = [
+  { name: 'Priya', identity: 'web-a', bot: false },
+  { name: 'Sam', identity: 'web-b', bot: false },
+  { name: 'Pixel', identity: 'bot-pixel', bot: true },
+];
+
+test('a player who left never gets the turn, and the rotation carries on with those still here', () => {
+  const s = fresh();
+  s.last_reply = 'Water drips from the ceiling.';
+  const here = (p: { identity: string }) => p.identity !== 'web-b';
+  const order: string[] = [];
+  for (let i = 0; i < 4; i++) order.push(onPlayout(s, table, here)!.name);
+  assert.deepEqual(order, ['Priya', 'Priya', 'Priya', 'Priya']);
+  // When Bram names the absent player, the turn still goes to someone present
+  s.last_reply = 'Sam, what do you do?';
+  assert.equal(onPlayout(s, table, here)!.name, 'Priya');
+  // Nobody human is here: nobody gets the turn
+  assert.equal(onPlayout(s, table, (p) => p.identity === 'bot-pixel'), undefined);
+});
+
+test('after a say-that-again line the turn stays with the player it was given back to', () => {
+  const s = fresh();
+  s.last_reply = 'Sam, what do you do?';
+  s.rotation = 0; // Priya had the last turn; Bram named Sam
+  s.hold_turn = true;
+  assert.equal(onPlayout(s, table)!.name, 'Priya');
+  assert.equal(s.hold_turn, false);
+  // The hold is used once: the next playout follows Bram's reply again
+  assert.equal(onPlayout(s, table)!.name, 'Sam');
+  // A held player who has left is not held
+  s.hold_turn = true;
+  s.rotation = 1;
+  assert.notEqual(onPlayout(s, table, (p) => p.identity !== 'web-b')!.name, 'Sam');
+});
+
+test('the end watcher can be forced once when the closing never plays', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    let finished = 0;
+    const w = createEndWatcher(() => { finished += 1; }, 2000, { set: setTimeout, clear: clearTimeout });
+    w.arm();
+    w.force();
+    assert.equal(finished, 1);
+    w.onAgentState('speaking', 'listening');
+    mock.timers.tick(5000);
+    w.force();
+    assert.equal(finished, 1);
+    assert.equal(w.done, true);
+    assert.ok(CLOSING_LINE.length > 40 && CLOSING_LINE.split('.').length <= 4);
+  } finally {
+    mock.timers.reset();
+  }
+});

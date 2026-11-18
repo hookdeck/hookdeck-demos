@@ -12,6 +12,9 @@ export function createEndWatcher(finish: () => void, pause_ms = 2000, timers = {
   let handle: ReturnType<typeof setTimeout> | undefined;
   return {
     arm() { armed = true; },
+    /** The closing never played (a hung reply): finish anyway, once. */
+    force() { if (done) return; done = true; timers.clear(handle); finish(); },
+    get done() { return done; },
     onAgentState(_old: string, next: string) {
       if (!armed || done) return;
       if (next === 'listening' || next === 'idle') {
@@ -21,6 +24,9 @@ export function createEndWatcher(finish: () => void, pause_ms = 2000, timers = {
     },
   };
 }
+
+/** A short closing, spoken straight through text-to-speech when the story is over but Bram's own closing never played. */
+export const CLOSING_LINE = 'The Lantern burns, the Mere is still, and the Hollow Light shines again. Fare well, travellers, and thank you for the evening.';
 
 /** After a mute player's turn the listener goes back to a player who can speak (the first one), so their answer is heard. */
 export const speakerAfterMute = <T extends { bot: boolean }>(players: T[]): T | undefined => players.find((p) => !p.bot);
@@ -109,6 +115,8 @@ export interface TurnState {
   described?: string[];
   /** An item tool already ran for this player input: one per reply. */
   item_acted?: boolean;
+  /** A "say that again" line was spoken to the player who holds the turn: the next playout keeps the turn with them. */
+  hold_turn?: boolean;
 }
 
 /** A final transcript from the linked player, or Pixel's chat gesture. The only thing that counts as an exchange. */
@@ -125,16 +133,23 @@ export function onBramReply(s: TurnState, text: string) {
   if (s.world) s.described = [...new Set([...(s.described ?? []), ...usedDetails(sightsOf(s.world), text)])];
 }
 
-/** Bram has finished speaking: who gets the turn now (the player he named, or the next in rotation), or nobody. */
 /**
  * Bram has finished speaking: who gets the next turn, among the human players only. The mute player is never in the rotation: nothing
- * waits for it, and it acts only as an extra around a human turn (when addressed, or once on arriving somewhere).
+ * waits for it, and it acts only as an extra around a human turn (when addressed, or once on arriving somewhere). `here` says who is
+ * still in the room: a player who left is never given the turn. After a "say that again" line the turn stays with the player it was
+ * given back to (if they are still here), whoever Bram's last reply named.
  */
-export function onPlayout<T extends Addressable>(s: TurnState, players: T[]): T | undefined {
+export function onPlayout<T extends Addressable>(s: TurnState, players: T[], here: (player: T) => boolean = () => true): T | undefined {
   if (s.ending || s.scene_index === 0) return undefined;
-  const humans = players.filter((p) => !p.bot);
-  const pool = humans.length ? humans : players;
-  const last = pool.indexOf(players[s.rotation]);
+  const holder = players[s.rotation];
+  if (s.hold_turn) {
+    s.hold_turn = false;
+    if (holder && !holder.bot && here(holder)) return holder;
+  }
+  const humans = players.filter((p) => !p.bot && here(p));
+  const pool = humans.length ? humans : players.filter((p) => !p.bot).length ? [] : players.filter(here);
+  if (!pool.length) return undefined;
+  const last = pool.indexOf(holder);
   const index = nextSpeakerIndex(pool, last, s.last_reply);
   if (index < 0) return undefined;
   s.rotation = players.indexOf(pool[index]);

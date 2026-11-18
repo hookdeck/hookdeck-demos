@@ -17,6 +17,7 @@ import { type JobContext, ServerOptions, cli, defineAgent, inference, llm, voice
 import { ParticipantKind, type RemoteParticipant } from '@livekit/rtc-node';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import dotenv from 'dotenv';
+import { createHmac } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { exitsByDestination, itemById, itemNamed, matchDestination, normalizeItem, PLACES, actionPrompt, addressesPixel, addLightingFromWords, applyActions, closingNote, endTriggered, noActions, parseActions, parseNameCorrection, placeNote, satchelAttribute, usesName, worldAt, type PlaceId, type World } from './world.ts';
@@ -24,13 +25,15 @@ import { askShort, describeLlm, makeLlm } from './llm.ts';
 import { botName, fetchLine, planLedger, shouldFetchBram } from './names.ts';
 import { chooseGesture, respondLine } from './pixel-lines.ts';
 import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
-import { BREVITY, GOAL_LINE, bramInstructions, createEndWatcher, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
+import { BREVITY, CLOSING_LINE, GOAL_LINE, bramInstructions, createEndWatcher, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 /** Must match AGENT_NAME in ../src/token.ts: the token's room configuration dispatches this name. */
 const AGENT_NAME = process.env.STORY_AGENT_NAME || 'story-gm';
 const APP_URL = process.env.STORY_APP_URL || `http://localhost:${process.env.PORT || 4000}`;
+// The app only accepts scene calls that carry this header (derived from the API secret both processes read from .env; see ../src/rooms.ts)
+const APP_HEADERS = { 'content-type': 'application/json', 'x-story-scene-secret': createHmac('sha256', process.env.LIVEKIT_API_SECRET || '').update('story-scene-call').digest('hex') };
 
 // Voices, all through LiveKit Inference. Cartesia's Robyn is an Australian, mature voice from LiveKit's
 // documented list; Deepgram's Aura 2 Draco is a British male voice.
@@ -42,6 +45,8 @@ interface Player {
   name: string;
   /** A silent test participant ("Add a bot player" on the page): Bram voices its turns. */
   bot: boolean;
+  /** Joined with no name: called "Traveller" until they say their name. Not published as their display name. */
+  placeholder?: boolean;
 }
 
 interface StoryData {
@@ -64,6 +69,8 @@ interface StoryData {
   /** Fires if Bram owes a reply and nothing happens for 20 seconds (a hung model request). */
   watchdog: ReturnType<typeof createLlmWatchdog> | undefined;
   ending: boolean;
+  /** A "say that again" line was spoken: the next playout keeps the turn with the player it went back to. */
+  hold_turn?: boolean;
   /** Everyone is in the ledger: once Hester has finished speaking, she fetches Bram. */
   handoff_pending: boolean;
   pending_bots: string[];
@@ -138,7 +145,7 @@ const publish = (ctx: JobContext, attributes: Record<string, string>) => ctx.roo
 const named_here = new Set<string>();
 function publishLedger(data: StoryData) {
   const ledger: Record<string, string> = {};
-  for (const p of data.players) if (!p.bot) ledger[p.identity] = p.name;
+  for (const p of data.players) if (!p.bot && !p.placeholder) ledger[p.identity] = p.name;
   publish(data.ctx, { 'story.ledger': JSON.stringify(ledger) });
   for (const [identity, name] of Object.entries(ledger)) {
     const here = data.ctx.room.remoteParticipants.get(identity);
@@ -198,7 +205,23 @@ const pixelAct = (data: StoryData, line: string) => {
   return publish(data.ctx, { 'story.pixel_line': line, 'story.pixel_seq': String(data.pixel_seq) });
 };
 
-/** The party is at (a new) place: counts, saved story, attributes, and the soundtrack when it differs from the one playing. Returns what to tell Bram about the music. */
+/** Asks the app to have this soundtrack playing in the room: it starts it, keeps one that is playing, or restarts one that has ended. */
+async function ensureSoundtrack(data: StoryData, soundtrack: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${APP_URL}/api/scene`, { method: 'POST', headers: APP_HEADERS, body: JSON.stringify({ room: data.ctx.room.name, scene: soundtrack }), signal: AbortSignal.timeout(15000) });
+    if (!response.ok) console.log(`soundtrack ${soundtrack}: the app answered ${response.status} ${(await response.text().catch(() => '')).slice(0, 120)}`);
+    return response.ok;
+  } catch (error: any) {
+    console.log(`soundtrack ${soundtrack}: could not reach the app: ${error?.message ?? error}`);
+    return false;
+  }
+}
+
+/**
+ * The party is at (a new) place: counts, saved story, attributes, and the soundtrack. Returns what to tell Bram about the music, and only
+ * says there is music when the app has a soundtrack playing. A place that shares the playing soundtrack still asks the app, which
+ * restarts it if its file (180 s) has ended; Bram isn't told, nothing changed.
+ */
 async function arrive(data: StoryData): Promise<string | undefined> {
   onSceneStart(data, data.world.location);
   data.last_scene_at = Date.now();
@@ -206,14 +229,14 @@ async function arrive(data: StoryData): Promise<string | undefined> {
   publishPlace(data);
   publishSatchel(data);
   const place = PLACES[data.world.location];
-  if (place.soundtrack === data.soundtrack) return undefined;
-  data.soundtrack = place.soundtrack;
-  try {
-    const response = await fetch(`${APP_URL}/api/scene`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: data.ctx.room.name, scene: place.soundtrack }), signal: AbortSignal.timeout(15000) });
-    return response.ok ? 'with its soundtrack' : 'without music';
-  } catch {
-    return 'without music';
+  if (place.soundtrack === data.soundtrack) {
+    ensureSoundtrack(data, place.soundtrack).then((ok) => { if (!ok) data.soundtrack = undefined; });
+    return undefined;
   }
+  const ok = await ensureSoundtrack(data, place.soundtrack);
+  // A soundtrack that could not start is tried again on the next arrival
+  data.soundtrack = ok ? place.soundtrack : undefined;
+  return ok ? 'with its soundtrack' : 'without music';
 }
 
 /**
@@ -390,6 +413,7 @@ class Bram extends voice.Agent<StoryData> {
     if (speaker && !speaker.bot && given && given.toLowerCase() !== speaker.name.toLowerCase()) {
       console.log(`name corrected: ${speaker.name} -> ${given}`);
       speaker.name = given;
+      speaker.placeholder = false;
       publishLedger(data);
       saveState(data);
       name_note = ` The player has just told you their name is ${given}: acknowledge it in a few words and carry on.`;
@@ -436,20 +460,33 @@ export default defineAgent({
       // The closing has played out and the pause has passed: mark the story ended, stop the soundtrack, leave
       console.log(`story ended at ${new Date().toISOString()}: closing played out, pause done`);
       publish(job_ctx, { 'story.state': 'ended', 'story.turn': '', 'story.turn_name': '' });
-      fetch(`${APP_URL}/api/scene/end`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: job_ctx.room.name }), signal: AbortSignal.timeout(10000) })
+      fetch(`${APP_URL}/api/scene/end`, { method: 'POST', headers: APP_HEADERS, body: JSON.stringify({ room: job_ctx.room.name }), signal: AbortSignal.timeout(10000) })
         .catch(() => undefined)
         .finally(() => setTimeout(() => job_ctx.shutdown('the story is over'), 3000));
     });
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => session.userData.end_watcher?.onAgentState(e.oldState, e.newState));
+    // Who is still in the room: a player who left never gets the turn
+    const here = (p: Player) => ctx.room.remoteParticipants.has(p.identity);
     // The in-character "say that again" line, with the turn handed back to the player
     const say_again = (why: string) => {
       const data = session.userData;
-      if (data.ending) return;
-      const player = data.players[data.rotation] ?? data.players.find((p) => !p.bot);
+      if (data.ending) {
+        // The story is over but Bram's closing never played (a hung reply): speak a short closing, and finish the story anyway
+        console.log(`watchdog (${why}): the closing never played: saying a short closing and finishing the story`);
+        session.interrupt();
+        session.say(CLOSING_LINE, { allowInterruptions: false });
+        data.end_watcher?.arm();
+        setTimeout(() => data.end_watcher?.force(), 25000).unref();
+        return;
+      }
+      const player = (data.players[data.rotation] && !data.players[data.rotation].bot && here(data.players[data.rotation]) ? data.players[data.rotation] : undefined) ?? data.players.find((p) => !p.bot && here(p));
       console.log(`watchdog (${why}): giving the turn back to ${player?.name ?? 'the player'} with the say-that-again line`);
       session.interrupt();
       session.say(stallLine(player?.name), { allowInterruptions: false });
       if (player) {
+        // The turn stays with this player when the line has been spoken, whoever Bram's last reply named
+        data.rotation = data.players.indexOf(player);
+        data.hold_turn = true;
         switchListener(session, player.identity);
         publish(data.ctx, { 'story.turn': player.identity, 'story.turn_name': player.name, 'story.turn_seq': String(data.inputs + data.scene_index * 100 + data.rotation + 50) });
       }
@@ -492,7 +529,7 @@ export default defineAgent({
       const data = session.userData;
       if (e.oldState !== 'speaking' || e.newState !== 'listening' || !data.handed_off || data.ending || !data.bram || data.scene_index === 0) return;
       // Humans only: Pixel never holds the turn
-      const next = onPlayout(data, data.players);
+      const next = onPlayout(data, data.players, here);
       if (!next) return;
       data.turn_no += 1;
       const index = data.rotation;
@@ -502,11 +539,24 @@ export default defineAgent({
       console.log(`turn given to ${next.name} after playout (inputs=${data.inputs})`);
     });
 
-    // A player who leaves must not end the story for the others: listen to someone who is still here
+    // A player who leaves must not end the story for the others: listen to someone who is still here, give the turn on if it was theirs,
+    // and take them out of Bram's roster so he doesn't address them
     ctx.room.on('participantDisconnected', (p: RemoteParticipant) => {
-      if (listening_to(session) !== p.identity) return;
-      const next = humans(ctx)[0];
-      switchListener(session, next ? next.identity : null);
+      const data = session.userData;
+      const had_turn = ctx.room.localParticipant?.attributes?.['story.turn'] === p.identity;
+      if (listening_to(session) === p.identity || had_turn) {
+        const next = data.players.find((x) => !x.bot && x.identity !== p.identity && here(x)) ?? humans(ctx)[0];
+        switchListener(session, next ? next.identity : null);
+        if (had_turn && next && data.handed_off && !data.ending) {
+          const name = 'name' in next && next.name ? next.name : next.identity;
+          publish(data.ctx, { 'story.turn': next.identity, 'story.turn_name': String(name), 'story.turn_seq': String(data.turn_no * 1000 + data.inputs * 10 + 500) });
+          console.log(`${p.name || p.identity} left with the turn: it goes to ${name}`);
+        }
+      }
+      if (data.handed_off && !is_bot(p)) {
+        console.log(`${p.name || p.identity} left the party`);
+        data.bram?.updateInstructions(bramInstructions(data.players.filter(here))).catch(() => undefined);
+      }
     });
 
     // Hard rule: nothing waits on Pixel. If the listener is ever a bot for more than about 5 s, it goes back to a human and the skip is logged
@@ -528,14 +578,16 @@ export default defineAgent({
       const data = session.userData;
       if (!data.handed_off || !is_player(p) || data.players.some((x) => x.identity === p.identity)) return;
       const bot = is_bot(p);
-      const name = p.name && p.name !== p.identity ? p.name : bot ? botName(p.identity) : '';
-      if (!name) return;
-      data.players.push({ identity: p.identity, name, bot });
-      data.arrivals.push(bot ? `${name}, a mute traveller,` : name);
+      // A late joiner who gave no name still joins, as "Traveller": otherwise they would never be heard. They can say their name ("I'm Priya").
+      const given = p.name && p.name !== p.identity ? p.name : bot ? botName(p.identity) : '';
+      const taken = data.players.filter((x) => x.placeholder).length;
+      const name = given || (taken ? `Traveller ${taken + 1}` : 'Traveller');
+      data.players.push({ identity: p.identity, name, bot, ...(given ? {} : { placeholder: true }) });
+      data.arrivals.push(bot ? `${name}, a mute traveller,` : given ? name : 'a new traveller');
       console.log(`${name} joined the party after the story began`);
       publishLedger(data);
       saveState(data);
-      data.bram?.updateInstructions(bramInstructions(data.players)).catch(() => undefined);
+      data.bram?.updateInstructions(bramInstructions(data.players.filter(here))).catch(() => undefined);
     });
 
     const hester = Hester.build();
@@ -549,6 +601,8 @@ export default defineAgent({
         // Chat text from the player being listened to: a mute player's gesture. It is a real player input, and Bram reacts to it as to a spoken answer.
         textInputCallback: (sess, ev) => {
           const data = session.userData;
+          // The story is over: typed input and gestures are ignored, so nothing starts a new reply over the ending
+          if (data.ending) return;
           if (data.handed_off && !data.ending) {
             onPlayerInput(data);
             data.watchdog?.arm();
