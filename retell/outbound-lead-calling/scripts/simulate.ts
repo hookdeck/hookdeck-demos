@@ -7,7 +7,7 @@
  *   npm run simulate -- call_ended        # one event
  *   npm run simulate -- call_ended --twice  # the same event twice (the second is deduplicated)
  *   npm run simulate -- call_ended --bad-signature  # rejected by Hookdeck's verification
- *   npm run simulate -- --no-answer       # the lead did not pick up: call_ended (dial_no_answer), which starts the retry ladder
+ *   npm run simulate -- --no-answer       # a new simulated lead that does not pick up: call_ended (dial_no_answer) starts its retry ladder
  *
  * With no lead yet, it asks the running app for a demo lead (no call is placed).
  */
@@ -39,9 +39,12 @@ async function app(path: string, init?: RequestInit): Promise<any> {
 
 async function main() {
   let leads = await app('/api/leads');
-  if (!leads.length) {
-    await app('/api/leads/demo', { method: 'POST' });
+  // A no-answer needs a call that hasn't ended yet. Reusing the latest lead's call would send a call_ended
+  // that Event Gateway and the app already have, and it would be dropped as a duplicate.
+  if (!leads.length || no_answer) {
+    const created = await app('/api/leads/demo', { method: 'POST' });
     leads = await app('/api/leads');
+    if (no_answer) leads = leads.filter((l: any) => l.id === created.id);
   }
   const lead = leads[0];
   const call_id = lead.call_id || simulatedCallId(lead);

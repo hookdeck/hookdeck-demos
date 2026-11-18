@@ -89,7 +89,7 @@ The scenes live in `scenes/retell-calls.ts` (the kit in `scenes/kit/` is synced 
 npm run simulate                          # signed call_started, call_ended, call_analyzed
 npm run simulate -- call_ended --twice    # second one is deduplicated
 npm run simulate -- call_ended --bad-signature
-npm run simulate -- --no-answer           # the lead did not pick up: starts the retry ladder
+npm run simulate -- --no-answer           # a new simulated lead that does not pick up: starts its retry ladder
 ```
 
 In the Hookdeck dashboard, the duplicate appears as an ignored event and the bad signature as a rejected request.
