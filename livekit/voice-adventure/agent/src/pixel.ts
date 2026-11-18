@@ -2,8 +2,9 @@
  * Pixel: a silent, scripted player. The demo app starts this process when someone selects "Add a bot player".
  * It joins the room as `bot-pixel` (name "Pixel"), publishes no audio or video, and when the storyteller asks for a
  * gesture (a new `story.pixel_seq` with a `story.pixel_line` on the story agent's participant) it waits a moment and sends that line as a
- * chat message on the `lk.chat` topic. That is the standard text input of an agent session, so the storyteller
- * reacts to it exactly as he would to a player's spoken answer, with no model call of Pixel's own.
+ * chat message on the `lk.chat` topic. The page shows it in the transcript. The agent does not receive it as input (an agent session
+ * takes text only from the participant it is linked to, and Pixel is never linked): the storyteller reacts through the agent's own
+ * Pixel notes, with no model call of Pixel's own.
  *
  * It is started with PIXEL_URL and PIXEL_TOKEN (a short-lived token the app minted: no key or secret here).
  */
