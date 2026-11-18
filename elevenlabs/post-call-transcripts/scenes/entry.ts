@@ -15,6 +15,9 @@ export const scenes = {
   'bad-signature-mobile': pc.createBadSignatureMobileScene,
   'app-down': pc.createAppDownScene,
   'app-down-mobile': pc.createAppDownMobileScene,
+  // The tutorial's opening diagram (deployed). Not a tab in the demo page, which shows what runs.
+  'deployed': pc.createDeployedScene,
+  'deployed-mobile': pc.createDeployedMobileScene,
 }
 
 /** The platform's name, shown in the square captures' eyebrow: "{ Hookdeck + ElevenLabs }". */

@@ -25,7 +25,7 @@ describe('topology scenes', () => {
     await browser?.close();
   });
 
-  for (const id of ['delivery', 'duplicate', 'bad-signature', 'app-down']) {
+  for (const id of ['delivery', 'duplicate', 'bad-signature', 'app-down', 'deployed']) {
     it(`${id}: desktop and phone layouts share steps and captions`, async () => {
       const result = await page.evaluate((scene_id) => {
         const { scenes } = (window as any).HookdeckScenes;
@@ -48,6 +48,36 @@ describe('topology scenes', () => {
       assert.ok(desktop.times.every((t: number, i: number) => i === 0 || t > desktop.times[i - 1]));
     });
   }
+
+  it('tutorial flag relabels the app in a step diagram and the demo keeps its name', async () => {
+    const titles = await page.evaluate(() => {
+      const { scenes } = (window as any).HookdeckScenes;
+      const host = document.getElementById('host')!;
+      const read = (flags?: Record<string, boolean>) => {
+        const scene = scenes['delivery'](host, { captions: false, flags });
+        const text = host.textContent ?? '';
+        scene.destroy();
+        return text;
+      };
+      return { demo: read(), tutorial: read({ tutorial: true }) };
+    });
+    assert.match(titles.demo, /Demo app/);
+    assert.match(titles.tutorial, /Your app/);
+    assert.doesNotMatch(titles.tutorial, /Demo app/);
+  });
+
+  it('deployed scene has no hookdeck listen node', async () => {
+    const text = await page.evaluate(() => {
+      const { scenes } = (window as any).HookdeckScenes;
+      const host = document.getElementById('host')!;
+      const scene = scenes['deployed'](host, { captions: false });
+      const out = host.textContent ?? '';
+      scene.destroy();
+      return out;
+    });
+    assert.match(text, /Your app/);
+    assert.doesNotMatch(text, /hookdeck listen|Localhost/i);
+  });
 
   it('live scene has a driver and queues packets on one edge', async () => {
     const result = await page.evaluate(async () => {
