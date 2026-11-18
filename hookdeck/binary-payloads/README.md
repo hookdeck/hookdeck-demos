@@ -57,7 +57,7 @@ npm run ui
 
 Open http://localhost:4300 to send cases one at a time, by group, or all at once. Each row shows the ingestion outcome, the time from send to delivery through the CLI with the Hookdeck event ID, whether the bytes match, and the `Content-Type` that arrived. Preview renders what arrived: images, audio, video, PDF, archive and multipart entries, decompressed gzip, and a hex dump. Stop the listener from the page to see that nothing is delivered without it: events sent while it's stopped aren't replayed when it reconnects, so retry them from the dashboard.
 
-The Hookdeck CLI is an npm dependency (`hookdeck-cli` 3.1.0, the first release that forwards binary bodies), so `npm install` is all you need. To try a different build, set `HOOKDECK_CLI=/path/to/hookdeck`. With v3.0.3 or earlier, binary events fail with `CLI_BINARY_UNSUPPORTED`, and multipart still arrives, but as lossy text.
+The Hookdeck CLI is an npm dependency (`hookdeck-cli` 3.2.0; binary bodies need 3.1.0 or later), so `npm install` is all you need. To try a different build, set `HOOKDECK_CLI=/path/to/hookdeck`. With v3.0.3 or earlier, binary events fail with `CLI_BINARY_UNSUPPORTED`, and multipart still arrives, but as lossy text.
 
 The CLI logs in to the API key's project in a config file of its own (`run/hookdeck-cli.toml`), so it never touches the project you're logged in to interactively.
 

@@ -37,9 +37,9 @@ const cli = createHookdeckCli();
 
 async function setupHookdeck(client: Client, secret: string): Promise<string> {
   const destination = cli.upsertCliDestination({ name: client.destination, path: client.path });
-  // Verification (`auth`) is applied through the API by upsertSource: the CLI's --source-config
-  // ignores VAPI auth settings silently, which leaves verification off.
-  const source = await cli.upsertSource({
+  // Verification (`auth`) goes through the CLI's source config file (hookdeck-cli 3.2.0 or later),
+  // so the header, algorithm and encoding stay as set here.
+  const source = cli.upsertSource({
     name: client.source,
     type: 'VAPI',
     config: { trim_payload: TRIM_PAYLOAD },
@@ -59,7 +59,7 @@ async function setupHookdeck(client: Client, secret: string): Promise<string> {
     console.error(`  hookdeck gateway connection delete ${connection.id} --force`);
     process.exit(1);
   }
-  console.log(`Hookdeck ${client.name}: ${source.url} -> ${client.path} (verification: ${source.auth_type ?? 'set'})`);
+  console.log(`Hookdeck ${client.name}: ${source.url} -> ${client.path} (verification: ${source.config?.auth ? 'set' : 'NOT set'})`);
   return source.url;
 }
 

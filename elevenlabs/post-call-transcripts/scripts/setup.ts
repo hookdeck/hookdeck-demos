@@ -119,16 +119,16 @@ async function setupHookdeck(): Promise<{ source_url: string; source_id: string 
 }
 
 /**
- * Sets the signing secret on the source through the API (config.auth). The header name,
+ * Sets the signing secret on the source through the CLI (config.auth). The header name,
  * algorithm and timestamp format are fixed by the ELEVENLABS source type, so only the secret is needed.
  */
 async function setSourceSecret(secret: string): Promise<void> {
-  const source = await cli.upsertSource({
+  const source = cli.upsertSource({
     name: SOURCE_NAME,
     type: 'ELEVENLABS',
     auth: { webhook_secret_key: secret },
   });
-  console.log(`Hookdeck: signature verification enabled on the source (auth ${source.auth_applied ? 'applied' : 'not applied'})`);
+  console.log(`Hookdeck: signature verification enabled on the source (auth ${source.config?.auth ? 'set' : 'NOT set'})`);
 }
 
 async function setupAgent(elevenlabs: ElevenLabsClient): Promise<string> {

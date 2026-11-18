@@ -30,7 +30,7 @@ HOOKDECK_API_KEY=your_hookdeck_api_key_here
 
 ### 3. Set up Hookdeck Connections
 
-The Hookdeck CLI is an npm dependency (`hookdeck-cli` 3.1.0, the first release that forwards binary bodies such as the TTS audio), installed by `npm install`. The setup and listen scripts log it in to the project for `HOOKDECK_API_KEY`, with a config file of their own in `run/`, so whatever you're logged in to with `hookdeck login` isn't used or changed.
+The Hookdeck CLI is an npm dependency (`hookdeck-cli` 3.2.0; binary bodies such as the TTS audio need 3.1.0 or later), installed by `npm install`. The setup and listen scripts log it in to the project for `HOOKDECK_API_KEY`, with a config file of their own in `run/`, so whatever you're logged in to with `hookdeck login` isn't used or changed.
 
 Create the connections and write their Source URLs into `.env`:
 
