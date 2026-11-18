@@ -24,7 +24,7 @@ Each transformation is a plain ES module with a default export, so it also runs 
 
 ## Run it
 
-Requirements: Node.js 20+ and a Hookdeck Event Gateway project you can create resources in. The Hookdeck CLI (3.1.0) is an npm dependency.
+Requirements: Node.js 20+ and a Hookdeck Event Gateway project you can create resources in. The Hookdeck CLI (3.2.0) is an npm dependency.
 
 ```sh
 cp .env.example .env   # add HOOKDECK_API_KEY, and optionally HOOKDECK_WEBHOOK_SECRET

@@ -60,10 +60,10 @@ async function main(): Promise<void> {
       console.error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in .env for the LIVEKIT source type.');
       process.exit(1);
     }
-    // Both fields live under the source's config.auth; upsertSource sets them through the API.
+    // Both fields live under the source's config.auth; upsertSource sets them through the CLI.
     auth = { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET };
   }
-  const source = await cli.upsertSource({ name: SOURCE, type: source_type, auth });
+  const source = cli.upsertSource({ name: SOURCE, type: source_type, auth });
   const destination = cli.upsertCliDestination({ name: DESTINATION, path: CLI_PATH });
   const connection = cli.upsertConnection({
     name: CONNECTION,

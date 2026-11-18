@@ -61,8 +61,8 @@ if (WITH_FUNCTION) {
 
 async function setupFlow(flow: Flow): Promise<string> {
   // Retell signs every webhook with the API key that carries the webhook badge. Signature
-  // settings live under the source's config.auth; upsertSource sets them through the API.
-  const source = await cli.upsertSource({
+  // settings live under the source's config.auth; upsertSource sets them through the CLI.
+  const source = cli.upsertSource({
     name: flow.name,
     type: 'RETELL',
     auth: { webhook_secret_key: RETELL_SECRET_KEY },

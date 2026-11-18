@@ -28,7 +28,7 @@ export interface HookdeckCliOptions {
   runDir?: string;
   /** CLI binary. Defaults to $HOOKDECK_CLI, then the hookdeck-cli npm dependency. */
   bin?: string;
-  /** Hookdeck API base URL, used by api(). */
+  /** Hookdeck API base URL, used by api() (probe reads). */
   apiBase?: string;
 }
 
@@ -40,9 +40,8 @@ export interface SourceSpec {
   config?: Record<string, unknown>;
   /**
    * Signature verification settings, i.e. the API's `config.auth` (e.g. VAPI:
-   * { webhook_secret_key, algorithm, encoding, header_key }). Set through the Hookdeck API,
-   * not the CLI: CLI 3.1.0 silently ignores auth passed with --source-config / --config-file
-   * for at least VAPI sources, leaving verification off.
+   * { webhook_secret_key, algorithm, encoding, header_key }). Merged into the config file the CLI
+   * reads, so it needs hookdeck-cli 3.2.0 or later.
    */
   auth?: Record<string, unknown>;
 }
@@ -167,28 +166,21 @@ export function createHookdeckCli(options: HookdeckCliOptions = {}) {
   }
 
   /**
-   * Creates or updates a source. `config` goes through the CLI; `auth` (if given) is then set
-   * with PUT /sources/{id} {type, config: {...config, auth}} and the call throws if the API
-   * rejects it.
+   * Creates or updates a source through the CLI. `config` and `auth` go together into the source
+   * config file (`--config-file`), so the CLI sets verification exactly as given: the provider's
+   * header, algorithm and encoding stay whatever you pass, and types whose auth is more than one
+   * secret (LIVEKIT's api_key and api_secret) work too. Needs hookdeck-cli 3.2.0 or later, where
+   * source auth is applied correctly (3.1.0 left VAPI on the wrong header and failed on WEBHOOK).
    *
-   * Confirmation is limited by the API: GET /sources redacts `auth`, so the secret and settings
-   * can't be read back. The PUT response is the only check: an error status means it wasn't
-   * applied; on success we also return the response's `config.auth_type` (undefined if the API
-   * doesn't send it for this source type). Treat a signed + unsigned probe request as the only
-   * end-to-end proof.
+   * The secret travels in a private temp file, never on the command line. The API redacts `auth`
+   * when you read a source back, so a signed + unsigned probe request is the end-to-end proof.
    */
-  async function upsertSource(spec: SourceSpec): Promise<any> {
+  function upsertSource(spec: SourceSpec): any {
     const args = ['gateway', 'source', 'upsert', spec.name, '--type', spec.type];
-    const source = spec.config
-      ? withPrivateJson(`source-${spec.name}.json`, spec.config, (file) => json([...args, '--config-file', file]))
+    const config = spec.auth ? { ...spec.config, auth: spec.auth } : spec.config;
+    return config
+      ? withPrivateJson(`source-${spec.name}.json`, config, (file) => json([...args, '--config-file', file]))
       : json(args);
-    if (!spec.auth) return source;
-    const updated = await api('PUT', `/sources/${source.id}`, {
-      type: spec.type,
-      config: { ...spec.config, auth: spec.auth },
-    });
-    if (updated?.id !== source.id) throw new Error(`Setting auth on source ${spec.name}: unexpected API response`);
-    return { ...source, auth_applied: true, auth_type: updated.config?.auth_type as string | undefined };
   }
 
   function upsertCliDestination(spec: { name: string; path: string }): any {
@@ -209,7 +201,7 @@ export function createHookdeckCli(options: HookdeckCliOptions = {}) {
     return withPrivateJson(`rules-${spec.name}.json`, spec.rules, (file) => json([...args, '--rules-file', file]));
   }
 
-  /** Calls the Hookdeck API with the project API key, for settings the CLI doesn't apply. */
+  /** Reads from the Hookdeck API with the project API key. The demos' probe scripts use it to find a source and list its requests; setup goes through the CLI only. */
   async function api<T = any>(method: string, route: string, body?: unknown): Promise<T> {
     const response = await fetch(`${api_base}${route}`, {
       method,
