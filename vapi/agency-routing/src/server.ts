@@ -102,7 +102,7 @@ function assistant_id_of(message: any): string | undefined {
 
 /**
  * The slow part of the async tool. Runs after the webhook has been answered:
- * Vapi has already told the model "Success." and will not use anything this request returns.
+ * Vapi has already given the model an empty tool result and will not use anything this request returns.
  */
 async function runLookup(client: Client, call_id: string | undefined, tool_call_id: string, customer_name: string, control_url: string | undefined, bytes: number, event_id: string | undefined) {
   await new Promise((resolve) => setTimeout(resolve, LOOKUP_DELAY_MS())); // stands in for a slow CRM

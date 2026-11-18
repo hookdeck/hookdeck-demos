@@ -40,7 +40,7 @@ const TOOL_RULES = `Conversation rules:
 - Only ask a question when you need the answer. Never ask small talk such as "how are you" or "how is your day". Never stack two questions in one turn.
 Looking up a customer:
 - When the caller asks about their account, appointment or order, ask for their full name and wait for it, then call lookup_customer.
-- lookup_customer runs in the background and always answers "Success." straight away; that is NOT the result.
+- lookup_customer runs in the background and returns nothing useful straight away; that is NOT the result.
 - After calling it, say one short sentence such as "One moment while I check that." and then say nothing more. Do not ask anything and do not fill the silence.
 - The real result arrives a few seconds later as a system message that starts with "CRM result:". When it arrives, read the key facts out to the caller in one or two sentences, then ask if there is anything else.
 Never invent account details.`;
