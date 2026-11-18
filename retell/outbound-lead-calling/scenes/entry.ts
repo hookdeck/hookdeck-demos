@@ -15,6 +15,9 @@ export const scenes = {
   'retell-bad-signature-mobile': rc.createBadSignatureMobileScene,
   'retell-app-down': rc.createAppDownScene,
   'retell-app-down-mobile': rc.createAppDownMobileScene,
+  // The tutorial's opening diagram (deployed). Not a tab in the demo page, which shows what runs.
+  'retell-deployed': rc.createDeployedScene,
+  'retell-deployed-mobile': rc.createDeployedMobileScene,
 }
 
 /** The platform's name, shown in the square captures' eyebrow: "{ Hookdeck + Retell }". */
