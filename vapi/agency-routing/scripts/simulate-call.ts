@@ -6,6 +6,9 @@
  * Sends: status-update (in-progress), tool-calls (lookup_customer), a badly signed copy of the
  * status-update (rejected with 401), status-update (ended), end-of-call-report.
  *
+ * The app only posts to https://*.vapi.ai controlUrls, so start it with ALLOW_LOCAL_CONTROL_URL=true to let it
+ * reach the stand-in.
+ *
  * Usage: npm run simulate [-- acme|globex] [--duplicate]
  *   --duplicate  sends the end-of-call-report twice; Event Gateway drops the second one
  */

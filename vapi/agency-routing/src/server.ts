@@ -3,7 +3,7 @@ import express, { Request, Response } from 'express';
 import * as path from 'path';
 import { CLIENTS, Client, clientBySlug, suggestedLine } from './clients';
 import { findCustomer } from './crm';
-import { sendToCall } from './live-call-control';
+import { assertControlUrl, sendToCall } from './live-call-control';
 import { createFlowState, AppFlowEntry } from './flow-drawer-server';
 import { createFlowExtras } from './flow-extras';
 
@@ -21,7 +21,30 @@ const LOOKUP_DELAY_MS = () => Number(process.env.LOOKUP_DELAY_MS || 6000);
 const CONTROL_MODE = () => (process.env.CONTROL_MODE === 'say' ? 'say' : 'add-message');
 
 export const logs: { [slug: string]: LogEntry[] } = Object.fromEntries(CLIENTS.map((c) => [c.slug, [] as LogEntry[]]));
-const seen_tool_calls = new Set<string>();
+
+// Tool calls already started, so a redelivery does not look the customer up twice. In memory, capped and
+// expired: it is lost on restart and does not span instances, so production needs a durable key (for example
+// the tool call ID in Redis or a database unique constraint) checked before the work starts.
+const SEEN_MAX = 1000;
+const SEEN_TTL_MS = 60 * 60 * 1000;
+const seen_tool_calls = new Map<string, number>();
+function hasSeen(id: string): boolean {
+  const at = seen_tool_calls.get(id);
+  if (at === undefined) return false;
+  if (Date.now() - at > SEEN_TTL_MS) { seen_tool_calls.delete(id); return false; }
+  return true;
+}
+function markSeen(id: string): void {
+  seen_tool_calls.set(id, Date.now());
+  // Maps iterate in insertion order, so the oldest entries go first
+  for (const old of seen_tool_calls.keys()) {
+    if (seen_tool_calls.size <= SEEN_MAX) break;
+    seen_tool_calls.delete(old);
+  }
+}
+
+/** A request the app cannot process: answered with 400 and logged, never thrown past Express. */
+class BadRequestError extends Error {}
 
 // What this app did, for the topology pane's detail strip: one `result` per delivery it answered, and one
 // `outbound` per call it made back to Vapi. The flow state joins them to Event Gateway's events by ID.
@@ -89,6 +112,7 @@ async function runLookup(client: Client, call_id: string | undefined, tool_call_
     : `No customer matching "${customer_name}" was found.`;
 
   if (!control_url) {
+    seen_tool_calls.delete(tool_call_id);
     log(client, { type: 'lookup-error', call_id, detail: `${tool_call_id}: no monitor.controlUrl in the payload`, bytes });
     recordFlow({ source: client.source, kind: 'outbound', parent_event_id: event_id, label: 'no controlUrl', detail: 'the payload had no monitor.controlUrl', ok: false });
     return;
@@ -102,6 +126,8 @@ async function runLookup(client: Client, call_id: string | undefined, tool_call_
     log(client, { type: 'live-call-control', call_id, detail: `${mode} sent for ${tool_call_id}: ${summary}`, bytes: 0 });
     recordFlow({ source: client.source, kind: 'outbound', parent_event_id: event_id, label: `POST controlUrl ${mode}`, detail: summary, status, ok: true, duration_ms: Date.now() - started });
   } catch (error: any) {
+    // The result never reached the call, so let a redelivery of this tool call try again
+    seen_tool_calls.delete(tool_call_id);
     log(client, { type: 'lookup-error', call_id, detail: `${mode} failed: ${error.message}`, bytes: 0 });
     recordFlow({ source: client.source, kind: 'outbound', parent_event_id: event_id, label: `POST controlUrl ${mode}`, detail: error.message, status: error.status ?? null, ok: false, duration_ms: Date.now() - started });
   }
@@ -110,17 +136,41 @@ async function runLookup(client: Client, call_id: string | undefined, tool_call_
 function handleToolCalls(client: Client, message: any, bytes: number, event_id: string | undefined, res: Response): any {
   const call_id = message.call?.id;
   const control_url: string | undefined = message.call?.monitor?.controlUrl;
+  if (message.toolCallList !== undefined && !Array.isArray(message.toolCallList)) throw new BadRequestError('toolCallList is not an array');
   const tool_calls: any[] = message.toolCallList || [];
-  for (const tool_call of tool_calls) {
+  // Check every tool call before starting any work, so a malformed one never leaves the others half done
+  const parsed = tool_calls.map((tool_call) => {
+    if (!tool_call || typeof tool_call !== 'object' || typeof tool_call.id !== 'string') throw new BadRequestError('a tool call has no id');
     const name = tool_call.function?.name || tool_call.name;
     let args = tool_call.function?.arguments ?? tool_call.arguments ?? {};
-    if (typeof args === 'string') args = JSON.parse(args);
+    if (typeof args === 'string') {
+      try { args = JSON.parse(args); } catch { throw new BadRequestError(`arguments of ${tool_call.id} are not valid JSON`); }
+    }
+    if (!args || typeof args !== 'object' || Array.isArray(args)) throw new BadRequestError(`arguments of ${tool_call.id} are not an object`);
+    return { tool_call, name, args };
+  });
+  for (const { tool_call, name, args } of parsed) {
+    // Hookdeck may redeliver; look each tool call up once. The repeat gets its own log type so the
+    // "While you wait" panel does not open a second countdown for it.
+    if (hasSeen(tool_call.id)) {
+      res.locals.flow_detail = log(client, { type: 'tool-calls-duplicate', call_id, detail: `${name} ${tool_call.id} already started, ignored`, bytes });
+      continue;
+    }
     res.locals.flow_detail = log(client, { type: 'tool-calls', call_id, detail: `${name}(${JSON.stringify(args)}) controlUrl:${control_url ? 'present' : 'MISSING'}`, bytes });
-    // Hookdeck may redeliver; look each tool call up once
-    if (seen_tool_calls.has(tool_call.id)) continue;
-    seen_tool_calls.add(tool_call.id);
+    markSeen(tool_call.id);
     if (name === 'lookup_customer') {
-      void runLookup(client, call_id, tool_call.id, String(args.customer_name || ''), control_url, bytes, event_id);
+      // The controlUrl comes from the webhook body: only call a Vapi host
+      if (control_url) {
+        try { assertControlUrl(control_url); } catch (error: any) {
+          seen_tool_calls.delete(tool_call.id);
+          log(client, { type: 'lookup-error', call_id, detail: `${tool_call.id}: ${error.message}`, bytes });
+          continue;
+        }
+      }
+      runLookup(client, call_id, tool_call.id, String(args.customer_name || '').slice(0, 200), control_url, bytes, event_id).catch((error: any) => {
+        seen_tool_calls.delete(tool_call.id);
+        log(client, { type: 'lookup-error', call_id, detail: `lookup crashed: ${error?.message ?? error}`, bytes: 0 });
+      });
     }
   }
   // An async tool's response is ignored by Vapi; a well-formed one keeps the same route valid for sync tools
@@ -129,7 +179,7 @@ function handleToolCalls(client: Client, message: any, bytes: number, event_id: 
 
 export function createApp() {
   const app = express();
-  app.use(express.json({ limit: '50mb', verify: (req: any, _res, buf) => { req.raw_bytes = buf.length; } }));
+  app.use(express.json({ limit: '2mb', verify: (req: any, _res, buf) => { req.raw_bytes = buf.length; } }));
 
   // One route per client: the client's own endpoint in this simulation
   for (const client of CLIENTS) {
@@ -168,18 +218,25 @@ export function createApp() {
         }
       }
 
-      switch (message.type) {
-        case 'status-update':
-          res.locals.flow_detail = log(client, { type: 'status-update', call_id: message.call?.id, detail: `status=${message.status}${message.endedReason ? ` (${message.endedReason})` : ''}`, bytes });
-          return void res.status(200).json({ ok: true });
-        case 'end-of-call-report':
-          res.locals.flow_detail = log(client, { type: 'end-of-call-report', call_id: message.call?.id, detail: `endedReason=${message.endedReason} cost=${message.cost ?? message.call?.cost ?? '?'} summary=${(message.analysis?.summary || message.summary || '').slice(0, 120)}`, bytes });
-          return void res.status(200).json({ ok: true });
-        case 'tool-calls':
-          return void res.status(200).json(handleToolCalls(client, message, bytes, event_id, res));
-        default:
-          res.locals.flow_detail = log(client, { type: message.type, call_id: message.call?.id, detail: '', bytes });
-          return void res.status(200).json({ ok: true });
+      try {
+        switch (message.type) {
+          case 'status-update':
+            res.locals.flow_detail = log(client, { type: 'status-update', call_id: message.call?.id, detail: `status=${message.status}${message.endedReason ? ` (${message.endedReason})` : ''}`, bytes });
+            return void res.status(200).json({ ok: true });
+          case 'end-of-call-report':
+            res.locals.flow_detail = log(client, { type: 'end-of-call-report', call_id: message.call?.id, detail: `endedReason=${message.endedReason} cost=${message.cost ?? message.call?.cost ?? '?'} summary=${(message.analysis?.summary || message.summary || '').slice(0, 120)}`, bytes });
+            return void res.status(200).json({ ok: true });
+          case 'tool-calls':
+            return void res.status(200).json(handleToolCalls(client, message, bytes, event_id, res));
+          default:
+            res.locals.flow_detail = log(client, { type: message.type, call_id: message.call?.id, detail: '', bytes });
+            return void res.status(200).json({ ok: true });
+        }
+      } catch (error: any) {
+        // Malformed content is the sender's problem (400); anything else is ours (500). Neither reaches Express's default handler.
+        const bad = error instanceof BadRequestError;
+        res.locals.flow_detail = log(client, { type: bad ? 'bad-request' : 'handler-error', call_id: message.call?.id, detail: error?.message ?? String(error), bytes });
+        return void res.status(bad ? 400 : 500).json({ error: bad ? error.message : 'internal error' });
       }
     });
   }
@@ -238,13 +295,24 @@ export function createApp() {
     });
   });
   app.use(express.static(path.join(__dirname, '..', 'public')));
+  // Last: a body that is not JSON, or is too large, gets a JSON error, never Express's HTML page with a stack trace
+  app.use((error: any, _req: Request, res: Response, _next: express.NextFunction) => {
+    const status = error?.status >= 400 && error?.status < 500 ? error.status : 500;
+    console.error(`request error ${status}: ${error?.message ?? error}`);
+    res.status(status).json({ error: status === 500 ? 'internal error' : error.type === 'entity.too.large' ? 'body too large' : 'bad request' });
+  });
   return app;
 }
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 4000);
-  createApp().listen(port, () => {
-    console.log(`Agency routing demo on http://localhost:${port}`);
+  // Loopback only: `hookdeck listen` reaches the app from this machine. Set HOST=0.0.0.0 to expose it on the network.
+  const host = process.env.HOST || '127.0.0.1';
+  createApp().listen(port, host, () => {
+    console.log(`Agency routing demo on http://${host}:${port}`);
+    for (const c of CLIENTS) {
+      if (!process.env[c.env_assistant_id]) console.warn(`  WARNING: ${c.env_assistant_id} is not set, so ${c.name}'s route cannot flag a message from another client's assistant. Run npm run setup.`);
+    }
     for (const c of CLIENTS) console.log(`  ${c.name}: ${c.path}  (control mode: ${CONTROL_MODE()})`);
   });
 }

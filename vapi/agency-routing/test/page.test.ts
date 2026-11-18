@@ -4,6 +4,7 @@ import { after, before, describe, it } from 'node:test';
 import { Browser, chromium, Page } from 'playwright';
 
 process.env.LOOKUP_DELAY_MS = '1200';
+process.env.ALLOW_LOCAL_CONTROL_URL = 'true'; // this test posts to a closed local port
 process.env.VAPI_PUBLIC_KEY = 'pk-test';
 process.env.ACME_ASSISTANT_ID = 'asst-acme';
 process.env.GLOBEX_ASSISTANT_ID = 'asst-globex';

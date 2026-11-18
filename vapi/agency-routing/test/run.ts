@@ -8,10 +8,12 @@ import http from 'http';
 import { AddressInfo } from 'net';
 
 process.env.LOOKUP_DELAY_MS = '50';
+process.env.ALLOW_LOCAL_CONTROL_URL = 'true'; // the stand-in controlUrl below is http://localhost
 process.env.ACME_ASSISTANT_ID = 'asst-acme';
 process.env.GLOBEX_ASSISTANT_ID = 'asst-globex';
 
 import { createApp, logs } from '../src/server';
+import { assertControlUrl } from '../src/live-call-control';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -20,7 +22,12 @@ async function main() {
   const control = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
-    req.on('end', () => { control_requests.push({ url: req.url, body: JSON.parse(body) }); res.end('{"status":"ok"}'); });
+    req.on('end', () => {
+      control_requests.push({ url: req.url, body: JSON.parse(body) });
+      // /flaky answers 500 the first time, so a redelivery has something to retry
+      if (req.url?.startsWith('/flaky') && control_requests.filter((r) => r.url?.startsWith('/flaky')).length === 1) { res.writeHead(500).end('try again'); return; }
+      res.end('{"status":"ok"}');
+    });
   }).listen(0);
   const control_port = (control.address() as AddressInfo).port;
 
@@ -58,6 +65,7 @@ async function main() {
   await post('/clients/acme/webhook', tool_calls('asst-acme', 'Priya Shah'));
   await sleep(200);
   assert.equal(control_requests.length, 1);
+  assert.equal(logs.acme[0].type, 'tool-calls-duplicate', 'the repeat is logged with its own type');
 
   // 4. each client has its own CRM
   await post('/clients/globex/webhook', tool_calls('asst-globex', 'Ken'));
@@ -95,6 +103,50 @@ async function main() {
   const state = await (await fetch(`${base}/api/state`)).json();
   assert.deepEqual(state.map((c: any) => [c.slug, c.agent_role, c.caller_name]), [['acme', 'Phone receptionist', 'Priya Shah'], ['globex', 'Phone dispatcher', 'Maria Lopez']]);
   assert.equal((await (await fetch(`${base}/api/config`)).json()).lookup_delay_ms, 50);
+
+  // 9. malformed bodies get a 400 and a log entry, never a crash or a stack trace
+  const raw_post = (path: string, body: string) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+  const bad_args = tool_calls('asst-acme', 'x');
+  (bad_args.toolCallList[0].function as any).arguments = '{bad';
+  const bad_res = await post('/clients/acme/webhook', bad_args);
+  assert.equal(bad_res.status, 400);
+  assert.equal(logs.acme[0].type, 'bad-request');
+  const not_array = await post('/clients/acme/webhook', { ...tool_calls('asst-acme', 'x'), toolCallList: 'nope' });
+  assert.equal(not_array.status, 400);
+  const broken = await raw_post('/clients/acme/webhook', '{"message":');
+  assert.equal(broken.status, 400);
+  assert.deepEqual(await broken.json(), { error: 'bad request' });
+  const huge = await raw_post('/clients/acme/webhook', JSON.stringify({ message: { type: 'status-update', pad: 'x'.repeat(3 * 1024 * 1024) } }));
+  assert.equal(huge.status, 413);
+  assert.deepEqual(await huge.json(), { error: 'body too large' });
+  await sleep(100);
+  assert.equal(control_requests.length, 2, 'bad requests start no lookups');
+
+  // 10. a controlUrl that is not a Vapi host is never called
+  const outside = tool_calls('asst-acme', 'Priya Shah');
+  outside.call.monitor.controlUrl = 'https://control.example.com/hook';
+  outside.toolCallList[0].id = 'tc-outside';
+  assert.equal((await post('/clients/acme/webhook', outside)).status, 200);
+  assert.equal(logs.acme[0].type, 'lookup-error');
+  assert.match(logs.acme[0].detail, /not an https \*\.vapi\.ai URL/);
+  assert.doesNotThrow(() => assertControlUrl('https://phone-call-websocket.aws-us-west-2-backend-production2.vapi.ai/abc/control'));
+  for (const url of ['http://x.vapi.ai/c', 'https://vapi.ai.evil.com/c', 'https://evil.com/.vapi.ai', 'https://user:pw@x.vapi.ai/c', 'not a url', 'http://localhost:4000/c']) {
+    if (url === 'http://localhost:4000/c') { process.env.ALLOW_LOCAL_CONTROL_URL = 'false'; }
+    assert.throws(() => assertControlUrl(url), /controlUrl/, url);
+  }
+  process.env.ALLOW_LOCAL_CONTROL_URL = 'true';
+
+  // 11. if posting to the controlUrl fails, a redelivery of the same tool call retries it
+  const flaky = tool_calls('asst-acme', 'Priya Shah');
+  flaky.call.monitor.controlUrl = `http://localhost:${control_port}/flaky/control`;
+  flaky.toolCallList[0].id = 'tc-flaky';
+  await post('/clients/acme/webhook', flaky);
+  await sleep(300);
+  assert.equal(logs.acme[0].type, 'lookup-error');
+  await post('/clients/acme/webhook', flaky);
+  await sleep(300);
+  assert.equal(control_requests.filter((r) => r.url?.startsWith('/flaky')).length, 2);
+  assert.equal(logs.acme[0].type, 'live-call-control');
 
   console.log('All checks passed');
   app.close(); control.close();
