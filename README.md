@@ -13,6 +13,7 @@ stripe/         Stripe integration demos
 shopify/        Shopify integration demos
 deepgram/       Deepgram integration demos
 vapi/           Vapi integration demos
+elevenlabs/     ElevenLabs integration demos
 _shared/        Source of truth for code shared across demos
 ```
 
@@ -74,6 +75,12 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 | Demo | Description |
 |------|-------------|
 | [agency-routing](vapi/agency-routing/) | A voice AI agency routes each client's Vapi call events to that client's endpoint, with an async tool that returns its result into the live call |
+
+### ElevenLabs
+
+| Demo | Description |
+|------|-------------|
+| [post-call-transcripts](elevenlabs/post-call-transcripts/) | ElevenLabs Agents post-call webhooks through Hookdeck: signature verification, deduplication on `conversation_id`, retries and replay, and large transcript and audio payloads, stored and shown in a small app |
 
 ## Shared Utilities
 
