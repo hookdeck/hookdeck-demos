@@ -44,7 +44,7 @@ async function start() {
   set_state('ringing');
   say('Connecting...', 'call_connecting');
   try {
-    const response = await fetch('/api/signed-url', { method: 'POST' });
+    const response = await fetch('/api/signed-url', { method: 'POST', headers: { 'x-demo': '1' } });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || response.statusText);
     await navigator.mediaDevices.getUserMedia({ audio: true });

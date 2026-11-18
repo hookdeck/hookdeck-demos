@@ -41,23 +41,32 @@ function tip(anchor, text, kind) {
   return `<span class="tip">${control}<span class="tip-bubble" id="${id}" role="tooltip">${esc(text)}</span></span>`;
 }
 
+/** One record that cannot be drawn shows a note instead of stopping the refresh */
+function safely(render) {
+  try { return render(); } catch (error) { return '<div class="conversation"><span class="request-text body-s">A stored conversation could not be shown.</span></div>'; }
+}
+
 function renderConversation(c, open) {
-  const turns = c.transcript
-    .map((t) => `<div class="turn body-s"><span class="role mono-xs">${esc(t.role)}</span><span>${esc(t.message)}</span></div>`)
+  // Stored records come from webhook payloads: read each field as what it should be, so one odd record cannot stop the refresh
+  const transcript = Array.isArray(c.transcript) ? c.transcript : [];
+  const turns = transcript
+    .map((t) => `<div class="turn body-s"><span class="role mono-xs">${esc(t?.role)}</span><span>${esc(t?.message)}</span></div>`)
     .join('');
   const kv = (obj, valueOf) => {
-    const rows = Object.entries(obj).map(([key, v]) => `<dt class="body-xs">${esc(key)}</dt><dd class="body-s">${esc(valueOf(v))}</dd>`);
+    const rows = Object.entries(obj && typeof obj === 'object' ? obj : {}).map(([key, v]) => `<dt class="body-xs">${esc(key)}</dt><dd class="body-s">${esc(valueOf(v))}</dd>`);
     return rows.length ? `<dl class="kv">${rows.join('')}</dl>` : '<span class="body-xs">None configured on the agent.</span>';
   };
-  const sizes = Object.entries(c.payload_bytes).map(([type, bytes]) => `${type}: ${size(bytes)}`).join(' · ');
-  const event_count = Object.keys(c.payload_bytes).length;
+  const payload_bytes = c.payload_bytes && typeof c.payload_bytes === 'object' ? c.payload_bytes : {};
+  const sizes = Object.entries(payload_bytes).map(([type, bytes]) => `${type}: ${size(bytes)}`).join(' · ');
+  const event_count = Object.keys(payload_bytes).length;
   const events_chip = tip(`<button type="button" class="chip-btn mono-xs">${event_count} event${event_count === 1 ? '' : 's'}</button>`, `Agent: ${c.agent_name || c.agent_id}. ${sizes}.`);
   const booking = Diary.bookingOf(c);
   let slot_chip = '';
   if (booking && booking.slot) slot_chip = tip(`<button type="button" class="chip-btn chip-btn--slot mono-xs">${esc(Diary.slotLabel(booking))}</button>`, `Taken from requested_time (${booking.requested_time}) once the webhook landed.`);
   else if (booking) slot_chip = tip(`<button type="button" class="chip-btn chip-btn--slot mono-xs">Unscheduled</button>`, booking.requested_time ? `requested_time (${booking.requested_time}) could not be read as a day and a time.` : 'The call did not record a requested_time.');
   const booked = c.evaluation_criteria_results && c.evaluation_criteria_results.booking_made;
-  const why = c.status && !booking ? `booking_made: ${booked ? booked.result : 'not reported'}. Nothing was added to the diary.` : '';
+  const booked_result = booked && booked.result;
+  const why = c.status && !booking ? `booking_made: ${booked_result || 'not reported'}. Nothing was added to the diary.` : '';
   return `
     <details class="conversation" data-id="${esc(c.conversation_id)}" ${open ? 'open' : ''}>
       <summary>
@@ -66,16 +75,16 @@ function renderConversation(c, open) {
       </summary>
       <div class="request-meta body-xs">
         <code>${esc(c.conversation_id)}</code>
-        ${c.call_duration_secs != null ? `<span>${c.call_duration_secs}s</span>` : ''}
+        ${c.call_duration_secs != null ? `<span>${esc(c.call_duration_secs)}s</span>` : ''}
         ${c.termination_reason ? `<span>${esc(c.termination_reason)}</span>` : ''}
         ${events_chip}
         ${slot_chip}
       </div>
       <div class="detail">
         ${c.audio_file ? `<audio controls src="/audio/${encodeURIComponent(c.conversation_id)}.mp3"></audio>` : ''}
-        ${c.transcript.length ? `<div><h3 class="subtitle-xs">Transcript</h3>${turns}</div>` : ''}
-        <div><h3 class="subtitle-xs">Data collection</h3>${kv(c.data_collection_results, (v) => (typeof v.value === 'object' ? JSON.stringify(v.value) : v.value))}</div>
-        <div><h3 class="subtitle-xs">Evaluation criteria</h3>${kv(c.evaluation_criteria_results, (v) => v.result)}</div>
+        ${transcript.length ? `<div><h3 class="subtitle-xs">Transcript</h3>${turns}</div>` : ''}
+        <div><h3 class="subtitle-xs">Data collection</h3>${kv(c.data_collection_results, (v) => (typeof v?.value === 'object' ? JSON.stringify(v.value) : v?.value))}</div>
+        <div><h3 class="subtitle-xs">Evaluation criteria</h3>${kv(c.evaluation_criteria_results, (v) => v?.result)}</div>
       </div>
     </details>`;
 }
@@ -122,7 +131,7 @@ async function refresh() {
   show(
     'conversations',
     conversations.length
-      ? conversations.map((c, i) => renderConversation(c, openIds.has(c.conversation_id) || (i === 0 && !openIds.size))).join('')
+      ? conversations.map((c, i) => safely(() => renderConversation(c, openIds.has(c.conversation_id) || (i === 0 && !openIds.size)))).join('')
       : `<span class="empty body-s">${wording('empty', EMPTY_PLAIN)}</span>`,
   );
 
@@ -156,7 +165,7 @@ async function refresh() {
 }
 
 async function post(url, body) {
-  await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+  await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-demo': '1' }, body: JSON.stringify(body || {}) });
   refresh();
 }
 
