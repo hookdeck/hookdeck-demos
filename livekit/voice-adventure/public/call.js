@@ -12,6 +12,8 @@ const fail = (text) => { const m = $('callMessage'); m.hidden = !text; m.textCon
 let room = null;
 let room_name = null;
 let my_identity = null;
+// An invite link (`?room=story-...`) joins the story that is already running; without one, Join starts a new story
+let invite_room = new URLSearchParams(location.search).get('room');
 
 // Remote audio (the innkeeper, the storyteller, other players, the scene soundtrack) plays through hidden <audio> elements.
 const audio_box = document.createElement('div');
@@ -300,6 +302,28 @@ function watchRoom(r) {
   }
 }
 
+// The invite link: this page's address with the story room, copyable once you are in
+function showInvite(name) {
+  const link = new URL(location.pathname, location.origin);
+  link.searchParams.set('room', name);
+  $('inviteLink').value = link.toString();
+  $('invite').hidden = !name;
+}
+function showInviteNote(show) {
+  const note = $('inviteNote');
+  note.hidden = !show;
+  if (show) note.textContent = T('invite_note', 'You have been invited to a story already under way. Type a name and select Join a call.');
+}
+$('inviteCopy').addEventListener('click', async () => {
+  const input = $('inviteLink');
+  try { await navigator.clipboard.writeText(input.value); } catch { input.select(); document.execCommand('copy'); }
+  const button = $('inviteCopy');
+  button.textContent = T('invite_copied', 'Copied');
+  setTimeout(() => { button.textContent = T('invite_copy', 'Copy link'); }, 1500);
+});
+$('inviteLink').addEventListener('focus', () => $('inviteLink').select());
+if (invite_room) showInviteNote(true);
+
 function set_state(connected) {
   $('joinBtn').disabled = connected;
   $('leaveBtn').disabled = !connected;
@@ -307,6 +331,7 @@ function set_state(connected) {
   if (!connected) $('testBtn').textContent = T('pixel_add', 'Add Pixel, a mute player');
   // The name is fixed from joining until the player leaves or the story ends
   $('playerName').readOnly = connected;
+  if (!connected) $('invite').hidden = true;
 }
 
 $('joinBtn').addEventListener('click', async () => {
@@ -314,7 +339,10 @@ $('joinBtn').addEventListener('click', async () => {
   $('joinBtn').disabled = true;
   say('Getting a token…');
   try {
-    const { url, token, room: name, identity } = await (await fetch('/api/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: $('playerName').value }) })).json();
+    const response = await fetch('/api/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: $('playerName').value, ...(invite_room ? { room: invite_room } : {}) }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `the app answered ${response.status}`);
+    const { url, token, room: name, identity } = data;
     room = new Room();
     story_ended = false;
     lines.clear();
@@ -328,10 +356,13 @@ $('joinBtn').addEventListener('click', async () => {
     my_identity = identity;
     say_copy('status_connected', `Connected to ${name} as ${identity}, microphone on.`, { name: $('playerName').value.trim() || identity });
     set_state(true);
+    showInvite(name);
+    // The invite was used: a later Join (for example "Start a new story") starts a new story instead of returning here
+    if (invite_room) { invite_room = null; try { history.replaceState(null, '', location.pathname); } catch { /* the link stays in the address bar */ } showInviteNote(false); }
     await room.startAudio();
     renderPeople();
   } catch (error) {
-    fail(`Could not join: ${error.message}. Check that the browser has microphone access.`);
+    fail(`Could not join: ${error.message}. If the page can't reach the microphone, check the browser's permission.`);
     say('');
     set_state(false);
     room?.disconnect();
@@ -370,6 +401,7 @@ if (demo_state) {
   agent.attributes['story.place'] = 'The Cave under the Mere';
   agent.attributes['story.satchel'] = JSON.stringify(demo_state === 'quiet' ? [] : ['map', 'brass_key']);
   set_state(true);
+  showInvite('story-demo01');
   say_copy('status_connected', 'Connected to story-demo as web-1, microphone on.', { name: 'Priya' });
   renderPeople();
   showLine('a', 'Hester Pennywhistle', 'Ah, Priya, we\'ve been expecting you, and your quiet friend, Pixel.', true, 'innkeeper');

@@ -54,6 +54,14 @@
         <span class="body-xs muted" id="callStatus"></span>
       </div>
       <div id="callMessage" class="message body-s" hidden></div>
+      <div id="inviteNote" class="message info body-s" hidden></div>
+      <div id="invite" class="invite body-s" hidden>
+        <span class="subtitle-xs" data-copy="invite_title">Invite a friend</span><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the invite link" aria-describedby="tipInvite"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipInvite" role="tooltip" data-copy="tip_invite">Anyone who opens this link joins this story, while it is running. Each person needs their own microphone.</span></span>
+        <div class="actions">
+          <input class="input" id="inviteLink" type="text" readonly aria-label="Invite link" autocomplete="off" spellcheck="false" style="flex:1 1 260px;min-width:0">
+          <button class="button button--secondary" id="inviteCopy" type="button" data-copy="invite_copy">Copy link</button>
+        </div>
+      </div>
       <div id="storyBanner" class="story-banner body-m" hidden></div>
       <div id="satchel" class="satchel body-s" hidden><span class="subtitle-xs" data-copy="satchel_title">Items</span><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the items" aria-describedby="tipSatchel"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipSatchel" role="tooltip" data-copy="tip_satchel">What your party is carrying. Old Bram updates it as you find things.</span></span><ul id="satchelItems" class="satchel-items"></ul></div>
     </section>
