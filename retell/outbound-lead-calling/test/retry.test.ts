@@ -83,7 +83,7 @@ test('idempotency is per call: the same event for a new attempt is applied, a re
   applyRetellEvent(ended('percall', 'simulated_percall', 'dial_no_answer'));
   assert.equal(applyRetellEvent(ended('percall', 'simulated_percall', 'dial_no_answer')), 'duplicate');
   assert.equal(getLead('percall')!.attempt, 2, 'a repeat must not advance the ladder again');
-  updateLead('percall', { status: 'calling', next_attempt_at: undefined });
+  updateLead('percall', { status: 'calling', next_attempt_at: undefined, call_id: 'simulated_percall_2' });
   assert.equal(applyRetellEvent(ended('percall', 'simulated_percall_2', 'dial_no_answer')), 'applied');
   assert.equal(getLead('percall')!.attempt, 3);
 });
@@ -92,4 +92,12 @@ test('simulatedCallId: attempt 1 keeps the demo id, later attempts get their own
   assert.equal(simulatedCallId({ id: 'abc', attempt: undefined }), 'simulated_abc');
   assert.equal(simulatedCallId({ id: 'abc', attempt: 1 }), 'simulated_abc');
   assert.equal(simulatedCallId({ id: 'abc', attempt: 3 }), 'simulated_abc_3');
+});
+
+test('a bad RETRY_DELAY_SECONDS falls back to the default', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const run = (value: string) => execFileSync(process.execPath, ['--require', 'ts-node/register', '-e', "console.log(require('./src/retry').RETRY_DELAY_SECONDS)"], { env: { ...process.env, RETRY_DELAY_SECONDS: value }, cwd: path.join(__dirname, '..') }).toString().trim();
+  assert.equal(run('abc'), '120');
+  assert.equal(run('-5'), '120');
+  assert.equal(run('30'), '30');
 });

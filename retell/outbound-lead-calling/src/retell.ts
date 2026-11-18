@@ -26,6 +26,8 @@ export interface LeadCallInput {
   lead_name: string;
   property_interest: string;
   lead_notes: string;
+  /** The retry attempt (1-based): each attempt is its own call, so each gets its own idempotency key */
+  attempt?: number;
 }
 
 /**
@@ -40,7 +42,7 @@ export async function createPhoneCall(input: LeadCallInput): Promise<{ call_id: 
     from_number: RETELL_FROM_NUMBER,
     to_number: input.to_number,
     override_agent_id: RETELL_AGENT_ID,
-    idempotency_key: `lead-${input.lead_id}`,
+    idempotency_key: `lead-${input.lead_id}-${input.attempt ?? 1}`,
     retell_llm_dynamic_variables: {
       lead_name: input.lead_name,
       property_interest: input.property_interest,
