@@ -57,7 +57,7 @@ test('theme off: the plain wording is restored and runtime lookup returns the fa
 });
 
 test('the shared hook names no specific theme', () => {
-  const shared = fs.readFileSync(path.join(__dirname, '../../../_shared/theme/theme.js'), 'utf8');
+  const shared = fs.readFileSync(path.join(__dirname, '../public/theme.js'), 'utf8');
   assert.doesNotMatch(shared.replace(/\/\/.*$/gm, ''), /story|tale|drowned/i);
 });
 

@@ -65,8 +65,8 @@ This creates a `livekit-voice-adventure` source, a CLI destination that forwards
 lk cloud auth --user-auth   # opens a browser sign-in once
 npm run setup               # also creates (or updates) the "Hookdeck: livekit-voice-adventure" webhook
 ```
-**Renamed from "call log".** This demo used to be `livekit/call-log`, with a `livekit-call-log` source and connection, a `local-livekit-call-log` destination and a LiveKit Cloud webhook named "Hookdeck: livekit-call-log". `npm run setup` now creates the `livekit-voice-adventure` resources and moves an existing "Hookdeck: livekit-call-log" webhook to the new source URL instead of adding a second one. The old Hookdeck source, connection and destination are safe to delete in the dashboard.
 
+**Renamed from "call log".** This demo used to be `livekit/call-log`, with a `livekit-call-log` source and connection, a `local-livekit-call-log` destination and a LiveKit Cloud webhook named "Hookdeck: livekit-call-log". `npm run setup` now creates the `livekit-voice-adventure` resources and moves an existing "Hookdeck: livekit-call-log" webhook to the new source URL instead of adding a second one. The old Hookdeck source, connection and destination are safe to delete in the dashboard.
 
 Setup finds your project by matching `LIVEKIT_URL` (set `LIVEKIT_PROJECT_ID` to choose one), signs the webhook with `LIVEKIT_API_KEY`, and updates the webhook instead of duplicating it when you run it again. To use a session token yourself, set `LIVEKIT_SESSION_TOKEN`.
 
@@ -113,7 +113,8 @@ Speech-to-text (Deepgram Nova 3), the language model (OpenAI GPT-4.1 mini) and t
 The agent logs `LLM: LiveKit Inference openai/gpt-4.1-mini` at startup. Inference usage beyond your plan's included credits is billed to your LiveKit project, so keep test runs short.
 
 **Pixel**, the mute player, is a small Node participant (`agent/src/pixel.ts`, `@livekit/rtc-node`) that the app starts when you select **Add Pixel** (at most `MAX_PIXELS`, default 4, at a time). It joins as `bot-pixel`, publishes no media, and sends the gesture lines the story agent hands it on the `lk.chat` topic, which the page shows in the Transcript. Those chat messages do not reach the agent: an agent session accepts text only from the participant it is linked to, and Pixel is never linked, because it never holds a turn. Old Bram reacts through the agent's own notes instead. The agent chooses the line (for the place and the satchel), publishes it as the `story.pixel_line` and `story.pixel_seq` attributes, remembers what Pixel did, and tells Bram to weave it into his next reply. Pixel logs to `data/pixel.log`. Its webhooks are `participant_joined` and `participant_left` as a standard participant, so the chronicle lists it as a player.
- The agent calls the app at `http://localhost:4000` (set `STORY_APP_URL` if the app runs elsewhere). The story runs about six minutes, and the page's **Transcript** shows what is said, from the `lk.transcription` text streams the agent publishes.
+
+The agent calls the app at `http://localhost:4000` (set `STORY_APP_URL` if the app runs elsewhere). The story runs about six minutes, and the page's **Transcript** shows what is said, from the `lk.transcription` text streams the agent publishes.
 
 ## Soundtracks
 
