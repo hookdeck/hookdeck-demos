@@ -653,7 +653,7 @@ function deployedScene(layout: DeployedLayout, name: string) {
     }
     const caption = captions(stage, [...deployedCaptionsBy], { x: L.caption.x, y: L.caption.y }, b.options.captions && L.dir === 'h', { max: L.caption.max, size: L.caption.size })
     const send = (edge: keyof typeof edges, start: number, label: string) =>
-      travel(tl, packet(stage, edges[edge], { label }), start, 'into', 1.2)
+      travel(tl, packet(stage, edges[edge], { label, labelClear: true }), start, 'into', 1.2)
     const work = (ids: string[], start: number) => {
       let t = start
       for (const id of ids) {

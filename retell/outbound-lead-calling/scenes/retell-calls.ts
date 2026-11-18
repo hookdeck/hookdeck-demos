@@ -475,18 +475,19 @@ const DEPLOYED_DESKTOP: DeployedLayout = {
 }
 
 const DEPLOYED_PHONE: DeployedLayout = {
-  canvas: { width: 640, height: 880 },
+  canvas: { width: 640, height: 940 },
   dir: 'v',
   k: 0.9,
-  agent: { x: 300, y: 90, w: 440, h: 120 },
-  gateway: { x: 300, y: 410, w: 460, h: 170 },
-  app: { x: 300, y: 745, w: 440, h: 120 },
-  status: { agent: { x: 0, y: 100 }, gateway: { x: 0, y: 180 }, app: { x: 0, y: 85 } },
-  chips: { x: 300, y: 540 },
-  edgeLabels: { in: { x: 300, y: 262 }, out: { x: 300, y: 650 }, start: { x: 596, y: 417 } },
+  agent: { x: 300, y: 150, w: 440, h: 120 },
+  gateway: { x: 300, y: 470, w: 460, h: 250 },
+  app: { x: 300, y: 805, w: 440, h: 120 },
+  // Status chips sit above Retell/the provider and below your app, and the gateway's inside its card, so a moving packet label never crosses one.
+  status: { agent: { x: 0, y: -85 }, gateway: { x: 0, y: -88 }, app: { x: 0, y: 85 } },
+  chips: { x: 300, y: 558 },
+  edgeLabels: { in: { x: 300, y: 277 }, out: { x: 300, y: 670 }, start: { x: 596, y: 477 } },
   startBulge: 110,
   caption: { x: 0, y: 0, max: 0, size: 0 },
-  crop: '0 0 640 880',
+  crop: '0 0 640 940',
 }
 
 function deployedScene(layout: DeployedLayout, name: string) {
@@ -535,7 +536,7 @@ function deployedScene(layout: DeployedLayout, name: string) {
     }
     const caption = captions(stage, [...deployedCaptionsBy], { x: L.caption.x, y: L.caption.y }, b.options.captions && L.dir === 'h', { max: L.caption.max, size: L.caption.size })
     const send = (edge: keyof typeof edges, at: number, label?: string) =>
-      travel(tl, packet(stage, edges[edge], { label }), at, 'into', 1.2)
+      travel(tl, packet(stage, edges[edge], { label, labelClear: true }), at, 'into', 1.2)
     const work = (ids: string[], at: number) => {
       let t = at
       for (const id of ids) {

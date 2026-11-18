@@ -19,6 +19,8 @@ export interface PacketOptions {
   big?: boolean
   /** A size or type label that travels with the packet and slides under the nodes at each end. */
   label?: string
+  /** Keep the label whole on the connector for the whole trip, so no part of it goes under a node. Off by default: the label then slides under the nodes at each end. */
+  labelClear?: boolean
 }
 
 /** One event on one connector: a blue head with a lighter tail, like the illustrations' dashes. */
@@ -33,7 +35,7 @@ export interface Packet {
   head: number
   tail: number
   width: number
-  label?: { g: SVGGElement, width: number, at: (p: Point) => void }
+  label?: { g: SVGGElement, width: number, clear: boolean, at: (p: Point) => void }
   destroy: () => void
 }
 
@@ -69,7 +71,8 @@ export function packet(stage: Stage, conn: Connector, o: PacketOptions = {}): Pa
     // one) can't fit between two nodes, so it draws above them (the overlay layer) instead of
     // sliding under them.
     const span = conn.dir === 'h' ? w : 34
-    const lg = el('g', {}, span + 16 > conn.length ? stage.overlay : stage.labels)
+    // A clear label stays inside the connector, so it can draw above the connector tags and chips and never hides.
+    const lg = el('g', {}, o.labelClear || span + 16 > conn.length ? stage.overlay : stage.labels)
     const rect = el('rect', { x: -w / 2, y: -17, width: w, height: 34, rx: 17, 'stroke-width': 1.5 }, lg)
     rect.style.fill = big ? color.blue : color.blueBadgeBg
     rect.style.stroke = big ? color.blue : color.blueBadgeOutline
@@ -79,9 +82,15 @@ export function packet(stage: Stage, conn: Connector, o: PacketOptions = {}): Pa
     label = {
       g: lg,
       width: w,
+      clear: o.labelClear ?? false,
       at: (pt) => {
         // Above a left-to-right connector, to the right of a top-to-bottom one.
-        const pos = conn.dir === 'h' ? { x: pt.x, y: pt.y - 46 } : { x: pt.x + w / 2 + 22, y: pt.y }
+        let pos = conn.dir === 'h' ? { x: pt.x, y: pt.y - 46 } : { x: pt.x + w / 2 + 22, y: pt.y }
+        if (conn.dir === 'v' && label?.clear) {
+          // Keep a clear label on the canvas: beside the connector when it fits, else centered on it.
+          const room = stage.svg.viewBox.baseVal.width - 8
+          pos = pt.x + 50 + w <= room ? { x: pt.x + 50 + w / 2, y: pt.y } : { x: Math.max(w / 2 + 8, Math.min(room - w / 2, pt.x)), y: pt.y }
+        }
         lg.setAttribute('transform', `translate(${pos.x} ${pos.y})`)
       },
     }
@@ -111,10 +120,18 @@ export function travel(tl: Timeline, p: Packet, at: number, mode: 'into' | 'arri
         const half = p.conn.dir === 'h' ? label.width / 2 : 17
         front = Math.min(front, Math.max(p.conn.length / 2, p.conn.length - half - 8))
       }
+      else if (label.clear) {
+        const half = p.conn.dir === 'h' ? label.width / 2 : 17
+        const [low, high] = [half + 8, p.conn.length - half - 8]
+        front = high < low ? p.conn.length / 2 : Math.max(low, Math.min(high, front))
+      }
       label.at(p.conn.path.getPointAtLength(front))
     }
     place()
-    tl.set(label.g, { autoAlpha: 1 }, at)
+    if (label.clear)
+      tl.fromTo(label.g, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.2 }, at)
+    else
+      tl.set(label.g, { autoAlpha: 1 }, at)
     tl.fromTo(proxy, { p: 0 }, { p: 1, duration, ease: 'sine.inOut', onUpdate: place }, at)
     if (mode === 'into')
       tl.to(label.g, { autoAlpha: 0, duration: 0.25 }, at + duration - 0.35)

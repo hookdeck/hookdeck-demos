@@ -79,7 +79,7 @@ export const captionsBy = {
 // page, which shows what the demo runs.
 export const deployedCaptionsBy = [
   'LiveKit sends a webhook for each room and participant event, and Event Gateway delivers each one to your app over HTTPS.',
-  'A room opens. LiveKit sends `room_started` to Event Gateway, which delivers it to your app over HTTPS and signs the delivery. Your app verifies the Hookdeck signature, and the call is in progress.',
+  'A room opens. LiveKit sends `room_started` to Event Gateway, which delivers it to your app over HTTPS. Your app checks LiveKit\'s token in the `Authorization` header, which Event Gateway forwards unchanged, and the call is in progress.',
   'A participant joins. `participant_joined` arrives the same way, and your app adds the participant to the call.',
   'The participant leaves. `participant_left` is delivered, and your app marks them as left.',
   'The room closes. `room_finished` is delivered, and the call log shows the call as ended, with its start, end and duration.',
@@ -493,17 +493,18 @@ const DEPLOYED_DESKTOP: DeployedLayout = {
 }
 
 const DEPLOYED_PHONE: DeployedLayout = {
-  canvas: { width: 640, height: 880 },
+  canvas: { width: 640, height: 940 },
   dir: 'v',
   k: 0.9,
-  agent: { x: 320, y: 90, w: 440, h: 120 },
-  gateway: { x: 320, y: 410, w: 500, h: 170 },
-  app: { x: 320, y: 745, w: 440, h: 120 },
-  status: { agent: { x: 0, y: 100 }, gateway: { x: 0, y: 180 }, app: { x: 0, y: 85 } },
-  chips: { x: 320, y: 540 },
-  edgeLabels: { in: { x: 320, y: 262 }, out: { x: 320, y: 650 } },
+  agent: { x: 320, y: 150, w: 440, h: 120 },
+  gateway: { x: 320, y: 470, w: 500, h: 250 },
+  app: { x: 320, y: 805, w: 440, h: 120 },
+  // Status chips sit above Retell/the provider and below your app, and the gateway's inside its card, so a moving packet label never crosses one.
+  status: { agent: { x: 0, y: -85 }, gateway: { x: 0, y: -88 }, app: { x: 0, y: 85 } },
+  chips: { x: 320, y: 558 },
+  edgeLabels: { in: { x: 320, y: 277 }, out: { x: 320, y: 670 } },
   caption: { x: 0, y: 0, max: 0, size: 0 },
-  crop: '0 0 640 880',
+  crop: '0 0 640 940',
 }
 
 function deployedScene(layout: DeployedLayout, name: string) {
@@ -550,7 +551,7 @@ function deployedScene(layout: DeployedLayout, name: string) {
     }
     const caption = captions(stage, [...deployedCaptionsBy], { x: L.caption.x, y: L.caption.y }, b.options.captions && L.dir === 'h', { max: L.caption.max, size: L.caption.size })
     const send = (edge: keyof typeof edges, at: number, label: string) =>
-      travel(tl, packet(stage, edges[edge], { label }), at, 'into', 1.2)
+      travel(tl, packet(stage, edges[edge], { label, labelClear: true }), at, 'into', 1.2)
     const work = (ids: string[], at: number) => {
       let t = at
       for (const id of ids) {
