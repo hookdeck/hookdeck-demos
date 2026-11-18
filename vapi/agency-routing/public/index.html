@@ -105,7 +105,7 @@
 <script src="/while-you-wait.js"></script>
 <script>
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const BADGE = { 'tool-calls': 'badge--primary', 'live-call-control': 'badge--success', misrouted: 'badge--danger', 'lookup-error': 'badge--danger', 'end-of-call-report': 'badge--mono' };
+const BADGE = { 'tool-calls': 'badge--primary', 'live-call-control': 'badge--success', misrouted: 'badge--danger', 'lookup-error': 'badge--danger', 'bad-request': 'badge--danger', 'tool-calls-duplicate': 'badge--mono', 'end-of-call-report': 'badge--mono' };
 
 // Wording a theme may change (data-copy in the HTML, HookdeckTheme.copy for text built here)
 const wording = (key, plain) => (window.HookdeckTheme ? window.HookdeckTheme.copy(key, plain) : plain);

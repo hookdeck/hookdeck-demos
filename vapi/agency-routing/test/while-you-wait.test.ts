@@ -54,6 +54,15 @@ test('a redelivered tool request does not restart the lookup, and a result for a
   assert.equal(w.started_at, T0);
 });
 
+test('a redelivery logged as a duplicate after the lookup closed does not open another countdown', () => {
+  const duplicate = { at: at(9000), type: 'tool-calls-duplicate', call_id: 'call-1', detail: 'lookup_customer tc-1 already started, ignored' };
+  const w = derive(newest_first(tool(0), result(6100), duplicate), T0 + 10000, 6000);
+  assert.equal(w.state, 'done');
+  assert.equal(w.started_at, T0);
+  // the duplicate alone, with no earlier lookup, shows nothing
+  assert.equal(derive(newest_first(duplicate), T0 + 10000, 6000), null);
+});
+
 test('a second lookup in the same call after the first finished starts a new one', () => {
   const w = derive(newest_first(tool(0), result(6100), tool(20000)), T0 + 22000, 6000);
   assert.equal(w.state, 'lookup');
