@@ -1,5 +1,6 @@
 /**
- * One command to wire the whole demo. Idempotent: safe to run again.
+ * One command to wire the whole demo. Safe to run again: it updates what it created before (the IDs in .env)
+ * and never changes a Vapi credential, tool or assistant that only shares a name with one of its own.
  *
  * Hookdeck (project for HOOKDECK_API_KEY), per client:
  *   source (type VAPI, HMAC verification on) -> connection -> CLI destination (the client's route)
@@ -62,9 +63,16 @@ async function setupHookdeck(client: Client, secret: string): Promise<string> {
   return source.url;
 }
 
-async function upsertByName(list_path: string, name_of: (x: any) => string, name: string, create: () => Promise<any>, update: (id: string) => Promise<any>): Promise<any> {
-  const existing = ((await vapi('GET', list_path)) as any[]).find((x) => name_of(x) === name);
-  return existing ? update(existing.id) : create();
+/**
+ * Updates the object this demo created on an earlier run (its ID is saved in .env), otherwise creates a new one.
+ * An object that only shares the name was made by someone else, so it is never changed.
+ */
+async function upsertByName(list_path: string, name_of: (x: any) => string, name: string, saved_id: string | undefined, create: () => Promise<any>, update: (id: string) => Promise<any>): Promise<any> {
+  const same_name = ((await vapi('GET', list_path)) as any[]).filter((x) => name_of(x) === name);
+  const ours = saved_id ? same_name.find((x) => x.id === saved_id) : undefined;
+  if (ours) return update(ours.id);
+  if (same_name.length) console.log(`Vapi ${list_path.slice(1)} "${name}" already exists (${same_name.map((x) => x.id).join(', ')}) and is not this demo's (no matching ID in .env): leaving it alone and creating a new one.`);
+  return create();
 }
 
 async function setupVapi(secret: string, urls: { [slug: string]: string }) {
@@ -82,7 +90,7 @@ async function setupVapi(secret: string, urls: { [slug: string]: string }) {
   if (SIGNATURE_PREFIX) authentication_plan.signaturePrefix = SIGNATURE_PREFIX;
   const credential_body = { provider: 'custom-credential', name: CREDENTIAL_NAME, authenticationPlan: authentication_plan };
   const credential = await upsertByName(
-    '/credential', (x) => x.name, CREDENTIAL_NAME,
+    '/credential', (x) => x.name, CREDENTIAL_NAME, process.env.VAPI_HMAC_CREDENTIAL_ID,
     () => vapi('POST', '/credential', credential_body),
     (id) => vapi('PATCH', `/credential/${id}`, { name: CREDENTIAL_NAME, authenticationPlan: authentication_plan }),
   );
@@ -104,7 +112,7 @@ async function setupVapi(secret: string, urls: { [slug: string]: string }) {
     },
   };
   const tool = await upsertByName(
-    '/tool', (x) => x.function?.name, TOOL_NAME,
+    '/tool', (x) => x.function?.name, TOOL_NAME, process.env.VAPI_TOOL_ID,
     () => vapi('POST', '/tool', tool_body),
     (id) => vapi('PATCH', `/tool/${id}`, { async: true, function: tool_body.function }),
   );
@@ -123,7 +131,7 @@ async function setupVapi(secret: string, urls: { [slug: string]: string }) {
       monitorPlan: { controlEnabled: true, listenEnabled: false },
     };
     const assistant = await upsertByName(
-      '/assistant', (x) => x.name, client.assistant_name,
+      '/assistant', (x) => x.name, client.assistant_name, process.env[client.env_assistant_id],
       () => vapi('POST', '/assistant', assistant_body),
       (id) => vapi('PATCH', `/assistant/${id}`, assistant_body),
     );
