@@ -45,7 +45,7 @@ Fill in `.env`: `HOOKDECK_API_KEY`, `RETELL_API_KEY`, `RETELL_SECRET_KEY` (the w
 ```bash
 npm run setup     # creates the Hookdeck connection and the Retell agent, writes the rest of .env
 npm run listen    # terminal 1: forwards events to http://localhost:4000/webhooks/retell
-npm start         # terminal 2: the app on http://localhost:4000
+npm start         # terminal 2: the app on http://localhost:4000 (bound to 127.0.0.1; set HOST to change)
 ```
 
 Open <http://localhost:4000>, fill in the enquiry and choose **Have Sam call Alex** (the lead's name comes from the form). Allow the microphone and answer as the lead: Sam is the agent, you play the lead. The browser uses Retell's [`RetellClient`](https://docs.retellai.com/deploy/web-call) (`retell-client-js-sdk` 3.0.4, loaded pinned from esm.sh) with your public key; the lead's details and `metadata.lead_id` go with the call, so the same three webhooks come back for it. The lead moves through **Calling**, **In call**, **Call ended** and **Analyzed**, with each event on its timeline. The summary and the extracted fields (budget, move-in timeline, whether a viewing was requested) appear when `call_analyzed` arrives, shortly after the call ends.
@@ -78,6 +78,8 @@ The scenes live in `scenes/retell-calls.ts` (the kit in `scenes/kit/` is synced 
 **Themes.** The switch has System, Light, Dark and **Open house** (the default: Acme Realty, with ivory, forest green and brass, set in Fraunces). Open house is `public/theme-open-house.css`, which overrides the design-system tokens only under `html[data-theme="open-house"] main` and on the dialogs, so the Data flow pane never changes, and `public/theme-open-house.copy.js`, the wording only that theme changes (the title, the card headings, the status badge labels). Roles wording (Sam, the lead, the enquiry) is in `index.html` and applies in every theme. The mechanism is `_shared/theme/theme.js`, synced to `public/theme.js`.
 
 **Retry ladder.** When a verified `call_ended` has a `disconnection_reason` of `dial_no_answer`, `dial_busy` or `voicemail_reached`, `src/retry.ts` schedules the next attempt (`RETRY_DELAY_SECONDS`, default 120) up to three attempts, then marks the lead "Gave up". The lead card shows "Attempt 2 of 3", a countdown and the attempts as dots. The app never dials by itself: when the countdown ends the call button is ready, and pressing it starts the next web call on the same lead. To see it without a paid call, press **Lead does not answer** (or run `npm run simulate -- --no-answer`): a signed `call_ended` with `dial_no_answer` goes to your Hookdeck source, so it is verified, delivered and applied like Retell's own. When attempt 2 rings, `npm run simulate` answers and analyzes it. The ladder does not redial a phone-call lead on its own.
+
+**Demo only.** The schedule is a timestamp on the lead that the page watches, and a "retry" re-arms the browser call (or a simulated ring) on the same lead; it does not place a phone call. Production needs a scheduler or queue (a delayed job, or a sweep over `next_attempt_at`) that dials server-side, survives restarts and respects calling hours and consent. Each attempt is its own call: the phone path's idempotency key is `lead-<id>-<attempt>`, a late event for an earlier attempt's call is recorded as "stale call" and ignored, and if the retry's call fails to start the lead goes back to waiting for its next attempt.
 
 ## Try the reliability features
 
@@ -124,6 +126,12 @@ retell/outbound-lead-calling/
 ├── public/               # the page: form, roles, lead list, ⓘ dialogs, Open house theme
 └── test/                 # npm test: events, retry ladder, theme wording
 ```
+
+## Security notes
+
+- **The webhook endpoint trusts the network path.** Event Gateway verified Retell's signature, and `hookdeck listen` forwards to `localhost`, so `/webhooks/retell` checks nothing itself. The app binds to `127.0.0.1` for that reason. A deployed endpoint that is reachable from the internet must verify Hookdeck's signature (`x-hookdeck-signature`) before it applies an event.
+- **Form text is capped** (name 80, property 120, notes 500 characters) before it goes into the agent's dynamic variables, and the phone path waits `PHONE_DIAL_MIN_INTERVAL_SECONDS` (default 30) between calls.
+- **An event for a lead the app does not know** (for example after `data/` was wiped) is acknowledged with 200 and logged, because redelivering it could never find the lead. A body that is not a Retell call event gets 400.
 
 ## Troubleshooting
 

@@ -1,8 +1,8 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { ENABLE_LIVE_INJECTION, PORT, RETELL_AGENT_ID, RETELL_EVENTS_URL, RETELL_PUBLIC_KEY, RETELL_SIGNING_KEY, TEST_LEAD_PHONE_NUMBER, missingCallConfig, missingWebCallConfig } from './config';
-import { applyRetellEvent, RetellWebhook } from './events';
+import { ENABLE_LIVE_INJECTION, HOST, PHONE_DIAL_MIN_INTERVAL_SECONDS, PORT, RETELL_AGENT_ID, RETELL_EVENTS_URL, RETELL_PUBLIC_KEY, RETELL_SIGNING_KEY, TEST_LEAD_PHONE_NUMBER, missingCallConfig, missingWebCallConfig } from './config';
+import { advance, applyRetellEvent, RANK, RetellWebhook } from './events';
 import { createPhoneCall, updateLiveCall } from './retell';
 import { createFlowState } from './flow-drawer-server';
 import { createFlowExtras } from './flow-extras';
@@ -23,6 +23,19 @@ const chaos = { fail_next: 0, delay_seconds: 0 };
 const mask = (phone: string) => `${phone.slice(0, 2)}${'•'.repeat(Math.max(phone.length - 4, 0))}${phone.slice(-2)}`;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Form text goes into the agent's dynamic variables, so it is capped before it is stored or sent
+const FIELD_MAX = { name: 80, property_interest: 120, notes: 500 };
+const field = (value: unknown, max: number): string => String(value ?? '').trim().slice(0, max);
+
+// Express 4 does not catch a rejected promise from an async handler: pass it to the error handler instead
+const safe = (handler: (req: Request, res: Response) => Promise<unknown> | unknown) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .catch(next);
+  };
+let last_phone_dial = 0;
+
 app.get('/api/config', (_req, res) => {
   const web_missing = missingWebCallConfig();
   // The public key is meant for the browser; the API key never leaves the server
@@ -41,23 +54,28 @@ app.get('/api/leads', (_req, res) => {
 });
 
 // A lead arrives (the demo's stand-in for a form on your site or a CRM)
-app.post('/api/leads', async (req: Request, res: Response) => {
+app.post('/api/leads', safe(async (req: Request, res: Response) => {
   const missing = missingCallConfig();
   if (missing.length) {
     return res.status(400).json({ error: `Missing configuration: ${missing.join(', ')}` });
   }
-  const name = String(req.body.name || '').trim();
-  const property_interest = String(req.body.property_interest || '').trim();
+  const name = field(req.body?.name, FIELD_MAX.name);
+  const property_interest = field(req.body?.property_interest, FIELD_MAX.property_interest);
+  const notes = field(req.body?.notes, FIELD_MAX.notes);
   if (!name || !property_interest) {
     return res.status(400).json({ error: 'Name and property are required' });
   }
+  // The demo dials one real number: a minimum gap stops a loop or a double submit from ringing it repeatedly
+  const wait_seconds = Math.ceil((last_phone_dial + PHONE_DIAL_MIN_INTERVAL_SECONDS * 1000 - Date.now()) / 1000);
+  if (wait_seconds > 0) return res.status(429).json({ error: `The last phone call was placed moments ago. Try again in ${wait_seconds}s` });
+  last_phone_dial = Date.now();
 
   const lead_id = randomUUID().replace(/-/g, '').slice(0, 12);
   addLead({
     id: lead_id,
     name,
     property_interest,
-    notes: String(req.body.notes || '').trim(),
+    notes,
     phone_masked: mask(TEST_LEAD_PHONE_NUMBER),
     status: 'new',
     created_at: new Date().toISOString(),
@@ -71,9 +89,11 @@ app.post('/api/leads', async (req: Request, res: Response) => {
       to_number: TEST_LEAD_PHONE_NUMBER,
       lead_name: name,
       property_interest,
-      lead_notes: String(req.body.notes || '').trim(),
+      lead_notes: notes,
+      attempt: 1,
     });
-    updateLead(lead_id, { call_id, status: 'calling' });
+    // A fast webhook can win the race during the await above; never move the lead backwards
+    updateLead(lead_id, { call_id, status: advance(getLead(lead_id)!, 'calling') });
     addTimeline(lead_id, { event: 'call created (API)' });
     logOutbound({ kind: 'start_call', lead_id, call_id, ok: true });
     res.status(201).json({ id: lead_id, call_id });
@@ -81,19 +101,19 @@ app.post('/api/leads', async (req: Request, res: Response) => {
     updateLead(lead_id, { status: 'failed', error: error.message });
     res.status(502).json({ error: error.message });
   }
-});
+}));
 
 // Browser web call, step 1: the lead arrives. The page then calls Retell itself with the public key
 // (RetellClient.createWebCall) and passes back what it gets in step 2. No Retell API key is involved.
 app.post('/api/web-leads', (req: Request, res: Response) => {
   const missing = missingWebCallConfig();
   if (missing.length) return res.status(400).json({ error: `Missing configuration: ${missing.join(', ')}` });
-  const name = String(req.body.name || '').trim();
-  const property_interest = String(req.body.property_interest || '').trim();
+  const name = field(req.body?.name, FIELD_MAX.name);
+  const property_interest = field(req.body?.property_interest, FIELD_MAX.property_interest);
   if (!name || !property_interest) return res.status(400).json({ error: 'Name and property are required' });
 
   const lead_id = randomUUID().replace(/-/g, '').slice(0, 12);
-  const notes = String(req.body.notes || '').trim();
+  const notes = field(req.body?.notes, FIELD_MAX.notes);
   addLead({
     id: lead_id, name, property_interest, notes,
     phone_masked: 'web call (browser)',
@@ -120,6 +140,10 @@ app.post('/api/leads/:id/retry', (req: Request, res: Response) => {
   if (!isRetryDue(lead)) return res.status(409).json({ error: lead.next_attempt_at ? 'The next attempt is not due yet' : 'No attempt is waiting' });
   const ringing = updateLead(lead.id, {
     status: 'calling', next_attempt_at: undefined, disconnection_reason: undefined, duration_seconds: undefined,
+    // The previous attempt's call id moves to past_call_ids so its late events are recognised as stale
+    past_call_ids: lead.call_id ? [...(lead.past_call_ids || []), lead.call_id] : lead.past_call_ids,
+    // If the new call fails to start (the page reports an error), this puts the ladder back as it was
+    retry_backup: { status: lead.status, next_attempt_at: lead.next_attempt_at, disconnection_reason: lead.disconnection_reason, duration_seconds: lead.duration_seconds, call_id: lead.call_id },
     // The new call reports its own id; a simulated attempt gets one now
     call_id: lead.simulated ? simulatedCallId(lead) : undefined,
   })!;
@@ -130,14 +154,14 @@ app.post('/api/leads/:id/retry', (req: Request, res: Response) => {
 // "Lead does not answer": a signed call_ended with dial_no_answer goes to the real Hookdeck source, so it is
 // verified, deduplicated and delivered like Retell's own. No Retell call is placed. It rings the simulated
 // lead that is waiting for an outcome, or adds one from the form.
-app.post('/api/simulate/no-answer', async (req: Request, res: Response) => {
+app.post('/api/simulate/no-answer', safe(async (req: Request, res: Response) => {
   if (!RETELL_EVENTS_URL || !RETELL_SIGNING_KEY) return res.status(400).json({ error: 'Missing configuration: RETELL_EVENTS_URL (run npm run setup)' });
   let lead = listLeads().find(l => l.simulated && l.status === 'calling');
   if (!lead) {
-    const name = String(req.body.name || '').trim() || 'Demo Lead';
+    const name = field(req.body?.name, FIELD_MAX.name) || 'Demo Lead';
     const id = randomUUID().replace(/-/g, '').slice(0, 12);
     addLead({
-      id, name, property_interest: String(req.body.property_interest || '').trim() || '14 Oak Lane', notes: String(req.body.notes || '').trim(),
+      id, name, property_interest: field(req.body?.property_interest, FIELD_MAX.property_interest) || '14 Oak Lane', notes: field(req.body?.notes, FIELD_MAX.notes),
       phone_masked: 'simulated, no call placed', status: 'calling', created_at: new Date().toISOString(),
       call_id: `simulated_${id}`, simulated: true, timeline: [{ at: new Date().toISOString(), event: 'simulated lead (no call placed)' }],
     });
@@ -149,25 +173,35 @@ app.post('/api/simulate/no-answer', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(502).json({ error: error.message });
   }
-});
+}));
 
 // Step 2: the page reports the call it created (or why it couldn't)
-app.post('/api/web-leads/:id/call', (req: Request, res: Response) => {
+app.post('/api/web-leads/:id/call', safe((req: Request, res: Response) => {
   const id = String(req.params.id);
   if (!getLead(id)) return res.status(404).json({ error: 'Unknown lead' });
-  if (req.body.error) {
-    updateLead(id, { status: 'failed', error: String(req.body.error).slice(0, 300) });
+  const current = getLead(id)!;
+  if (req.body?.error) {
+    const error = String(req.body.error).slice(0, 300);
+    if (current.retry_backup) {
+      // The retry's call never started: put the ladder back so the lead is not stranded
+      updateLead(id, { ...current.retry_backup, retry_backup: undefined, error });
+      addTimeline(id, { event: 'retry call failed to start, ladder restored', note: error });
+    } else if (RANK[current.status] < RANK.completed) {
+      // A webhook may have moved the lead further already (a call that connected and then errored in the browser)
+      updateLead(id, { status: 'failed', error });
+    } else {
+      updateLead(id, { error });
+    }
     return res.json({ ok: true });
   }
-  const call_id = String(req.body.call_id || '');
+  const call_id = String(req.body?.call_id || '');
   if (!call_id) return res.status(400).json({ error: 'call_id is required' });
   // A fast webhook can win the race; never move the lead backwards
-  const lead = getLead(id)!;
-  updateLead(id, { call_id, ...(lead.status === 'new' ? { status: 'calling' as const } : {}) });
+  updateLead(id, { call_id, status: advance(current, 'calling'), retry_backup: undefined });
   addTimeline(id, { event: 'web call created (browser, public key)' });
   logOutbound({ kind: 'start_call', lead_id: id, call_id, ok: true });
   res.json({ ok: true });
-});
+}));
 
 // A lead without a call, for `npm run simulate` and trying the UI before real keys are in place
 app.post('/api/leads/demo', (_req, res) => {
@@ -234,6 +268,10 @@ app.post('/api/chaos', (req, res) => {
  * Retell call events, delivered by Hookdeck (signature already verified, repeats already
  * deduplicated). Hookdeck acknowledged Retell long ago; a non-2xx here only makes
  * Hookdeck retry this delivery.
+ *
+ * This endpoint trusts the network path: `hookdeck listen` forwards to localhost and the app
+ * binds to loopback. A deployed endpoint reachable from the internet must verify Hookdeck's
+ * signature (the x-hookdeck-signature header) before it applies anything.
  */
 app.post('/webhooks/retell', async (req: Request, res: Response) => {
   const started = Date.now();
@@ -241,21 +279,34 @@ app.post('/webhooks/retell', async (req: Request, res: Response) => {
   const hookdeck_event_id = req.header('x-hookdeck-eventid');
   const attempt_info = `event=${hookdeck_event_id} retell_event=${body?.event} call=${body?.call?.call_id}`;
 
-  if (chaos.delay_seconds) {
-    console.log(`⏳ Delaying ${chaos.delay_seconds}s before answering (${attempt_info})`);
-    await sleep(chaos.delay_seconds * 1000);
-  }
-  if (chaos.fail_next > 0) {
-    chaos.fail_next -= 1;
-    console.log(`💥 Failing on purpose with 503 (${attempt_info}), ${chaos.fail_next} more to go`);
-    logDelivery({ type: body?.event || 'unknown', call_id: body?.call?.call_id, bytes: (req as any).raw_bytes || 0, status_code: 503, result: 'simulated_failure', hookdeck_event_id }, EVENTS_CONNECTION, started);
-    return res.status(503).json({ error: 'simulated outage' });
-  }
+  try {
+    if (chaos.delay_seconds) {
+      console.log(`⏳ Delaying ${chaos.delay_seconds}s before answering (${attempt_info})`);
+      await sleep(chaos.delay_seconds * 1000);
+    }
+    if (chaos.fail_next > 0) {
+      chaos.fail_next -= 1;
+      console.log(`💥 Failing on purpose with 503 (${attempt_info}), ${chaos.fail_next} more to go`);
+      logDelivery({ type: body?.event || 'unknown', call_id: body?.call?.call_id, bytes: (req as any).raw_bytes || 0, status_code: 503, result: 'simulated_failure', hookdeck_event_id }, EVENTS_CONNECTION, started);
+      return res.status(503).json({ error: 'simulated outage' });
+    }
 
-  const result = applyRetellEvent(body, { hookdeck_event_id });
-  logDelivery({ type: body?.event || 'unknown', call_id: body?.call?.call_id, bytes: (req as any).raw_bytes || 0, status_code: 200, result, hookdeck_event_id }, EVENTS_CONNECTION, started);
-  console.log(`✅ ${body.event}: ${result} (${attempt_info})`);
-  res.sendStatus(200);
+    const result = applyRetellEvent(body, { hookdeck_event_id });
+    // An event that is not a Retell call event will never succeed on retry, so it is a 400.
+    // An unknown lead (for example data/ was wiped) is acknowledged with 200: a retry could not find the lead either,
+    // and Hookdeck would otherwise keep redelivering it.
+    const status_code = result === 'invalid' ? 400 : 200;
+    logDelivery({ type: body?.event || 'unknown', call_id: body?.call?.call_id, bytes: (req as any).raw_bytes || 0, status_code, result, hookdeck_event_id }, EVENTS_CONNECTION, started);
+    if (result === 'unknown_lead') console.warn(`⚠️  No lead for this call, acknowledged and dropped (${attempt_info})`);
+    else console.log(`${result === 'invalid' ? '⚠️ ' : '✅'} ${body?.event}: ${result} (${attempt_info})`);
+    if (result === 'invalid') return res.status(400).json({ error: 'not a Retell call event' });
+    res.sendStatus(200);
+  } catch (error: any) {
+    // Never an unhandled rejection; a 500 makes Hookdeck retry the delivery
+    console.error(`❌ ${attempt_info}: ${error?.stack || error}`);
+    logDelivery({ type: body?.event || 'unknown', call_id: body?.call?.call_id, bytes: (req as any).raw_bytes || 0, status_code: 500, result: 'error', hookdeck_event_id }, EVENTS_CONNECTION, started);
+    if (!res.headersSent) res.status(500).json({ error: 'internal error' });
+  }
 });
 
 /**
@@ -263,7 +314,7 @@ app.post('/webhooks/retell', async (req: Request, res: Response) => {
  * Retell doesn't wait for the answer, so the endpoint (a Hookdeck source) just acknowledges.
  * The app does the slow work, then injects the result with update-live-call.
  */
-app.post('/webhooks/retell-function', (req: Request, res: Response) => {
+app.post('/webhooks/retell-function', safe((req: Request, res: Response) => {
   res.sendStatus(200);
 
   const { call, args } = req.body || {};
@@ -291,10 +342,17 @@ app.post('/webhooks/retell-function', (req: Request, res: Response) => {
       logOutbound({ kind: 'update_live_call', lead_id: lead?.id, call_id, ok: false });
     }
   }, 4000);
+}));
+
+// Last: JSON errors, no stack traces. Malformed JSON is the caller's fault (400); anything else is ours (500).
+app.use((error: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = error?.status >= 400 && error?.status < 500 ? error.status : 500;
+  if (status === 500) console.error(`❌ ${error?.stack || error}`);
+  if (!res.headersSent) res.status(status).json({ error: status === 500 ? 'internal error' : (error.type === 'entity.parse.failed' ? 'invalid JSON' : 'bad request') });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   const missing = missingCallConfig();
-  console.log(`🚀 Retell outbound lead calling on http://localhost:${PORT}`);
+  console.log(`🚀 Retell outbound lead calling on http://${HOST === '127.0.0.1' ? 'localhost' : HOST}:${PORT}`);
   console.log(missing.length ? `⚠️  Not ready to call yet. Missing: ${missing.join(', ')}` : '✅ Ready to place calls');
 });

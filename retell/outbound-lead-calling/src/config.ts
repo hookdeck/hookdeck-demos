@@ -1,6 +1,11 @@
 import 'dotenv/config';
 
 export const PORT = Number(process.env.PORT || 4000);
+/** Loopback by default: the endpoints trust the network path, so only expose them on purpose (HOST=0.0.0.0) */
+export const HOST = process.env.HOST || '127.0.0.1';
+/** Shortest gap between two phone calls placed from the form (the demo only dials one number) */
+const configured_interval = Number(process.env.PHONE_DIAL_MIN_INTERVAL_SECONDS);
+export const PHONE_DIAL_MIN_INTERVAL_SECONDS = process.env.PHONE_DIAL_MIN_INTERVAL_SECONDS && configured_interval >= 0 ? configured_interval : 30;
 export const RETELL_API_KEY = process.env.RETELL_API_KEY || '';
 /** Browser credential for web calls. Meant to be public: Retell checks it against the domains you allow. */
 export const RETELL_PUBLIC_KEY = process.env.RETELL_PUBLIC_KEY || '';
