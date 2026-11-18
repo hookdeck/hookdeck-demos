@@ -20,7 +20,7 @@ function setup(saved: string | null) {
     el.setAttribute = (n: string, v: string) => { el.attrs[n] = v; };
     return el;
   };
-  const title = make({ 'data-copy': 'hero_title' }, 'Post-call transcripts, <em>delivered once</em>');
+  const title = make({ 'data-copy': 'hero_title' }, 'ElevenLabs post-call transcripts with Hookdeck');
   const heading = make({ 'data-copy': 'conversations_title' }, 'Conversations');
   const root = make({ 'data-demo-theme': 'salon', 'data-demo-theme-default': 'true' });
   const document: any = {
@@ -40,7 +40,7 @@ function setup(saved: string | null) {
 test('Salon is the default theme: with no saved choice its wording is on', () => {
   const { window, title, heading, root } = setup(null);
   assert.equal(root.dataset.theme, 'salon');
-  assert.equal(title.html, 'Every call, written up <em>once</em>');
+  assert.equal(title.html, 'Hookdeck Hair booking line');
   assert.equal(heading.html, 'Appointment book');
   assert.equal(window.HookdeckTheme.copy('call_btn', 'Call Hookdeck Hair'), 'Call the salon');
   assert.equal(window.HookdeckTheme.copy('badge_unknown', 'Fallback'), 'Fallback');
@@ -51,7 +51,7 @@ test('another mode restores the plain wording; Salon brings it back', () => {
   for (const mode of ['light', 'dark', 'system']) {
     store['hookdeck-demo-theme'] = mode;
     window.HookdeckTheme.apply();
-    assert.equal(title.html, 'Post-call transcripts, <em>delivered once</em>', mode);
+    assert.equal(title.html, 'ElevenLabs post-call transcripts with Hookdeck', mode);
     assert.equal(heading.html, 'Conversations', mode);
     assert.equal(window.HookdeckTheme.copy('call_btn', 'Call Hookdeck Hair'), 'Call Hookdeck Hair', mode);
   }
@@ -80,7 +80,7 @@ test('the Salon wording from the spec board', () => {
   const window: any = {};
   vm.runInContext(read('theme-salon.copy.js'), vm.createContext({ window }));
   const copy = window.HookdeckThemeCopies.salon;
-  assert.equal(copy.hero_title, 'Every call, written up <em>once</em>');
+  assert.equal(copy.hero_title, 'Hookdeck Hair booking line');
   assert.equal(copy.eyebrow, '{ Hookdeck + ElevenLabs } · Hookdeck Hair booking line');
   assert.equal(copy.talk_title, 'Ring the booking line');
   assert.equal(copy.call_btn, 'Call the salon');

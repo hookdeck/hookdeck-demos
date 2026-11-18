@@ -5,8 +5,8 @@
 window.HookdeckThemeCopies = window.HookdeckThemeCopies || {};
 window.HookdeckThemeCopies["salon"] = {
   "eyebrow": "{ Hookdeck + ElevenLabs } · Hookdeck Hair booking line",
-  "hero_title": "Every call, written up <em>once</em>",
-  "hero_line": "Ring the line, then watch the booking appear.",
+  "hero_title": "Hookdeck Hair booking line",
+  "hero_line": "Book a haircut by phone. The diary fills in after the call.",
   "talk_title": "Ring the booking line",
   "call_btn": "Call the salon",
   "end_btn": "Hang up",
