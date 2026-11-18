@@ -458,11 +458,20 @@ export function parseSatchel(value: string | undefined): ItemId[] {
 
 const NAME_STOP = new Set(['not', 'going', 'ready', 'here', 'sorry', 'fine', 'good', 'done', 'sure', 'afraid', 'looking', 'trying', 'taking', 'using', 'stuck', 'lost', 'tired', 'back', 'just', 'still', 'also', 'in', 'at', 'on', 'the', 'a', 'an', 'so', 'very', 'really', 'now', 'with', 'for', 'to']);
 
-/** "I'm Snaggle", "my name is Snaggle", "call me Snaggle": the name a player gave, or undefined. Only a capitalised word counts. */
+/** Words that follow "I'm" or "my name is" without being a name: feelings, directions, days, months, and the story's own names. */
+const NOT_NAMES = new Set(['i', 'we', 'you', 'he', 'she', 'they', 'it', 'this', 'that', 'what', 'where', 'how', 'who', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'old', 'bram', 'hester', 'pixel', 'hollow', 'mere', 'lantern', 'lighthouse']);
+
+/**
+ * "my name is Snaggle", "call me Snaggle", "I'm Snaggle": the name a player gave, or undefined. Only a capitalised word counts, and
+ * not a possessive ("This is Pixel's idea"), a story name, a day or month, or a word that follows "I'm" without being a name
+ * ("I'm Tired"). "It's Tuesday" and "This is Pixel" are not introductions, so they never rename.
+ */
 export function parseNameCorrection(text: string): string | undefined {
-  const m = text.match(/\b(?:[Ii]['’]?m|[Ii] am|[Mm]y name(?:['’]s| is)|[Cc]all me|[Ii]t['’]?s|[Tt]his is)\s+([A-Z][A-Za-z'’-]{1,19})\b/);
-  if (!m) return undefined;
-  return NAME_STOP.has(m[1].toLowerCase()) ? undefined : m[1];
+  const m = text.match(/\b(?:[Ii]['’]?m|[Ii] am|[Mm]y name(?:['’]s| is)|[Cc]all me)\s+([A-Z][A-Za-z'’-]{1,19})\b/);
+  if (!m || /['’]s$/i.test(m[1])) return undefined;
+  const name = m[1];
+  const lower = name.toLowerCase();
+  return NAME_STOP.has(lower) || NOT_NAMES.has(lower) ? undefined : name;
 }
 
 /** True when a reply uses the player's name as a word (so the check can log it). */

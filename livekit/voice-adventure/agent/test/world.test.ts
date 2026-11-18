@@ -184,6 +184,11 @@ test('names: items normalised; tool names still kept out of speech; corrections 
   assert.equal(cleanSpeech('You pick it up. take_item("key") and go').removed, true);
   assert.equal(parseNameCorrection("I'm Snaggle."), 'Snaggle');
   assert.equal(parseNameCorrection("I'm going to the door"), undefined);
+  assert.equal(parseNameCorrection('My name is Snaggle'), 'Snaggle');
+  assert.equal(parseNameCorrection('Call me Snaggle, please'), 'Snaggle');
+  assert.equal(parseNameCorrection('I am Priya and I want the key'), 'Priya');
+  // Not introductions: a day, a possessive, a character, a feeling
+  for (const text of ["It's Tuesday", "This is Pixel's idea", "It's Bram", "This is Pixel", "I'm Tired", "I'm Pixel", "my name is Tuesday", "It's Snaggle"]) assert.equal(parseNameCorrection(text), undefined, text);
   assert.equal(usesName('Snaggle, the way is before you.', 'Snaggle'), true);
   assert.equal(usesName('The way is before you.', 'Snaggle'), false);
 });
