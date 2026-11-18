@@ -96,6 +96,8 @@ body.no-verify .tp-pill.tp-ok { display: none; }
 .timeline .dup { color: var(--color-danger); }
 
 /* Story banner, people, transcript and volume: ds tokens and the page's own .message, .badge and .request styles */
+/* An element with the hidden attribute stays hidden, even when a class gives it display: flex (the turn banner, the items box) */
+[hidden] { display: none !important; }
 .story-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
 .people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); color: var(--neutral-fg-1); }
 .people-list li { display: inline-flex; align-items: center; gap: var(--s2); }
