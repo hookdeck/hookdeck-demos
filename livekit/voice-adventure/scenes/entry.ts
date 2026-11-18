@@ -15,6 +15,9 @@ export const scenes = {
   'livekit-bad-signature-mobile': lc.createBadSignatureMobileScene,
   'livekit-app-down': lc.createAppDownScene,
   'livekit-app-down-mobile': lc.createAppDownMobileScene,
+  // The tutorial's opening diagram (deployed). Not a tab in the demo page, which shows what runs.
+  'livekit-deployed': lc.createDeployedScene,
+  'livekit-deployed-mobile': lc.createDeployedMobileScene,
 }
 
 /** The platform's name, shown in the square captures' eyebrow: "{ Hookdeck + LiveKit }". */
