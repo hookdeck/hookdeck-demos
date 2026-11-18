@@ -15,6 +15,7 @@ deepgram/       Deepgram integration demos
 vapi/           Vapi integration demos
 elevenlabs/     ElevenLabs integration demos
 retell/         Retell AI integration demos
+livekit/        LiveKit integration demos
 _shared/        Source of truth for code shared across demos
 ```
 
@@ -88,6 +89,12 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 | Demo | Description |
 |------|-------------|
 | [outbound-lead-calling](retell/outbound-lead-calling/) | A lead arrives, Retell places an outbound call, and the `call_started`, `call_ended` and `call_analyzed` events come back through Hookdeck (signature verification, deduplication, retries) to update the lead |
+
+### LiveKit
+
+| Demo | Description |
+|------|-------------|
+| [voice-adventure](livekit/voice-adventure/) | A multiplayer LiveKit voice adventure with AI characters; room, participant and ingress webhooks through Hookdeck build a session chronicle |
 
 ## Shared Utilities
 

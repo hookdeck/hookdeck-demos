@@ -1,0 +1,220 @@
+/*
+ * Story night: an old-world fantasy theme for this page, over the Hookdeck design system.
+ *
+ * It applies only when <html data-theme="story"> (set by theme.js, the "Story" option of the theme
+ * switch). The design-system tokens are overridden on `main` (and on the How it works dialog, which
+ * sits outside it), so the Data flow pane, which is also outside `main`, keeps the standard look.
+ * Component styling below uses those tokens. Inline SVG ornaments are hidden from screen readers.
+ *
+ * Fonts: Cinzel Decorative (display), Cinzel (labels), IM Fell English (story text); technical data keeps
+ * --font-mono. Text pairs were checked at 4.5:1 or better (see the contrast table in the demo's README).
+ */
+html[data-theme="story"] {
+  --font-display: "Cinzel Decorative", "Cinzel", Georgia, serif;
+  --font-label: "Cinzel", Georgia, serif;
+  --font-story: "IM Fell English", Georgia, serif;
+  --story-walnut: #22170f;
+  --story-gilt: #9a7531;
+  --story-candle: #f3d58d;
+  --story-wax: #7b1e1a;
+}
+
+html[data-theme="story"], html[data-theme="story"] body {
+  background-color: var(--story-walnut);
+}
+html[data-theme="story"] h1, html[data-theme="story"] h2, html[data-theme="story"] .turn-title, html[data-theme="story"] .end-title,
+html[data-theme="story"] .transcript li[data-first] .line-text::first-letter {
+  font-variant-ligatures: none; font-feature-settings: "liga" 0, "dlig" 0, "clig" 0, "calt" 0;
+  /* Cinzel Decorative's swash capitals (the T in THE, the D in DOOR) touch their neighbours at zero tracking: a little space keeps the letters apart */
+  letter-spacing: 0.06em !important;
+}
+html[data-theme="story"] body {
+  background: radial-gradient(ellipse at 50% 0%, #3a281a 0%, var(--story-walnut) 55%, #170f09 100%) fixed;
+}
+
+/* Tokens: parchment, ink, gilt, wax-seal crimson, candlelight */
+html[data-theme="story"] main,
+html[data-theme="story"] .how-dialog {
+  --bg-0: #efe2c2; --bg-0-hover: #e8d9b3; --bg-1: #e6d6ae; --bg-2: #e3d3ac; --bg-3: #e3d3ac;
+  --bg-contrast: #2b1e12; --bg-contrast-2: #4a3823;
+  --neutral-fg-1: #2b1e12; --neutral-fg-2: #4a3823; --neutral-fg-3: #5b4630; --disabled-fg: #66523a;
+  --neutral-outline-1: #cdb688; --neutral-outline-2: var(--story-gilt); --neutral-outline-3: #8c6a3c;
+  --primary-blue-bg: var(--story-wax); --primary-blue-bg-hover: #5e1512; --primary-fg: var(--story-wax);
+  --primary-badge-fg: var(--story-wax); --primary-badge-outline: var(--story-wax); --blue-badge-bg: #ebd9b5;
+  --focused-outline: var(--story-wax);
+  --on-hue-fg: #fbf1dc; --on-contrast-fg: #fbf1dc;
+  --color-success: #2f4a1f; --color-success-outline: #8fa06a; --color-success-surface: #dce3c2;
+  --color-warning: #5a2e05; --color-warning-outline: #b8892f; --color-warning-surface: var(--story-candle);
+  --color-danger: var(--story-wax); --color-danger-outline: #c98f8a; --color-danger-surface: #ebcfc4;
+  --tan-bg: var(--story-walnut);
+  --font-sans: var(--font-story);
+  font-family: var(--font-story);
+  color: var(--neutral-fg-1);
+}
+
+/* Frames: a double gilt rule inside each parchment card */
+html[data-theme="story"] main .card,
+html[data-theme="story"] .how-dialog {
+  background: var(--bg-0);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 5px var(--bg-0), inset 0 0 0 6px var(--story-gilt), 0 8px 28px rgb(0 0 0 / 0.45);
+  padding: var(--s7);
+}
+html[data-theme="story"] .how-dialog { border: none; padding: var(--s7); }
+html[data-theme="story"] .how-dialog::backdrop { background: rgb(23 15 9 / 0.7); }
+
+/* Hero: a larger, double-framed page with a compass rose and a divider */
+html[data-theme="story"] main .hero {
+  background: radial-gradient(ellipse at 30% 20%, #f5ead0 0%, #ebdbb5 70%, #ddc79a 100%);
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: inset 0 0 0 6px #ebdbb5, inset 0 0 0 7px var(--story-gilt), inset 0 0 0 10px #ebdbb5, inset 0 0 0 11px var(--story-gilt), 0 12px 40px rgb(0 0 0 / 0.5);
+}
+html[data-theme="story"] .hero.lined:before,
+html[data-theme="story"] .hero .lined__dots { display: none; }
+html[data-theme="story"] .hero .lined__box { border: none; padding: 36px 40px; gap: var(--s3); }
+html[data-theme="story"] .hero p { max-width: 660px; font-size: 19px; line-height: 1.4; color: #3a2a19; }
+html[data-theme="story"] .hero h1 {
+  font-family: var(--font-display); font-weight: 900; font-size: 46px; line-height: 1.05; letter-spacing: 0; max-width: 640px;
+}
+html[data-theme="story"] .eyebrow {
+  font-family: var(--font-label); font-weight: 700; font-size: 12px; letter-spacing: 0.26em; color: var(--story-wax);
+}
+html[data-theme="story"] .story-ornament { display: block; }
+html[data-theme="story"] .story-compass { position: absolute; right: 36px; top: 36px; opacity: 0.35; }
+html[data-theme="story"] .story-compass circle { stroke: #5a3e1b; stroke-width: 1; }
+html[data-theme="story"] .story-compass circle.thin { stroke-width: 0.6; }
+html[data-theme="story"] .story-compass path { fill: #5a3e1b; }
+html[data-theme="story"] .story-compass path.mid { opacity: 0.7; }
+html[data-theme="story"] .story-compass path.faint { opacity: 0.35; }
+html[data-theme="story"] .story-compass text { font-family: var(--font-label); font-size: 8px; fill: #5a3e1b; }
+html[data-theme="story"] .story-divider line { stroke: var(--story-gilt); stroke-width: 1.5; }
+html[data-theme="story"] .story-divider path { fill: var(--story-wax); }
+
+/* Headings, text and labels */
+html[data-theme="story"] main h2.title-l { font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.2; letter-spacing: 0; color: var(--neutral-fg-1); }
+html[data-theme="story"] main .card p,
+html[data-theme="story"] main .card .body-s { font-size: 16px; line-height: 1.4; color: var(--neutral-fg-2); }
+html[data-theme="story"] main .muted { color: var(--neutral-fg-2); }
+html[data-theme="story"] main .subtitle-xs,
+html[data-theme="story"] main .field > span {
+  font-family: var(--font-label); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-fg-1);
+}
+html[data-theme="story"] main code, html[data-theme="story"] .how-dialog code { font-family: var(--font-mono); }
+
+/* Inputs */
+html[data-theme="story"] main input:not([type="range"]):not([type="checkbox"]),
+html[data-theme="story"] main textarea {
+  font-family: var(--font-story); font-size: 17px; min-height: 44px; box-sizing: border-box; border-radius: 4px;
+  border: 1px solid #8c6a3c; background: #faf3e1; color: var(--neutral-fg-1); box-shadow: none;
+}
+html[data-theme="story"] main input[type="range"] { accent-color: var(--story-wax); }
+html[data-theme="story"] main input::placeholder { color: var(--neutral-fg-3); opacity: 1; }
+
+/* Buttons: wax-seal crimson for actions, outlined ink for the rest */
+html[data-theme="story"] main .button,
+html[data-theme="story"] .how-dialog .button {
+  font-family: var(--font-label); font-weight: 700 !important; font-size: 13px; letter-spacing: 0.07em; text-transform: uppercase;
+  min-height: 44px; padding: 0 18px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--primary-blue-bg-hover); background: var(--primary-blue-bg); color: var(--on-hue-fg); box-shadow: inset 0 0 0 2px #8e2a24;
+}
+html[data-theme="story"] main .button:hover { background: var(--primary-blue-bg-hover); color: var(--on-hue-fg); }
+html[data-theme="story"] main .button--secondary,
+html[data-theme="story"] .how-dialog .button--secondary {
+  border: 1px solid #5a3e1b; background: transparent; color: var(--neutral-fg-1); box-shadow: none; padding: 0 14px;
+}
+html[data-theme="story"] main .button--secondary:hover { background: var(--bg-3); color: var(--neutral-fg-1); }
+html[data-theme="story"] main .button:disabled { border: 1px dashed #a88c60; background: transparent; color: var(--disabled-fg); box-shadow: none; cursor: not-allowed; }
+
+/* Badges: small caps seals */
+html[data-theme="story"] main .badge {
+  font-family: var(--font-label); font-weight: 700; font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; line-height: 1.4;
+  padding: 3px 8px; border-radius: 3px; border: 1px solid #5a3e1b; background: transparent; color: #3a2a19; box-shadow: none;
+}
+html[data-theme="story"] main .badge--primary { background: var(--story-wax); border-color: var(--story-wax); color: #fbf1dc; }
+html[data-theme="story"] main .badge--bold_primary { background: var(--story-candle); border-color: #b8892f; color: #5a2e05; }
+html[data-theme="story"] main .people-list .badge:not(.badge--primary):not(.badge--bold_primary):not(.badge--success) { background: #e3d3ac; border-color: #8c6a3c; }
+html[data-theme="story"] main .people-list { font-family: var(--font-story); font-size: 16px; }
+
+/* The story banner: candlelight for your turn, parchment for others, a dark card for the end */
+html[data-theme="story"] main .story-banner {
+  border: none; border-radius: var(--radius); padding: 12px 18px; background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px #8c6a3c; color: var(--neutral-fg-1); gap: var(--s3);
+}
+html[data-theme="story"] main .story-turn-body { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; width: 100%; }
+html[data-theme="story"] main .turn-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--neutral-fg-1); }
+html[data-theme="story"] main .turn-sub { font-size: 17px; color: #3a2a19; }
+html[data-theme="story"] main .turn-playing { font-style: italic; font-size: 16px; color: var(--neutral-fg-2); margin-left: auto; }
+html[data-theme="story"] main .story-banner.your-turn {
+  background: radial-gradient(ellipse at 10% 50%, #fbe7b0 0%, var(--story-candle) 100%);
+  box-shadow: inset 0 0 0 1px #b8892f, 0 0 24px rgb(243 197 98 / 0.55);
+}
+html[data-theme="story"] main .story-banner.your-turn .turn-title { color: #5a2e05; }
+html[data-theme="story"] main .story-flame { display: block; flex: none; }
+html[data-theme="story"] main .story-flame .flame-outer { fill: #b8541a; }
+html[data-theme="story"] main .story-flame .flame-inner { fill: #f7c94c; }
+@media (prefers-reduced-motion: no-preference) {
+  html[data-theme="story"] main .story-flame { animation: flicker 2.4s ease-in-out infinite; transform-origin: 50% 100%; }
+  @keyframes flicker { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.07) skewX(-2deg); } }
+}
+html[data-theme="story"] main .story-banner.story-ended {
+  background: #2b1e12; box-shadow: inset 0 0 0 4px #2b1e12, inset 0 0 0 5px var(--story-gilt); padding: 18px; justify-content: space-between;
+}
+html[data-theme="story"] main .end-text { display: flex; flex-direction: column; gap: 4px; }
+html[data-theme="story"] main .end-title { font-family: var(--font-display); font-weight: 900; font-size: 22px; color: var(--story-candle); }
+html[data-theme="story"] main .end-sub { font-size: 17px; color: #efe2c2; }
+
+/* The tale: the transcript reads like a page of a book */
+html[data-theme="story"] main .transcript { max-height: 420px; gap: 12px; padding: 0; background: transparent; border: none; }
+html[data-theme="story"] main .transcript li { display: flex; flex-direction: column; align-items: stretch; gap: 2px; color: var(--neutral-fg-1); }
+html[data-theme="story"] main .transcript .speaker {
+  align-self: flex-start; padding: 0; border: none; background: transparent; box-shadow: none; border-radius: 0;
+  font-family: var(--font-label); font-weight: 700; font-size: 11px; letter-spacing: 0.12em; color: var(--neutral-fg-2);
+}
+html[data-theme="story"] main .transcript li[data-role="innkeeper"] .speaker { color: var(--story-wax); }
+html[data-theme="story"] main .transcript li[data-role="storyteller"] .speaker { color: #1f4a4f; }
+html[data-theme="story"] main .transcript li[data-role="mute"] .speaker { color: #3d5a2a; }
+html[data-theme="story"] main .transcript .line-text { font-size: 18px; line-height: 1.4; }
+html[data-theme="story"] main .transcript li[data-role="mute"] .line-text { font-style: italic; color: #3a2a19; }
+html[data-theme="story"] main .transcript li.interim .line-text { color: var(--neutral-fg-3); }
+html[data-theme="story"] main .transcript li[data-first] .line-text::first-letter {
+  font-family: var(--font-display); font-weight: 900; font-size: 48px; line-height: 0.9; float: left; padding-right: 8px; color: var(--story-wax);
+}
+
+/* The ledger: dated rules, in ink */
+html[data-theme="story"] main .request { background: transparent; border: none; padding: 0; gap: var(--s3); }
+html[data-theme="story"] main .request-text { font-family: var(--font-label); font-weight: 700; letter-spacing: 0.08em; color: var(--neutral-fg-1); }
+html[data-theme="story"] main .request-meta { color: var(--neutral-fg-2); font-family: var(--font-story); font-size: 14px; }
+html[data-theme="story"] main .timeline { border-top: 2px solid var(--story-gilt); gap: 0; font-size: 16px; }
+html[data-theme="story"] main .timeline li { padding: 8px 0; border-bottom: 1px solid var(--neutral-outline-1); color: var(--neutral-fg-1); }
+html[data-theme="story"] main .timeline code { font-family: var(--font-story); font-size: 14px; color: var(--story-wax); min-width: 72px; }
+html[data-theme="story"] main .timeline .dup { color: var(--story-wax); }
+html[data-theme="story"] main .people, html[data-theme="story"] main .recs { font-size: 16px; }
+html[data-theme="story"] main .deliveries th { font-family: var(--font-label); letter-spacing: 0.06em; }
+
+/* How it works */
+html[data-theme="story"] .how-dialog h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+html[data-theme="story"] .how-dialog h3 { font-family: var(--font-label); font-weight: 700; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
+html[data-theme="story"] .how-dialog p { font-size: 16px; line-height: 1.45; color: var(--neutral-fg-2); }
+
+@media (max-width: 700px) {
+  html[data-theme="story"] .story-compass { display: none; }
+  html[data-theme="story"] .hero .lined__box { padding: 24px 20px; }
+  html[data-theme="story"] .hero h1 { font-size: 34px; }
+  html[data-theme="story"] .hero p { font-size: 17px; }
+  html[data-theme="story"] main .card, html[data-theme="story"] .how-dialog { padding: var(--s5); }
+  html[data-theme="story"] main h2.title-l { font-size: 21px; }
+  html[data-theme="story"] main .turn-playing { margin-left: 0; }
+}
+
+/* The "now playing" line is a badge in the plain themes and plain italic text here */
+html[data-theme="story"] main .turn-playing.badge { background: none; border: 0; padding: 0; box-shadow: none; text-transform: none; letter-spacing: normal; font-family: inherit; }
+
+/* The satchel: a row of small parchment tags */
+html[data-theme="story"] main .satchel { padding: 8px 14px; border: 1px dashed var(--neutral-outline-2); border-radius: 6px; background: rgba(255, 248, 230, 0.55); }
+html[data-theme="story"] main .satchel .subtitle-xs { font-family: var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; font-size: 14px; color: var(--neutral-fg-1); }
+html[data-theme="story"] main .satchel-items .badge { background: #f3e3bd; border: 1px solid #b08a4a; color: #3a2a19; font-family: inherit; font-size: 16px; padding: 2px 10px; text-transform: none; letter-spacing: normal; }
+html[data-theme="story"] main .satchel-empty { font-style: italic; font-size: 16px; }
+
+/* Hover tips: a walnut slip with a gilt rule, in the page's story type */
+html[data-theme="story"] main .tip-bubble { border: 1px solid var(--story-gilt); font-family: var(--font-story); font-size: 15px; line-height: 1.35; }
+html[data-theme="story"] main button.tip-i { color: var(--story-wax); }

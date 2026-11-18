@@ -1,0 +1,164 @@
+/* Page styles for the call log, built on the Hookdeck design system (ds/styles.css) */
+
+body { background: var(--tan-bg); }
+main { max-width: 880px; margin: 0 auto; padding: var(--s10) var(--s4) var(--s16); display: grid; gap: var(--s6); }
+a { color: var(--primary-fg); }
+
+/* Header in the "lined" blueprint frame */
+.hero .lined__box { border-right: none; border-bottom: none; display: grid; gap: var(--s3); }
+.eyebrow { color: var(--neutral-fg-3); text-transform: uppercase; }
+.hero h1 { margin: 0; }
+.hero p { color: var(--neutral-fg-2); max-width: 680px; }
+.hero code { font-size: 0.9em; color: var(--neutral-fg-1); }
+.back { text-decoration: none; }
+.back:hover { text-decoration: underline; }
+
+/* Cards and sections. The design system's `.card:not(.flex) { display: block }` would drop the gaps,
+   so match its specificity to lay cards out as a grid. */
+.card:not(.flex) { display: grid; gap: var(--s4); padding: var(--s6); }
+.card h2 { margin: 0; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+
+/* Form fields, matching the design system's Input */
+.field { display: grid; gap: var(--s1-5); }
+.field > span { color: var(--neutral-fg-2); }
+.input, textarea, select {
+  font-family: var(--font-sans); font-size: 14px; line-height: 20px; padding: 7px 12px;
+  border-radius: var(--radius); border: 1px solid var(--neutral-outline-2); background: var(--bg-0);
+  color: var(--neutral-fg-1); width: 100%; box-shadow: var(--button-box-shadow);
+}
+textarea { min-height: 96px; resize: vertical; }
+textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.check { display: inline-flex; gap: var(--s2); align-items: center; color: var(--neutral-fg-2); }
+
+/* Messages */
+.message:empty { display: none; }
+.message { padding: var(--s2) var(--s3); border-radius: var(--radius); border: 1px solid; }
+.message.success { color: var(--color-success); border-color: var(--color-success-outline); background: var(--color-success-surface); }
+.message.error { color: var(--color-danger); border-color: var(--color-danger-outline); background: var(--color-danger-surface); }
+.message.info, .message.recording { color: var(--primary-badge-fg); border-color: var(--primary-badge-outline); background: var(--blue-badge-bg); }
+
+/* Request lists */
+.requests { display: grid; gap: var(--s3); }
+.requests .empty { color: var(--neutral-fg-3); }
+.request { display: grid; gap: var(--s2); padding: var(--s4); border-radius: var(--radius); background: var(--bg-1); border: 1px dashed var(--neutral-outline-3); }
+.request-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+.request-text { color: var(--neutral-fg-1); }
+.request-meta { color: var(--neutral-fg-3); display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); }
+.request-meta code { font-size: 12px; line-height: 18px; color: var(--neutral-fg-2); }
+.request audio { width: 100%; max-width: 420px; }
+.request .error { color: var(--color-danger); }
+
+/* Landing page demo cards */
+.demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s4); }
+/* A column, so the status badge sits at the bottom and lines up across cards */
+.card:not(.flex).demo { display: flex; flex-direction: column; gap: var(--s3); }
+.demo .chip { margin-bottom: var(--s2); }
+.demo h2 { margin: 0; }
+.demo .status { margin-top: auto; padding-top: var(--s3); }
+a.demo { text-decoration: none; color: var(--neutral-fg-1); transition: 200ms ease-in-out background-color; }
+a.demo:hover { background-color: var(--bg-0-hover); color: var(--neutral-fg-1); }
+.demo p { color: var(--neutral-fg-2); }
+.demo.disabled { opacity: 0.6; }
+
+/* Icon chip: a Material Symbols glyph in a light-blue rounded square */
+.chip {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; font-size: 22px;
+  border-radius: var(--s1-5); color: var(--primary-fg); border: 1px solid var(--primary-badge-outline);
+  background: var(--blue-badge-bg); box-shadow: 0 1px 0 0 var(--primary-badge-outline);
+}
+
+footer { color: var(--neutral-fg-3); }
+
+@media (max-width: 744px) {
+  .hero .lined__box { padding: var(--s5); }
+  .card:not(.flex) { padding: var(--s4); }
+}
+
+/* Call log */
+.request-meta .sep { color: var(--neutral-outline-3); }
+.people, .recs { margin: 0; padding-left: var(--s5); display: grid; gap: var(--s1); color: var(--neutral-fg-2); }
+.deliveries { width: 100%; border-collapse: collapse; }
+.deliveries th, .deliveries td { text-align: left; padding: var(--s1-5) var(--s2); border-bottom: 1px dashed var(--neutral-outline-3); }
+.deliveries th { color: var(--neutral-fg-3); font-weight: normal; }
+
+/* Failure injection */
+.muted { color: var(--neutral-fg-3); }
+.field.inline { display: flex; align-items: center; gap: var(--s2); }
+.input.narrow { width: 72px; }
+/* The default WEBHOOK source verifies nothing, so the detail strip's "Verified" pill would overclaim */
+body.no-verify .tp-pill.tp-ok { display: none; }
+
+/* Chronicle */
+.timeline { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.timeline li { color: var(--neutral-fg-2); display: flex; gap: var(--s2); flex-wrap: wrap; }
+.timeline .dup { color: var(--color-danger); }
+
+/* Story banner, people, transcript and volume: ds tokens and the page's own .message, .badge and .request styles */
+.story-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
+.people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); color: var(--neutral-fg-1); }
+.people-list li { display: inline-flex; align-items: center; gap: var(--s2); }
+.volume input[type="range"] { accent-color: var(--primary-fg); width: 140px; }
+.transcript { list-style: none; margin: 0; padding: var(--s4); max-height: 240px; overflow-y: auto; display: grid; gap: var(--s2); border-radius: var(--radius); background: var(--bg-1); border: 1px dashed var(--neutral-outline-3); }
+.transcript:empty { display: none; }
+.transcript li { color: var(--neutral-fg-1); display: flex; gap: var(--s2); align-items: baseline; }
+.transcript li.interim { color: var(--neutral-fg-3); }
+.transcript .badge { flex: none; }
+
+/* "How it works": the explanations, out of the way of the controls */
+.how-dialog { margin: auto; max-height: calc(100vh - 32px); overflow-y: auto; max-width: 640px; width: calc(100% - 32px); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); padding: var(--s6); background: var(--bg-0); color: inherit; }
+.how-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+.how-dialog h3 { margin: 16px 0 4px; }
+
+/* Text that exists in two versions: the plain themes show the first, the Story theme the second */
+.only-story { display: none; }
+html[data-theme="story"] .only-plain { display: none; }
+html[data-theme="story"] .only-story { display: initial; }
+.story-ornament { display: none; }
+
+.transcript li[data-role="mute"] .line-text { font-style: italic; }
+
+/* Banner: the plain themes show the title and the "now playing" badge; the sub line is for themes that style it */
+.turn-sub { display: none; }
+html[data-theme="story"] .turn-sub { display: initial; }
+.end-sub { display: none; }
+html[data-theme="story"] .end-sub { display: initial; }
+.turn-playing { margin-left: 8px; }
+.input[readonly] { opacity: 0.8; }
+
+/* The satchel: what the party carries, from the agent's attributes */
+.satchel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s2) 0; }
+.satchel-items { display: flex; flex-wrap: wrap; gap: var(--s1-5); list-style: none; margin: 0; padding: 0; }
+.satchel-empty { color: var(--neutral-fg-2); }
+
+/* The connection status gets its own line, so a longer label or message never pushes the buttons onto a new row */
+#callStatus { flex-basis: 100%; }
+
+/* Hover tips (tips.js): one sentence about one control, on hover and on keyboard focus. The bubble anchors to the row or
+   heading that holds the control, so it stays inside the card on a phone. */
+.tip { position: relative; display: inline-flex; }
+.tip.tip--span { position: static; }
+.actions, .heading-row, .satchel { position: relative; }
+.heading-row { display: flex; align-items: center; gap: var(--s2); }
+.tip-bubble {
+  position: absolute; z-index: 20; top: calc(100% + var(--s2)); left: 0; width: max-content; max-width: min(300px, calc(100vw - 80px));
+  padding: var(--s2) var(--s3); border-radius: var(--radius); background: var(--bg-contrast, #1f1f23); color: var(--on-contrast-fg, #fff);
+  font-size: 13px; line-height: 1.45; font-weight: 400; letter-spacing: 0; text-transform: none; text-align: left;
+  box-shadow: var(--elevation-small); opacity: 0; visibility: hidden; pointer-events: none;
+}
+.tip:hover > .tip-bubble, .tip:focus-within > .tip-bubble { opacity: 1; visibility: visible; }
+.tip.tip--off > .tip-bubble { opacity: 0; visibility: hidden; }
+.tip-bubble code { color: inherit; }
+/* ⓘ button: a 44px hit area around a small mark */
+button.tip-i {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; margin: -12px -10px; padding: 0;
+  border: 0; background: none; box-shadow: none; color: var(--primary-fg); cursor: help;
+}
+button.tip-i:hover { background: none; box-shadow: none; }
+.tip-i__mark {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 50%;
+  font: italic 700 12px/1 Georgia, serif;
+}
+button.tip-i:hover .tip-i__mark { background: var(--primary-fg); color: var(--bg-0); }
+button.tip-i:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: -4px; border-radius: var(--radius); }

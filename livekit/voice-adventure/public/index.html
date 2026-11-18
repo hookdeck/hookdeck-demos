@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" data-demo-theme="story" data-demo-theme-label="Story" data-demo-theme-default="true">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Drowned Bell: a LiveKit voice adventure</title>
+  <link rel="icon" href="/ds/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/ds/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/demo.css">
+  <link rel="stylesheet" href="/theme-story.css">
+  <link rel="stylesheet" href="/scenes/scenes.css">
+  <link rel="stylesheet" href="/topology-pane/topology-pane.css">
+  <script src="/theme-story.copy.js"></script>
+  <script src="/theme.js"></script>
+  <script src="/ledger.js"></script>
+  <script src="/satchel.js"></script>
+</head>
+<body>
+  <main>
+    <section class="hero lined">
+      <svg class="story-ornament story-compass" aria-hidden="true" width="190" height="190" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="44" fill="none"></circle>
+        <circle cx="50" cy="50" r="36" fill="none" class="thin"></circle>
+        <path d="M50 4 L56 50 L50 96 L44 50 Z"></path>
+        <path d="M4 50 L50 44 L96 50 L50 56 Z" class="mid"></path>
+        <path d="M18 18 L52 48 L82 82 L48 52 Z" class="faint"></path>
+        <path d="M82 18 L52 52 L18 82 L48 48 Z" class="faint"></path>
+        <text x="50" y="14" text-anchor="middle">N</text>
+      </svg>
+      <div class="lined__box">
+        <span class="eyebrow mono-xs" data-copy="eyebrow">{ LiveKit voice adventure }</span>
+        <h1 class="title-2xl" data-copy="hero_title">A spoken adventure, told by <em>room webhooks</em></h1>
+        <svg class="story-ornament story-divider" aria-hidden="true" width="320" height="16" viewBox="0 0 320 16"><line x1="0" y1="8" x2="140" y2="8"></line><path d="M160 1 L167 8 L160 15 L153 8 Z"></path><line x1="180" y1="8" x2="320" y2="8"></line></svg>
+        <p class="body-m" data-copy="hero_body">An AI innkeeper and storyteller run a short adventure. Every room event reaches this app as a webhook through Hookdeck.</p>
+        <p><button class="button button--secondary" id="howBtn" type="button">How it works</button></p>
+      </div>
+      <span class="lined__dots lined__dots--top_left"></span>
+      <span class="lined__dots lined__dots--top_right"></span>
+      <span class="lined__dots"></span>
+      <span class="lined__dots lined__dots--bottom_right"></span>
+    </section>
+
+    <section class="card">
+      <h2 class="title-l" data-copy="join_title">Join a call</h2>
+      <p class="body-s muted" data-copy="join_hint">Type a name, join, and allow the microphone. Wait for your turn.</p>
+      <div class="actions">
+        <span class="tip"><label class="field inline"><span class="subtitle-xs">Your name</span><input class="input" id="playerName" name="story-player-name" maxlength="24" placeholder="optional" aria-describedby="tipName" data-copy-placeholder="name_placeholder" autocomplete="off" autocapitalize="words" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" style="width:140px"></label><span class="tip-bubble" id="tipName" role="tooltip" data-copy="tip_name">Optional. Leave it empty and Hester asks your name, then writes it in her ledger.</span></span>
+        <button class="button" id="joinBtn" type="button" data-copy="join_btn">Join a call</button>
+        <span class="tip"><button class="button button--secondary" id="testBtn" type="button" data-copy="pixel_add" aria-describedby="tipPixel" disabled>Add Pixel, a mute player</button><span class="tip-bubble" id="tipPixel" role="tooltip" data-copy="tip_pixel">Pixel is a scripted player that cannot speak. Old Bram weaves its gestures into the story.</span></span>
+        <button class="button button--secondary" id="leaveBtn" type="button" data-copy="leave_btn" disabled>Leave</button>
+        <span class="body-xs muted" id="callStatus"></span>
+      </div>
+      <div id="callMessage" class="message body-s" hidden></div>
+      <div id="inviteNote" class="message info body-s" hidden></div>
+      <div id="invite" class="invite body-s" hidden>
+        <span class="subtitle-xs" data-copy="invite_title">Invite a friend</span><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the invite link" aria-describedby="tipInvite"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipInvite" role="tooltip" data-copy="tip_invite">Anyone who opens this link joins this story, while it is running. Each person needs their own microphone.</span></span>
+        <div class="actions">
+          <input class="input" id="inviteLink" type="text" readonly aria-label="Invite link" autocomplete="off" spellcheck="false" style="flex:1 1 260px;min-width:0">
+          <button class="button button--secondary" id="inviteCopy" type="button" data-copy="invite_copy">Copy link</button>
+        </div>
+      </div>
+      <div id="storyBanner" class="story-banner body-m" hidden></div>
+      <div id="satchel" class="satchel body-s" hidden><span class="subtitle-xs" data-copy="satchel_title">Items</span><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the items" aria-describedby="tipSatchel"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipSatchel" role="tooltip" data-copy="tip_satchel">What your party is carrying. Old Bram updates it as you find things.</span></span><ul id="satchelItems" class="satchel-items"></ul></div>
+    </section>
+
+    <section class="card">
+      <div class="heading-row"><h2 class="title-l" data-copy="transcript_title">Transcript</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the transcript" aria-describedby="tipTranscript"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipTranscript" role="tooltip" data-copy="tip_transcript">Subtitles of what is said in the call, newest first.</span></span></div>
+      <ul id="transcript" class="transcript body-s"></ul>
+    </section>
+
+    <section class="card">
+      <div class="heading-row"><h2 class="title-l" data-copy="chronicle_title">Session chronicle</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About the session chronicle" aria-describedby="tipChronicle"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipChronicle" role="tooltip" data-copy="chronicle_hint">Built from webhooks only.</span></span></div>
+      <div id="chronicle" class="requests"></div>
+    </section>
+
+    <section class="card">
+      <div class="heading-row"><h2 class="title-l" data-copy="failure_title">Failure injection</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About failure injection" aria-describedby="tipFailure"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipFailure" role="tooltip" data-copy="tip_failure">Make the app fail or answer slowly. Hookdeck keeps each event and retries it.</span></span></div>
+      <div class="actions">
+        <label class="field inline"><span class="subtitle-xs">Fail the next</span><input class="input narrow" id="failNext" type="number" min="0" max="10" value="2"></label>
+        <label class="field inline"><span class="subtitle-xs">Delay each answer (s)</span><input class="input narrow" id="delay" type="number" min="0" max="60" value="0"></label>
+        <button class="button button--secondary" id="chaosBtn" type="button">Apply</button>
+        <span class="body-xs muted" id="chaosState"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div class="heading-row"><h2 class="title-l">Calls</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About calls" aria-describedby="tipCalls"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipCalls" role="tooltip" data-copy="tip_calls">Rooms, who was in them and for how long, built from room webhooks.</span></span></div>
+        <label class="check body-xs"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 2s</label>
+      </div>
+      <div id="calls" class="requests"></div>
+    </section>
+
+    <section class="card">
+      <div class="heading-row"><h2 class="title-l">Webhook deliveries</h2><span class="tip tip--span"><button class="tip-i" type="button" aria-label="About webhook deliveries" aria-describedby="tipDeliveries"><span class="tip-i__mark" aria-hidden="true">i</span></button><span class="tip-bubble" id="tipDeliveries" role="tooltip" data-copy="tip_deliveries">Every request that reached this app, newest first. A repeated event id is a duplicate and changes nothing.</span></span></div>
+      <div style="overflow-x: auto"><table class="deliveries body-s"><thead><tr><th>Received</th><th>Event</th><th>Event id</th><th>Result</th></tr></thead><tbody id="deliveries"></tbody></table></div>
+    </section>
+  </main>
+  <dialog id="howDialog" class="how-dialog">
+    <div class="section-head">
+      <h2 class="title-l">How it works</h2>
+      <button class="button button--secondary" id="howClose" type="button">Close</button>
+    </div>
+    <h3 class="subtitle-m">The story</h3>
+    <p class="body-s">Hester, the innkeeper, greets you by the name you typed (or asks for it) and writes it in her ledger, then fetches Old Bram, who tells the story. Both are LiveKit agents (<code>npm run agent</code>) using LiveKit Inference for speech and the LLM. Only one player is heard at a time: Old Bram gives each a turn. Open a second tab to play with two voices, or add Pixel, a mute scripted player whose gestures Old Bram weaves into the story.</p>
+    <h3 class="subtitle-m">Soundtracks</h3>
+    <p class="body-s">At each new scene this app pulls a soundtrack into the room with LiveKit's Ingress API. The soundtrack's volume slider only changes what you hear.</p>
+    <h3 class="subtitle-m">Webhooks</h3>
+    <p class="body-s">LiveKit sends every room event (people joining and dropping, tracks, soundtracks starting and ending, the room finishing) to a Hookdeck source. Hookdeck delivers them to this app through <code>hookdeck listen</code>, deduplicates repeats on the event <code>id</code> and retries failed deliveries. The app verifies each webhook's signed token with LiveKit's <code>WebhookReceiver</code>.</p>
+    <h3 class="subtitle-m">Session chronicle and calls</h3>
+    <p class="body-s">Both are built only from the webhooks this app receives. Players, the story agent and soundtracks are told apart by the participant <code>kind</code> in each payload.</p>
+    <h3 class="subtitle-m">Failure injection</h3>
+    <p class="body-s">Make this app fail or answer slowly. Hookdeck keeps each event and retries it until the app answers 2xx, so LiveKit is never kept waiting.</p>
+    <h3 class="subtitle-m">Webhook deliveries</h3>
+    <p class="body-s">Every request that reached this app, newest first. A repeated event <code>id</code> is a duplicate delivery and doesn't change the log. Watch each one arrive in the <strong>Data flow</strong> pane at the bottom of the page.</p>
+  </dialog>
+  <script>
+    document.getElementById('howBtn').addEventListener('click', () => document.getElementById('howDialog').showModal());
+    document.getElementById('howClose').addEventListener('click', () => document.getElementById('howDialog').close());
+    document.getElementById('howDialog').addEventListener('click', (e) => { if (e.target.id === 'howDialog') e.target.close(); });
+  </script>
+  <script src="/tips.js"></script>
+  <script src="/app.js"></script>
+  <script type="module" src="/call.js"></script>
+  <script src="/scenes/scenes.js"></script>
+  <script src="/topology-pane/topology-pane.js"></script>
+  <script src="/topology.js"></script>
+</body>
+</html>
