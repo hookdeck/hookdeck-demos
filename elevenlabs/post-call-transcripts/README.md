@@ -75,6 +75,8 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 
    A few seconds after the call ends, the transcript appears in the app.
 
+The app listens on `127.0.0.1` only, which is enough because `hookdeck listen` runs on the same machine. It answers `403` to a request whose `Host` header is not `localhost`, `127.0.0.1` or `[::1]`, and the page's state-changing requests carry an `x-demo` header. To reach the app from another device, set `HOST=0.0.0.0` and `ALLOWED_HOSTS=<the name or IP you browse to>` in `.env`. It keeps the 50 most recent conversations.
+
 ### Set up ElevenLabs by hand
 
 `npm run setup` calls the ElevenLabs API for you. To do the ElevenLabs part in the dashboard, first create the Hookdeck source (type **ElevenLabs**) and a connection to a CLI destination with path `/webhooks/elevenlabs` in the Hookdeck dashboard, copy the source URL into `ELEVENLABS_WEBHOOK_URL` in `.env`, then:
@@ -164,7 +166,8 @@ elevenlabs/post-call-transcripts/
 │   ├── listen.ts         # hookdeck listen for the source
 │   ├── call.ts           # text-only conversation with the agent
 │   ├── send-sample.ts    # signed sample payloads, duplicates, large bodies
-│   └── hookdeck-cli.ts   # runs the Hookdeck CLI against HOOKDECK_API_KEY's project
+│   ├── probe.ts          # checks that a good signature is accepted and a bad one rejected
+│   └── hookdeck-cli.ts   # runs the Hookdeck CLI against HOOKDECK_API_KEY's project (synced from _shared)
 ├── scenes/
 │   ├── post-call.ts      # the topology scene: live, and four scripted scenarios (desktop + phone)
 │   ├── entry.ts          # what the page's bundle exposes
