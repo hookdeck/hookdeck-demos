@@ -6,6 +6,7 @@ import { AgentDispatchClient, IngressClient, IngressInput, RoomServiceClient, We
 import { spawn, ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
 import { AGENT_NAME, mintToken } from './token';
+import { verifyWebhook } from './verify';
 import { applyEvent, LiveKitEvent, summarise } from './call-log';
 import { loadChronicle, loadLog, readDeliveries, recordDelivery, saveChronicle, saveLog } from './store';
 import { applyChronicle, viewChronicle } from './chronicle';
@@ -188,8 +189,8 @@ app.post('/webhooks/livekit', express.raw({ type: '*/*', limit: '1mb' }), async 
   };
 
   try {
-    // Verifies the JWT signature and the body hash. Throws if either fails.
-    await receiver.receive(raw_body.toString('utf-8'), req.get('authorization'));
+    // Verifies the JWT signature and the body hash, and that the token is not older than the retry window (see verify.ts). Throws if any fails.
+    await verifyWebhook(receiver, raw_body.toString('utf-8'), req.get('authorization'));
   } catch (error: any) {
     console.warn(`Rejected webhook: ${error.message}`);
     recordDelivery({ ...delivery, verified: false, duplicate: false, error: error.message });

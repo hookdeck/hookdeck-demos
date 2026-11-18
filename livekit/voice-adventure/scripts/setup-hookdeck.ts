@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { SOURCE, cli } from './config';
+import { RETRY_RULE } from '../src/config';
 import { CLI_CONFIG_PATH, ensureWebhook, readCliConfig, resolveSession } from './livekit-cloud';
 
 const PROJECT_DIR = cli.projectDir;
@@ -72,7 +73,7 @@ async function main(): Promise<void> {
       // The same LiveKit event id inside 10 minutes is a duplicate. The API takes the window in milliseconds.
       { type: 'deduplicate', window: 600000, include_fields: ['body.id'] },
       // If the app is down or erroring, retry for about two hours (30s, 60s, 2m, 4m, ...)
-      { type: 'retry', strategy: 'exponential', count: 8, interval: 30000 },
+      { ...RETRY_RULE },
     ],
   });
 

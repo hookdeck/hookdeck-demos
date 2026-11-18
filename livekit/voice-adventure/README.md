@@ -88,6 +88,7 @@ Open <http://localhost:4000>.
 ## How it works
 
 - **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
+- **Retries after 5 minutes.** The token expires 5 minutes after LiveKit issues it, and Event Gateway forwards the original `Authorization` header on every retry. So the app verifies with a clock tolerance that covers the connection's retry window (about 2 hours 7 minutes, plus 5 minutes: `src/verify.ts`). The signature and the body hash are still checked; the trade-off is that a captured request stays acceptable for that long, which is harmless because events apply idempotently. With the LIVEKIT source type, Event Gateway does this check and the app doesn't need to (see the TODO below).
 - **Idempotent room record.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
 - **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
 - **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get the story agent.
@@ -227,6 +228,7 @@ livekit/voice-adventure/
 │   ├── chronicle.ts         # Builds the session chronicle from webhooks
 │   ├── soundtracks.ts       # Scene names and soundtrack URLs
 │   ├── call-log.ts          # Turns events into calls (idempotent, order-independent)
+│   ├── verify.ts            # Webhook verification with a clock tolerance for retries
 │   ├── server.ts            # Express app and the verified webhook endpoint
 │   ├── deliveries.ts        # What the app answered, for the data flow pane
 │   └── store.ts             # JSON file persistence in data/
@@ -244,7 +246,7 @@ The setup above uses a generic source and the app verifies each delivery. With t
 
 1. Add `LIVEKIT_SOURCE_TYPE=LIVEKIT` to `.env` and run `npm run setup` again.
 
-The app keeps verifying with `WebhookReceiver`, which works the same way because Hookdeck forwards the `Authorization` header and the raw body unchanged.
+Then remove the app's own check in `src/verify.ts` and `src/server.ts`, and rely on Event Gateway's verification. Don't keep re-verifying the forwarded token: it expires 5 minutes after LiveKit issues it, and Event Gateway forwards that original `Authorization` header on every retry, so the app's check would reject any retry after 5 minutes (the clock tolerance below only works around that). Event Gateway checks the token's expiry against when it received the request.
 -->
 
 ## Troubleshooting
