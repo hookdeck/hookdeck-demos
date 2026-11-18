@@ -31,12 +31,15 @@
   /** Minutes after midnight, or null. A bare hour without am/pm is read against the salon's hours (9 to 6). */
   function readMinutes(text) {
     if (/\b(noon|midday)\b/.test(text)) return 12 * 60;
+    if (/\d\s*(?:a\.?m\.?|p\.?m\.?)?\s*[-\u2013]\s*\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)/.test(text)) return null; // "2-3pm" is a range: not one time to book
     const clock = /\b(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])/g;
     let match;
     while ((match = clock.exec(text))) {
       const [, h_text, m_text, meridiem] = match;
       const after = text.slice(match.index + match[0].length);
       if (/^(st|nd|rd|th)\b/.test(after)) continue; // "the 3rd" is a date, not a time
+      // "14 November", "11/20" and "20-11" are dates: a number followed by a month name, "/" or "-" is never an hour
+      if (/^(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/.test(after) || /^[/\-\u2013]/.test(after)) continue;
       let hour = Number(h_text);
       const minute = m_text == null ? 0 : Number(m_text);
       const explicit = meridiem != null || m_text != null || /\bat\s*$/.test(text.slice(0, match.index)) || /\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\s*$/.test(text.slice(0, match.index));
@@ -87,7 +90,8 @@
     const slots = [];
     const unscheduled = [];
     for (const conversation of conversations) {
-      const booking = bookingOf(conversation);
+      let booking = null;
+      try { booking = bookingOf(conversation); } catch { /* an odd stored record is left out, not fatal */ }
       if (!booking) continue;
       (booking.slot ? slots : unscheduled).push(booking);
     }

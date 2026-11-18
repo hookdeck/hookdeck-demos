@@ -52,6 +52,21 @@ describe('parseRequestedTime', () => {
     assert.equal(read('today 4pm').day, 4);
     assert.equal(Diary.parseRequestedTime('tomorrow at 10', undefined).day, null);
   });
+  it('does not read the day of the month as an hour', () => {
+    for (const [text, minutes] of [
+      ['Friday 14 November at 3pm', 15 * 60],
+      ['Friday 20 November at 2pm', 14 * 60],
+      ['Friday 11/20 at 2pm', 14 * 60],
+      ['Friday 20-11 at 2pm', 14 * 60],
+      ['Friday 20th November at 2pm', 14 * 60],
+    ] as const) {
+      assert.deepEqual(read(text), { day: 4, minutes, part: null }, text);
+    }
+    // A date with no time of its own is not a time, and neither is a range
+    for (const text of ['Friday 14 November', 'Friday 20 November morning', 'Friday 11/20', 'Friday 2-3pm']) {
+      assert.equal(read(text).minutes, null, text);
+    }
+  });
   it('does not read a date, an out-of-range hour or empty text as a time', () => {
     assert.equal(read('the 3rd of March').minutes, null);
     assert.equal(read('Friday 30').minutes, null);
@@ -87,7 +102,7 @@ describe('Diary.build', () => {
     assert.equal(Diary.bookingOf({ conversation_id: 'c', evaluation_criteria_results: {}, data_collection_results: {} }), null);
   });
   it('never invents a slot: a time it cannot read goes in the unscheduled list with the text as received', () => {
-    const cases = ['next Friday-ish', 'Friday', 'half past three on Friday', 'Sunday 11am', 'the 3rd of March', '', null];
+    const cases = ['next Friday-ish', 'Friday', 'half past three on Friday', 'Friday 14 November', 'Friday 2-3pm', 'Sunday 11am', 'the 3rd of March', '', null];
     for (const requested_time of cases) {
       const diary = Diary.build([conversation(requested_time)]);
       assert.equal(diary.slots.length, 0, String(requested_time));
