@@ -1,0 +1,215 @@
+/* Page styles shared by the Deepgram demos, built on the Hookdeck design system (ds/styles.css) */
+
+body { background: var(--tan-bg); }
+main { max-width: 880px; margin: 0 auto; padding: var(--s10) var(--s4) var(--s16); display: grid; gap: var(--s6); }
+a { color: var(--primary-fg); }
+
+/* Header in the "lined" blueprint frame */
+.hero .lined__box { border-right: none; border-bottom: none; display: grid; gap: var(--s3); }
+.eyebrow { color: var(--neutral-fg-3); text-transform: uppercase; }
+.hero h1 { margin: 0; }
+.hero p { color: var(--neutral-fg-2); max-width: 680px; }
+.hero code { font-size: 0.9em; color: var(--neutral-fg-1); }
+.back { text-decoration: none; }
+.back:hover { text-decoration: underline; }
+
+/* Cards and sections. The design system's `.card:not(.flex) { display: block }` would drop the gaps,
+   so match its specificity to lay cards out as a grid. */
+.card:not(.flex) { display: grid; gap: var(--s4); padding: var(--s6); }
+.card h2 { margin: 0; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+
+/* Form fields, matching the design system's Input */
+.field { display: grid; gap: var(--s1-5); }
+.field > span { color: var(--neutral-fg-2); }
+.input, textarea, select {
+  font-family: var(--font-sans); font-size: 14px; line-height: 20px; padding: 7px 12px;
+  border-radius: var(--radius); border: 1px solid var(--neutral-outline-2); background: var(--bg-0);
+  color: var(--neutral-fg-1); width: 100%; box-shadow: var(--button-box-shadow);
+}
+textarea { min-height: 96px; resize: vertical; }
+textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.check { display: inline-flex; gap: var(--s2); align-items: center; color: var(--neutral-fg-2); }
+
+/* Messages */
+.message:empty { display: none; }
+.message { padding: var(--s2) var(--s3); border-radius: var(--radius); border: 1px solid; }
+.message.success { color: var(--color-success); border-color: var(--color-success-outline); background: var(--color-success-surface); }
+.message.error { color: var(--color-danger); border-color: var(--color-danger-outline); background: var(--color-danger-surface); }
+.message.info, .message.recording { color: var(--primary-badge-fg); border-color: var(--primary-badge-outline); background: var(--blue-badge-bg); }
+
+/* Request lists */
+.requests { display: grid; gap: var(--s3); }
+.requests .empty { color: var(--neutral-fg-3); }
+.request { display: grid; gap: var(--s2); padding: var(--s4); border-radius: var(--radius); background: var(--bg-1); border: 1px dashed var(--neutral-outline-3); }
+.request-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+.request-text { color: var(--neutral-fg-1); }
+.request-meta { color: var(--neutral-fg-3); display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); }
+.request-meta code { font-size: 12px; line-height: 18px; color: var(--neutral-fg-2); }
+.request audio { width: 100%; max-width: 420px; }
+.request .error { color: var(--color-danger); }
+
+/* Landing page demo cards */
+.demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s4); }
+/* A column, so the status badge sits at the bottom and lines up across cards */
+.card:not(.flex).demo { display: flex; flex-direction: column; gap: var(--s3); }
+.demo .chip { margin-bottom: var(--s2); }
+.demo h2 { margin: 0; }
+.demo .status { margin-top: auto; padding-top: var(--s3); }
+a.demo { text-decoration: none; color: var(--neutral-fg-1); transition: 200ms ease-in-out background-color; }
+a.demo:hover { background-color: var(--bg-0-hover); color: var(--neutral-fg-1); }
+.demo p { color: var(--neutral-fg-2); }
+.demo.disabled { opacity: 0.6; }
+
+/* Icon chip: a Material Symbols glyph in a light-blue rounded square */
+.chip {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; font-size: 22px;
+  border-radius: var(--s1-5); color: var(--primary-fg); border: 1px solid var(--primary-badge-outline);
+  background: var(--blue-badge-bg); box-shadow: 0 1px 0 0 var(--primary-badge-outline);
+}
+
+footer { color: var(--neutral-fg-3); }
+
+@media (max-width: 744px) {
+  .hero .lined__box { padding: var(--s5); }
+  .card:not(.flex) { padding: var(--s4); }
+}
+
+/* ElevenLabs post-call transcripts */
+.controls { display: grid; gap: var(--s3); }
+/* "Fail the next [n] deliveries": the input sits inside the sentence, at button height */
+.inline-field { display: inline-flex; align-items: center; gap: var(--s2); color: var(--neutral-fg-2); }
+.input.input--count { width: 64px; text-align: center; padding-top: 5px; padding-bottom: 5px; }
+.section-tools { display: flex; align-items: center; gap: var(--s3); }
+.button.button--small { padding: 2px 10px; font-size: 13px; line-height: 20px; }
+.conversation { display: grid; gap: var(--s2); padding: var(--s4); border-radius: var(--radius); background: var(--bg-1); border: 1px dashed var(--neutral-outline-3); }
+.conversation summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; list-style: none; }
+.conversation summary::-webkit-details-marker { display: none; }
+.conversation .detail { display: grid; gap: var(--s4); margin-top: var(--s3); }
+.turn { display: grid; grid-template-columns: 56px 1fr; gap: var(--s3); }
+.turn .role { color: var(--neutral-fg-3); text-transform: uppercase; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--s1) var(--s4); }
+.kv dt { color: var(--neutral-fg-3); }
+.kv dd { margin: 0; }
+.deliveries__head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.deliveries__head h2 { margin: 0; }
+.deliveries__toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: var(--s2); }
+.deliveries__toggle::before { content: '\25B8'; color: var(--neutral-fg-3); }
+.deliveries__toggle[aria-expanded="true"]::before { content: '\25BE'; }
+.deliveries__toggle:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 2px; border-radius: var(--radius-s); }
+.deliveries__head #sdkBadge { margin-left: auto; }
+.delivery-list { margin-top: var(--s3); }
+.delivery-list { display: grid; gap: var(--s1-5); }
+.delivery { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s1-5) 0; border-top: 1px solid var(--neutral-outline-3); color: var(--neutral-fg-2); }
+.delivery code { color: var(--neutral-fg-1); }
+.delivery-list .more, .delivery-list .empty { color: var(--neutral-fg-3); }
+#conversations { max-height: 560px; overflow-y: auto; }
+
+/* Focused layout: the page keeps labels, data, actions and status; explanations sit behind ⓘ dialogs and hover tips.
+   Every theme gets this layout. A theme restyles it through the design-system tokens and its own stylesheet. */
+.muted { color: var(--neutral-fg-3); }
+.hero__line { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.hero__line p { margin: 0; }
+.hero__scissors { display: none; }
+.heading-row { display: flex; align-items: center; gap: var(--s3); }
+
+/* ⓘ button: a 44px hit area around a smaller icon, a real button with an aria-label */
+button.info {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; margin: -13px -8px; padding: 0;
+  border: 0; background: none; box-shadow: none; color: var(--primary-fg); cursor: pointer;
+}
+button.info:hover, button.info:disabled { background: none; box-shadow: none; color: var(--primary-fg); }
+.info__icon { border-radius: 50%; color: var(--primary-fg); }
+.info__icon .ring, .info__icon .stem { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.info__icon .stem { stroke-width: 1.7; stroke-linecap: round; }
+button.info:hover .info__icon, button.info[aria-expanded="true"] .info__icon { background: var(--primary-fg); color: var(--bg-0); }
+button.info:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: -4px; border-radius: var(--radius); }
+button.info--tip { margin: -13px -8px -13px -4px; }
+
+/* ⓘ dialog */
+.info-dialog {
+  margin: auto; width: min(440px, calc(100% - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: var(--s6);
+  border: 1px solid var(--neutral-outline-3); border-radius: var(--radius); background: var(--bg-0); color: var(--neutral-fg-1);
+  box-shadow: var(--elevation-large, 0 18px 40px rgb(0 0 0 / 0.28));
+}
+.info-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+.info-dialog[open] { display: grid; gap: var(--s3); }
+.info-dialog h3 { margin: 0; font-size: 20px; line-height: 1.25; letter-spacing: 0; }
+.info-dialog p { margin: 0; color: var(--neutral-fg-2); font-size: 14px; line-height: 1.55; letter-spacing: 0; }
+.info-dialog code, .tip-bubble code { font-size: 0.9em; }
+.info-dialog form { display: flex; justify-content: flex-end; margin-top: var(--s2); }
+.info-dialog .button { min-height: 44px; padding: 0 var(--s4); }
+
+/* Hover tip: one sentence about one control, on hover and on keyboard focus */
+.tip { position: relative; display: inline-flex; align-items: center; }
+.tip-bubble {
+  position: absolute; z-index: 20; top: calc(100% + var(--s2)); left: 0; width: max-content; max-width: min(290px, 70vw); padding: var(--s2) var(--s3);
+  border-radius: var(--radius); background: var(--tooltip-bg); color: var(--tooltip-fg); font-size: 13px; line-height: 1.45; font-weight: 400;
+  box-shadow: var(--elevation-small); text-align: left; opacity: 0; visibility: hidden; pointer-events: none;
+}
+.tip:hover .tip-bubble, .tip:focus-within .tip-bubble { opacity: 1; visibility: visible; }
+.tip.tip--off .tip-bubble { opacity: 0; visibility: hidden; }
+.tip-bubble code { color: inherit; }
+.request-meta .tip-bubble { top: auto; bottom: calc(100% + var(--s2)); }
+.tip-anchor:focus-visible, .chip-btn:focus-visible, .slot:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 2px; }
+
+/* Roles: the customer (you) rings the booking assistant, with the call's status between them */
+.roles { display: flex; align-items: stretch; gap: var(--s4); flex-wrap: wrap; border-top: 1px solid var(--neutral-outline-2); padding-top: var(--s4); }
+.party { flex: 1 1 240px; min-width: 0; display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); background: var(--bg-1); }
+.party .info { margin-left: auto; }
+.party__text { min-width: 0; display: grid; gap: 2px; }
+.party__label { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--neutral-fg-2); }
+.party__name { font-size: 20px; line-height: 1.25; color: var(--neutral-fg-1); overflow-wrap: anywhere; }
+.party__avatar {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%; font-size: 24px; font-weight: 700;
+  color: var(--primary-fg); background: var(--blue-badge-bg); border: 2px solid var(--primary-badge-outline); box-sizing: border-box;
+}
+.party__avatar--caller { color: var(--on-hue-fg); background: var(--primary-blue-bg); border-color: var(--primary-blue-bg); }
+.party__avatar .glyph { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.roles__link { flex: 0 1 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s2); }
+.roles__arrow { color: var(--neutral-outline-3); }
+.roles__arrow path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pill {
+  display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; line-height: 18px; padding: 3px 10px; border-radius: var(--radius-s);
+  border: 1px solid var(--primary-badge-outline); background: var(--blue-badge-bg); color: var(--primary-badge-fg); text-align: center;
+}
+
+/* Chips on a conversation: "2 events" (agent and sizes on hover) and the booked slot */
+.chip-btn {
+  font-family: var(--font-mono); font-size: 12px; line-height: 18px; padding: 2px 10px; border-radius: 999px; cursor: help; box-shadow: none;
+  color: var(--neutral-fg-2); background: var(--bg-2); border: 1px dashed var(--neutral-outline-3);
+}
+.chip-btn:hover { background: var(--bg-2); color: var(--neutral-fg-1); box-shadow: none; }
+.chip-btn--slot { color: var(--primary-badge-fg); background: var(--blue-badge-bg); border: 1px solid var(--primary-badge-outline); }
+.chip-btn--slot:hover { background: var(--blue-badge-bg); color: var(--primary-badge-fg); }
+.tip-anchor { display: inline-flex; border-radius: var(--radius-s); cursor: help; }
+
+/* Diary: the week as Morning and Afternoon rows. Scrolls sideways on a narrow screen. */
+.diary__wrap { overflow-x: auto; }
+.diary__grid { display: grid; grid-template-columns: 84px repeat(6, minmax(104px, 1fr)); gap: 1px; background: var(--neutral-outline-2); border: 1px solid var(--neutral-outline-2); border-radius: var(--radius); min-width: 640px; }
+.diary__grid > * { background: var(--bg-0); }
+.diary__day, .diary__period { padding: var(--s2) var(--s3); color: var(--neutral-fg-2); text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; line-height: 18px; background: var(--bg-1); }
+.diary__cell { min-height: 56px; padding: var(--s1-5); display: grid; gap: var(--s1-5); align-content: start; }
+.slot {
+  display: grid; gap: 0; width: 100%; text-align: left; padding: var(--s1-5) var(--s2); border-radius: var(--radius-s); border: 0; box-shadow: none; cursor: help;
+  background: var(--primary-blue-bg); color: var(--on-hue-fg); font-size: 13px; line-height: 18px; font-weight: 500;
+}
+.slot:hover { background: var(--primary-blue-bg); color: var(--on-hue-fg); box-shadow: none; }
+.slot__time { font-size: 12px; opacity: 0.9; }
+.slot__what { font-size: 12px; font-weight: 400; opacity: 0.9; }
+.diary__cell .tip { display: block; }
+.diary__cell .tip-bubble { max-width: 220px; }
+.diary__unscheduled { display: flex; align-items: stretch; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+.diary__unscheduled .diary__period { align-self: center; padding: var(--s1-5) var(--s3); border-radius: var(--radius-s); }
+.slot--unscheduled { width: auto; cursor: default; background: var(--bg-2); color: var(--neutral-fg-1); border: 1px dashed var(--neutral-outline-3); }
+.delivery-list[hidden] { display: none; }
+main > *, .card > * { min-width: 0; }
+/* On a phone a tip is a bar at the bottom of the screen, so it never widens the page or runs off the edge */
+@media (max-width: 560px) {
+  .tip .tip-bubble, .request-meta .tip-bubble, .diary__cell .tip-bubble {
+    position: fixed; left: var(--s4); right: var(--s4); bottom: var(--s4); top: auto; width: auto; max-width: none;
+  }
+}
+/* Wide enough for the whole week: no scroll container, so a slot's hover tip is not clipped */
+@media (min-width: 745px) { .diary__wrap { overflow: visible; } }
