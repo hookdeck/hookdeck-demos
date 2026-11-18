@@ -68,6 +68,8 @@
       document.body.classList.toggle('tp-open', open);
       toggle.setAttribute('aria-expanded', String(open));
       try { sessionStorage.setItem('tp-open', open ? '1' : '0'); } catch { /* storage can be blocked */ }
+      // Reopened: poll now and show the latest state (a closed pane may have missed timers)
+      if (open) { feed?.resume(); }
     }
     let remembered = null;
     try { remembered = sessionStorage.getItem('tp-open'); } catch { /* storage can be blocked */ }
@@ -250,6 +252,8 @@
     }
 
     new ResizeObserver(() => {
+      // A closed pane has no width: keep the scene as it is instead of remounting it into the phone layout and back
+      if (!canvas.clientWidth) return;
       if (scene && layoutForWidth() !== layout) mountScene();
     }).observe(canvas);
     mountScene();

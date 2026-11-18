@@ -152,6 +152,18 @@ export function createFlowFeed(options: FlowFeedOptions) {
   const fast_events = new Map<string, { count: number, chain: Promise<void> }>()
   let fast_first = true
   let fast_timer: ReturnType<typeof setTimeout> | undefined
+  /** Consecutive failed polls per endpoint: they set the backoff and how often a failure is logged. */
+  const failures = { flow: 0, fast: 0 }
+  const failed = (which: 'flow' | 'fast', where: string, detail: string) => {
+    failures[which]++
+    // Logged on the first failure and every fifth after it, so a dead endpoint is visible without flooding the console
+    if (failures[which] === 1 || failures[which] % 5 === 0)
+      console.warn(`topology feed: ${where} ${detail} (failure ${failures[which]}; retrying with backoff)`)
+  }
+  const delay = (which: 'flow' | 'fast', base: number) => {
+    const slowed = document.hidden ? base * 4 : base
+    return failures[which] > 0 ? Math.min(slowed * 2 ** Math.min(failures[which], 4), 15000) : slowed
+  }
 
   const label = options.packetLabel ?? ((m: FeedMessage) => {
     const kind = m.label.replace(/^post_call_/, '').replace(/^transcription$/, 'transcript')
@@ -290,71 +302,106 @@ export function createFlowFeed(options: FlowFeedOptions) {
       return
     try {
       const response = await doFetch(fast.endpoint, { cache: 'no-store' })
-      if (response.ok) {
+      if (!response.ok) {
+        failed('fast', fast.endpoint, `returned ${response.status}`)
+      }
+      else {
+        failures.fast = 0
         const list = ((await response.json()) as any[]).map(fast.map).filter((d): d is FastDelivery => d !== null)
         list.sort((a, b) => a.at.localeCompare(b.at))
-        for (const d of list) {
-          if (fast_seen.has(d.id))
-            continue
-          fast_seen.add(d.id)
-          const key = d.event_id ?? d.id
-          const known = fast_events.get(key)
-          const ev = known ?? { count: 0, chain: Promise.resolve() }
-          fast_events.set(key, ev)
-          ev.count++
-          if (fast_first)
-            continue
-          const attempt_no = ev.count
-          const kind = d.label.replace(/^post_call_/, '').replace(/^transcription$/, 'transcript')
-          const size = formatBytes(d.bytes)
-          const j: Journey = { label: options.packetLabel ? options.packetLabel({ label: d.label, bytes: d.bytes } as FeedMessage) : size ? `${kind} ${size}` : kind, bytes: d.bytes, event_id: d.event_id }
-          const ok = d.status < 400
-          ev.chain = ev.chain.then(async () => {
-            if (attempt_no === 1) {
-              options.onActivity?.({ label: d.label } as FeedMessage)
-              await playIngest(j, 'ok')
-            }
-            await playDeliver(j, attempt_no, { ok, text: d.status })
-          }).catch(() => {})
+        try {
+          for (const d of list) {
+            if (fast_seen.has(d.id))
+              continue
+            fast_seen.add(d.id)
+            const key = d.event_id ?? d.id
+            const known = fast_events.get(key)
+            const ev = known ?? { count: 0, chain: Promise.resolve() }
+            fast_events.set(key, ev)
+            ev.count++
+            if (fast_first)
+              continue
+            const attempt_no = ev.count
+            const kind = d.label.replace(/^post_call_/, '').replace(/^transcription$/, 'transcript')
+            const size = formatBytes(d.bytes)
+            const j: Journey = { label: options.packetLabel ? options.packetLabel({ label: d.label, bytes: d.bytes } as FeedMessage) : size ? `${kind} ${size}` : kind, bytes: d.bytes, event_id: d.event_id }
+            const ok = d.status < 400
+            ev.chain = ev.chain.then(async () => {
+              if (attempt_no === 1) {
+                options.onActivity?.({ label: d.label } as FeedMessage)
+                await playIngest(j, 'ok')
+              }
+              await playDeliver(j, attempt_no, { ok, text: d.status })
+            }).catch((error) => { console.warn(`topology feed: a packet animation failed: ${error?.message ?? error}`) })
+          }
         }
-        fast_first = false
+        finally {
+          // Whatever happened above, what was listed has been seen: "history" ends here, so later deliveries animate
+          fast_first = false
+        }
       }
     }
-    catch {
-      // The next poll retries.
+    catch (error: any) {
+      failed('fast', fast.endpoint, `failed: ${error?.message ?? error}`)
     }
-    if (!stopped)
-      fast_timer = setTimeout(pollFast, fast.pollMs ?? 700)
+    finally {
+      if (!stopped)
+        fast_timer = setTimeout(pollFast, delay('fast', fast.pollMs ?? 700))
+    }
   }
 
   async function poll() {
     try {
       const response = await doFetch(endpoint, { cache: 'no-store' })
-      if (response.ok) {
+      if (!response.ok) {
+        failed('flow', endpoint, `returned ${response.status}`)
+      }
+      else {
+        failures.flow = 0
         const state = (await response.json()) as FeedState
         // Oldest first, so journeys queue in the order the webhooks arrived.
         options.onFlow?.(state)
         messages = [...state.messages].sort((a, b) => a.received_at.localeCompare(b.received_at))
-        for (const m of messages)
-          track(m, !first)
-        first = false
+        try {
+          for (const m of messages)
+            track(m, !first)
+        }
+        finally {
+          first = false
+        }
       }
     }
-    catch {
-      // The page keeps polling; the drawer shows the error.
+    catch (error: any) {
+      failed('flow', endpoint, `failed: ${error?.message ?? error}`)
     }
-    if (!stopped)
-      timer = setTimeout(poll, document.hidden ? pollMs * 4 : pollMs)
+    finally {
+      if (!stopped)
+        timer = setTimeout(poll, delay('flow', pollMs))
+    }
   }
+
+  /** Polls again now, instead of waiting for a timer (a hidden tab slows the timers; a reopened pane wants fresh data). */
+  function resume() {
+    if (stopped)
+      return
+    clearTimeout(timer)
+    clearTimeout(fast_timer)
+    void poll()
+    void pollFast()
+  }
+  const on_visible = () => { if (!document.hidden) resume() }
 
   return {
     start() {
       stopped = false
+      document.addEventListener('visibilitychange', on_visible)
       void poll()
       void pollFast()
     },
+    resume,
     stop() {
       stopped = true
+      document.removeEventListener('visibilitychange', on_visible)
       clearTimeout(timer)
       clearTimeout(fast_timer)
     },
