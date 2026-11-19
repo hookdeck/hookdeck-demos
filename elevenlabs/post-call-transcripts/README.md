@@ -22,7 +22,7 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
 
 - Node.js 22 or later
 - An [ElevenLabs](https://elevenlabs.io) account and an [ElevenLabs API key](https://elevenlabs.io/app/settings/api-keys) that can read and write agents and workspace webhooks
-- A [Hookdeck](https://dashboard.hookdeck.com/signup) project and a project API key (Project settings -> API keys)
+- A [Hookdeck](https://dashboard.hookdeck.com/signup) project, its project API key and its project signing secret (both on Project settings -> [Secrets](https://dashboard.hookdeck.com/settings/project/secrets))
 
 ## Quick start
 

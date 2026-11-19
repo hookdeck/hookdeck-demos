@@ -25,7 +25,7 @@ export function requireHookdeckApiKey(): string {
   const key = process.env.HOOKDECK_API_KEY;
   if (!key || key.startsWith('your_')) {
     console.error('❌ HOOKDECK_API_KEY is not set. Add a project API key to .env');
-    console.error('   (Hookdeck dashboard: Project settings -> API keys).');
+    console.error('   (Hookdeck dashboard: Project settings -> Secrets, https://dashboard.hookdeck.com/settings/project/secrets).');
     process.exit(1);
   }
   return key;

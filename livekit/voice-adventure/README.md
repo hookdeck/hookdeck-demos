@@ -47,8 +47,8 @@ cp .env.example .env
 |---|---|
 | `LIVEKIT_URL` | LiveKit Cloud dashboard, Settings, API keys: the project's WebSocket URL (`wss://<project>.livekit.cloud`) |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | The same page: create a key pair. The secret is shown once |
-| `HOOKDECK_API_KEY` | Hookdeck dashboard, Project settings, API keys |
-| `HOOKDECK_SIGNING_SECRET` | Hookdeck dashboard, Project settings, [Secrets](https://dashboard.hookdeck.com/settings/project/secrets). The API key can't read it, so copy it by hand. The app verifies `x-hookdeck-signature` on every delivery with it |
+| `HOOKDECK_API_KEY` | Hookdeck dashboard, Project settings, [Secrets](https://dashboard.hookdeck.com/settings/project/secrets) |
+| `HOOKDECK_SIGNING_SECRET` | The same page. The API key can't read it, so copy it by hand. The app verifies `x-hookdeck-signature` on every delivery with it |
 
 ### 3. Create the Hookdeck connection
 
