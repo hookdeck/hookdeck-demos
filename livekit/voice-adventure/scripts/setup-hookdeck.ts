@@ -8,13 +8,9 @@
  * Uses the project whose HOOKDECK_API_KEY is in .env, through the Hookdeck API
  * (see hookdeck-api.ts).
  *
- * TODO(hookdeck/core#6254): the LIVEKIT branch below is for when the LiveKit source
- * type ships; see the commented section in the README. Until then the source type
- * is WEBHOOK. The source type comes from LIVEKIT_SOURCE_TYPE in .env:
- *   WEBHOOK (default): a generic source. The app verifies each delivery with
- *                      LiveKit's WebhookReceiver.
- *   LIVEKIT:           Hookdeck verifies each delivery with your API key and
- *                      secret, and rejects forgeries before they reach your app.
+ * The source type is LIVEKIT: Event Gateway verifies each delivery's token with
+ * your LiveKit API key and secret, and rejects forgeries (VERIFICATION_FAILED, no
+ * event) before they reach the app. The app verifies Hookdeck's signature.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -51,12 +47,17 @@ async function main(): Promise<void> {
   require('dotenv').config({ path: ENV_FILE });
   requireHookdeckApiKey();
 
-  const source_type = (process.env.LIVEKIT_SOURCE_TYPE || 'WEBHOOK').toUpperCase();
+  const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || LIVEKIT_API_KEY.startsWith('your_')) {
+    console.error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in .env: Event Gateway verifies LiveKit\'s token with them.');
+    console.error('   (LiveKit Cloud: Settings -> API keys).');
+    process.exit(1);
+  }
 
   // PUT /connections creates or updates the source, the CLI destination and the rules, matched by name.
   const connection = await hookdeck('PUT', '/connections', {
     name: CONNECTION,
-    source: { name: SOURCE, type: source_type },
+    source: { name: SOURCE, type: 'LIVEKIT' },
     destination: { name: DESTINATION, type: 'CLI', config: { path: CLI_PATH } },
     rules: [
       // The same LiveKit event id inside 10 minutes is a duplicate. The API takes the window in milliseconds.
@@ -66,22 +67,14 @@ async function main(): Promise<void> {
     ],
   });
 
-  if (source_type === 'LIVEKIT') {
-    // The LiveKit source type verifies deliveries with your project's API key and secret
-    const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
-    if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
-      console.error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in .env for the LIVEKIT source type.');
-      process.exit(1);
-    }
-    // PUT /sources sets the source's verification settings (config.auth).
-    await hookdeck('PUT', '/sources', {
-      name: SOURCE,
-      type: source_type,
-      config: { auth: { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET } },
-    });
-  }
+  // PUT /sources sets the source's verification settings (config.auth), and changes an older WEBHOOK source to LIVEKIT.
+  await hookdeck('PUT', '/sources', {
+    name: SOURCE,
+    type: 'LIVEKIT',
+    config: { auth: { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET } },
+  });
 
-  console.log(`${CONNECTION}: ${connection.source.url} (${source_type}) -> ${DESTINATION} (${CLI_PATH})`);
+  console.log(`${CONNECTION}: ${connection.source.url} (LIVEKIT) -> ${DESTINATION} (${CLI_PATH})`);
   console.log('');
   writeEnv({ LIVEKIT_WEBHOOK_URL: connection.source.url });
 

@@ -102,12 +102,10 @@ export interface DeliveryRecord {
   type: string;
   conversation_id?: string;
   bytes: number;
-  /** stored, duplicate, simulated_failure, invalid_payload */
+  /** stored, duplicate, simulated_failure, invalid_payload, signature_rejected */
   result: string;
   status_code: number;
   hookdeck_event_id?: string;
   hookdeck_attempt?: string;
   signature_header?: string;
-  /** ok, or why the SDK's constructEvent rejected it; absent when no secret is configured */
-  sdk_check?: string;
 }

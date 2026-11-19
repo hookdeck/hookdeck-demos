@@ -7,6 +7,7 @@ import { createFlowState, AppFlowEntry } from './flow-drawer-server';
 import { createFlowExtras } from './flow-extras';
 import { SOURCE_NAME } from './source-name';
 import { FailureMode, webhookRouter } from './webhook';
+import { requireHookdeckSigningSecret } from './hookdeck-signature';
 
 const PORT = process.env.PORT || 4000;
 // Local only by default. Set HOST=0.0.0.0 to reach the app from another machine (then also list its name in ALLOWED_HOSTS).
@@ -101,7 +102,6 @@ app.get('/api/deliveries', (_req, res) => res.json(store.listDeliveries()));
 app.get('/api/state', (_req, res) =>
   res.json({
     fail_next: failure.fail_next,
-    sdk_check: Boolean(process.env.ELEVENLABS_WEBHOOK_SECRET),
   }),
 );
 app.post('/api/fail-next', requireDemoHeader, (req: Request, res: Response) => {
@@ -135,6 +135,7 @@ return { app, store, failure };
 }
 
 if (require.main === module) {
+  requireHookdeckSigningSecret();
   const { app } = createApp(path.join(__dirname, '../data'));
   app.listen(Number(PORT), HOST, () => {
     console.log(`ElevenLabs post-call transcripts running on http://localhost:${PORT} (bound to ${HOST})`);

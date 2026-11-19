@@ -40,7 +40,7 @@ npm install
 cp .env.example .env
 ```
 
-Fill in `.env`: `HOOKDECK_API_KEY`, `RETELL_API_KEY`, `RETELL_SECRET_KEY` (the webhook key, if it's a different key) and `RETELL_PUBLIC_KEY`. For phone calls only, also `RETELL_FROM_NUMBER` (the number you bought, E.164) and `TEST_LEAD_PHONE_NUMBER` (your mobile, E.164).
+Fill in `.env`: `HOOKDECK_API_KEY`, `HOOKDECK_SIGNING_SECRET` (the project signing secret from the dashboard, Project settings → [Secrets](https://dashboard.hookdeck.com/settings/project/secrets); the API key can't read it, so copy it by hand), `RETELL_API_KEY`, `RETELL_SECRET_KEY` (the webhook key, if it's a different key) and `RETELL_PUBLIC_KEY`. For phone calls only, also `RETELL_FROM_NUMBER` (the number you bought, E.164) and `TEST_LEAD_PHONE_NUMBER` (your mobile, E.164).
 
 ```bash
 npm run setup     # creates the Hookdeck connection and the Retell agent, writes the rest of .env
@@ -123,6 +123,7 @@ retell/outbound-lead-calling/
 │   ├── retry.ts          # the retry ladder: which calls are retried, when, and when to give up
 │   ├── simulated.ts      # signed stand-in events, for simulate and "Lead does not answer"
 │   ├── retell-signature.ts
+│   ├── hookdeck-signature.ts # verifies x-hookdeck-signature (synced from _shared)
 │   └── store.ts          # leads in data/leads.json
 ├── public/               # the page: form, roles, lead list, ⓘ dialogs, Open house theme
 └── test/                 # npm test: events, retry ladder, theme wording
@@ -130,7 +131,7 @@ retell/outbound-lead-calling/
 
 ## Security notes
 
-- **The webhook endpoint trusts the network path.** Event Gateway verified Retell's signature, and `hookdeck listen` forwards to `localhost`, so `/webhooks/retell` checks nothing itself. The app binds to `127.0.0.1` for that reason. A deployed endpoint that is reachable from the internet must verify Hookdeck's signature (`x-hookdeck-signature`) before it applies an event.
+- **The app verifies Hookdeck's signature.** Event Gateway verified Retell's `x-retell-signature` when it accepted the request, and the app verifies `x-hookdeck-signature` (the base64 HMAC-SHA256 of the raw body, keyed with `HOOKDECK_SIGNING_SECRET`) on every delivery to `/webhooks/retell` and `/webhooks/retell-function` before it applies anything. A missing or wrong signature gets a `401` and shows as `signature_rejected` in the pane. The signature has no timestamp, so a retry or replay hours later still passes. The app still binds to `127.0.0.1` by default, because it holds your Retell key.
 - **Form text is capped** (name 80, property 120, notes 500 characters) before it goes into the agent's dynamic variables, and the phone path waits `PHONE_DIAL_MIN_INTERVAL_SECONDS` (default 30) between calls.
 - **An event for a lead the app does not know** (for example after `data/` was wiped) is acknowledged with 200 and logged, because redelivering it could never find the lead. A body that is not a Retell call event gets 400.
 

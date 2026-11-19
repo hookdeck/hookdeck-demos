@@ -2,18 +2,18 @@ import 'dotenv/config';
 import express, { NextFunction, Request, RequestHandler, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentDispatchClient, IngressClient, IngressInput, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
+import { AgentDispatchClient, IngressClient, IngressInput, RoomServiceClient } from 'livekit-server-sdk';
 import { spawn, ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
 import { AGENT_NAME, mintToken } from './token';
-import { verifyWebhook } from './verify';
+import { requireHookdeckSigningSecret, verifyHookdeckSignature } from './hookdeck-signature';
 import { applyEvent, LiveKitEvent, summarise } from './call-log';
 import { loadChronicle, loadLog, readDeliveries, recordDelivery, saveChronicle, saveLog, scrubDeliveries } from './store';
 import { applyChronicle, viewChronicle } from './chronicle';
 import { isScene, soundtrackReachable } from './soundtracks';
 import { createSoundtrackKeeper } from './soundtrack-keeper';
 import { chooseRoom, isStoryRoom, MAX_PIXELS, sceneAuthorized } from './rooms';
-import { CONNECTION, PORT, SOURCE_TYPE } from './config';
+import { CONNECTION, PORT } from './config';
 import { createFlowState } from './flow-drawer-server';
 import { createFlowExtras } from './flow-extras';
 import { flow_entries, listDeliveries, listOutbound, logDelivery, logOutbound } from './deliveries';
@@ -24,7 +24,7 @@ if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || LIVEKIT_API_KEY.startsWith('your_
   process.exit(1);
 }
 
-const receiver = new WebhookReceiver(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+requireHookdeckSigningSecret();
 const log = loadLog();
 const chronicle = loadChronicle();
 scrubDeliveries();
@@ -180,15 +180,32 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * LiveKit webhook endpoint (via Hookdeck).
  *
  * LiveKit sends `Content-Type: application/webhook+json`, which express.json() ignores,
- * so read the body raw. The signature covers the exact bytes: the Authorization header is
- * a JWT whose `sha256` claim is the hash of the body.
+ * so read the body raw. Hookdeck's signature covers the exact bytes. Event Gateway verified LiveKit's own
+ * token (the Authorization header, a JWT whose `sha256` claim is the hash of the body) at the LIVEKIT source,
+ * so the app verifies only Hookdeck's `x-hookdeck-signature`.
  */
 app.post('/webhooks/livekit', express.raw({ type: '*/*', limit: '1mb' }), guarded(async (req: Request, res: Response) => {
   const started = Date.now();
   const raw_body: Buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
   const hookdeck_event_id = req.header('x-hookdeck-eventid');
+  const delivery = {
+    received_at: new Date().toISOString(),
+    headers: req.headers,
+    body_base64: raw_body.toString('base64'),
+  };
+
+  // Verify Hookdeck's signature on the raw body before anything else. There is no timestamp, so a retry or a
+  // replay from hours ago still passes: Event Gateway verified LiveKit's token when it accepted the request.
+  if (!verifyHookdeckSignature(raw_body, req.get('x-hookdeck-signature'), process.env.HOOKDECK_SIGNING_SECRET, req.get('x-hookdeck-signature-2'))) {
+    const error = req.get('x-hookdeck-signature') ? 'x-hookdeck-signature does not match the body' : 'no x-hookdeck-signature header';
+    console.warn(`Rejected webhook: ${error}`);
+    recordDelivery({ ...delivery, verified: false, duplicate: false, error });
+    logDelivery({ type: 'unverified', bytes: raw_body.length, status_code: 401, result: 'rejected', hookdeck_event_id }, CONNECTION, started);
+    return res.status(401).json({ error: 'invalid Hookdeck signature' });
+  }
+
   let peek: any = {};
-  try { peek = JSON.parse(raw_body.toString('utf-8')); } catch { /* not JSON: WebhookReceiver rejects it below */ }
+  try { peek = JSON.parse(raw_body.toString('utf-8')); } catch { /* not JSON: nothing to apply below */ }
   const event_name: string | undefined = peek.event;
   const room_name: string | undefined = peek.room?.name ?? peek.egressInfo?.roomName;
   const answered = (status_code: number, result: string) =>
@@ -201,23 +218,6 @@ app.post('/webhooks/livekit', express.raw({ type: '*/*', limit: '1mb' }), guarde
     answered(503, 'simulated_failure');
     return res.status(503).json({ error: 'simulated outage' });
   }
-  const delivery = {
-    received_at: new Date().toISOString(),
-    headers: req.headers,
-    body_base64: raw_body.toString('base64'),
-  };
-
-  try {
-    // Verifies the JWT signature and the body hash, and that the token is not older than the retry window (see verify.ts). Throws if any fails.
-    await verifyWebhook(receiver, raw_body.toString('utf-8'), req.get('authorization'));
-  } catch (error: any) {
-    console.warn(`Rejected webhook: ${error.message}`);
-    recordDelivery({ ...delivery, verified: false, duplicate: false, error: error.message });
-    answered(401, 'rejected');
-    // Non-2xx: Hookdeck keeps the event and can retry it
-    return res.status(401).json({ error: 'invalid signature' });
-  }
-
   // Use the plain JSON for the call log (the SDK parses it into protobuf types)
   try {
     const event = JSON.parse(raw_body.toString('utf-8')) as LiveKitEvent;
@@ -293,9 +293,6 @@ app.get('/api/flow', async (_req, res) => {
       team_id: flow_extras.teamId(),
       messages: state.messages.map((m) => ({
         ...m,
-        // A WEBHOOK source verifies nothing, and Event Gateway records its requests as `verified: false`.
-        // That is "not checked here", not a rejection, so only a VERIFICATION_FAILED cause counts as one.
-        ...(SOURCE_TYPE === 'LIVEKIT' ? {} : { rejected: m.rejection_cause === 'VERIFICATION_FAILED', verified: null }),
         ignored_count: ignored.get(m.request_id) ?? 0,
         bytes: Number(m.detail) || null,
       })),
@@ -304,7 +301,7 @@ app.get('/api/flow', async (_req, res) => {
     res.status(500).json({ error: (error as Error).message });
   }
 });
-app.get('/api/state', (_req, res) => res.json({ fail_next: chaos.fail_next, delay_seconds: chaos.delay_seconds, source_type: SOURCE_TYPE }));
+app.get('/api/state', (_req, res) => res.json({ fail_next: chaos.fail_next, delay_seconds: chaos.delay_seconds }));
 
 // Chaos controls: the next N deliveries fail with 503, and/or each takes N seconds to answer
 app.post('/api/chaos', express.json(), (req, res) => {

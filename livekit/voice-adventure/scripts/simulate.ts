@@ -7,7 +7,7 @@
  *   npm run simulate                       # room_started, participant_joined, participant_left, room_finished for a new room
  *   npm run simulate -- room_finished      # one event
  *   npm run simulate -- room_finished --twice         # the same event twice (the second is deduplicated)
- *   npm run simulate -- room_finished --bad-signature # signed with the wrong secret: the app rejects it
+ *   npm run simulate -- room_finished --bad-signature # signed with the wrong secret: Event Gateway rejects it (VERIFICATION_FAILED) and the app is never called
  */
 import 'dotenv/config';
 import * as crypto from 'crypto';

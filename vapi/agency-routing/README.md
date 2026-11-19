@@ -4,7 +4,7 @@ A voice AI agency routes each client's Vapi call events to that client's endpoin
 
 ## Set up
 
-1. Copy `.env.example` to `.env` and set `VAPI_API_KEY` (private), `VAPI_PUBLIC_KEY` (public, for the Start call buttons) and `HOOKDECK_API_KEY`. Both Vapi keys are at https://dashboard.vapi.ai/org/api-keys.
+1. Copy `.env.example` to `.env` and set `VAPI_API_KEY` (private), `VAPI_PUBLIC_KEY` (public, for the Start call buttons) `HOOKDECK_API_KEY` and `HOOKDECK_SIGNING_SECRET` (the project signing secret: Hookdeck dashboard, Project settings, [Secrets](https://dashboard.hookdeck.com/settings/project/secrets); the API key can't read it, so copy it by hand). Both Vapi keys are at https://dashboard.vapi.ai/org/api-keys. The app verifies `x-hookdeck-signature` with the signing secret on every delivery and answers `401` when it is missing or wrong (Event Gateway has already verified Vapi's own signature).
 2. `npm install`, then `npm run setup` (creates the Hookdeck sources and connections and the Vapi credential, tool and assistants).
 3. `npm run listen` in one terminal and `npm start` in another.
 4. Open http://localhost:4000. The **Data flow** pane at the bottom is open by default and shows each webhook moving from Vapi through Event Gateway to the client's endpoint. `npm run simulate` replays a signed sample call without a microphone (`-- globex` for the other client, `--duplicate` to send the end-of-call report twice; start the app with `ALLOW_LOCAL_CONTROL_URL=true` so it will post the result to the simulator's local stand-in for Vapi); `npm run probe` checks that a correctly signed request is accepted and a badly signed one gets 401; `npm run teardown` deletes the Vapi assistants, tool and credential the setup created (the Hookdeck connections stay).

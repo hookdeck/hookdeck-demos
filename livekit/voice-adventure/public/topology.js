@@ -14,9 +14,7 @@
   // "Fail the next N deliveries" (the failure injection card) shows on the app node before any delivery arrives.
   async function pollState(live) {
     try {
-      const { fail_next, source_type } = await (await fetch('/api/state', { cache: 'no-store' })).json();
-      // Only a LIVEKIT source type verifies in Event Gateway; the default WEBHOOK source leaves it to the app.
-      document.body.classList.toggle('no-verify', source_type !== 'LIVEKIT');
+      const { fail_next } = await (await fetch('/api/state', { cache: 'no-store' })).json();
       if (fail_next > 0 && fail_next !== last_fail) {
         live.state('app', 'down');
         live.badge('app', `failing next ${fail_next}`, 'danger');
@@ -69,10 +67,6 @@
       last_fail = 0;
       clearInterval(state_timer);
       clearInterval(outbound_timer);
-      // The default source verifies nothing in Event Gateway, so the first chip says Receive and the
-      // feed's "verified · stored" badge reads "stored".
-      const badge = live.badge;
-      live.badge = (node, label, tone, ttl) => badge(node, label === 'verified · stored' ? 'stored' : label, tone, ttl);
       pollState(live);
       state_timer = setInterval(() => pollState(live), 1000);
       outbound_timer = watchOutbound(live);

@@ -11,9 +11,11 @@ process.env.LOOKUP_DELAY_MS = '50';
 process.env.ALLOW_LOCAL_CONTROL_URL = 'true'; // the stand-in controlUrl below is http://localhost
 process.env.ACME_ASSISTANT_ID = 'asst-acme';
 process.env.GLOBEX_ASSISTANT_ID = 'asst-globex';
+process.env.HOOKDECK_SIGNING_SECRET = 'test-signing-secret';
 
 import { createApp, logs } from '../src/server';
 import { assertControlUrl } from '../src/live-call-control';
+import { signHookdeckBody } from '../src/hookdeck-signature';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,8 +35,10 @@ async function main() {
 
   const app = createApp().listen(0);
   const base = `http://localhost:${(app.address() as AddressInfo).port}`;
-  const post = (path: string, message: unknown) =>
-    fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+  // Posts the way Event Gateway delivers: the raw body with its Hookdeck signature
+  const signed_post = (path: string, body: string) =>
+    fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-hookdeck-signature': signHookdeckBody(body, process.env.HOOKDECK_SIGNING_SECRET as string) }, body });
+  const post = (path: string, message: unknown) => signed_post(path, JSON.stringify({ message }));
 
   const tool_calls = (assistant_id: string, name: string) => ({
     type: 'tool-calls',
@@ -47,6 +51,19 @@ async function main() {
   assert.equal((await post('/clients/globex/webhook', { type: 'end-of-call-report', endedReason: 'customer-ended-call', call: { id: 'c2', assistantId: 'asst-globex' } })).status, 200);
   assert.equal(logs.acme[0].type, 'status-update');
   assert.equal(logs.globex[0].type, 'end-of-call-report');
+
+  // 1b. a delivery without a valid Hookdeck signature is refused, recorded, and starts no work
+  const unsigned_body = JSON.stringify({ message: tool_calls('asst-acme', 'Priya Shah') });
+  const logs_before = logs.acme.length;
+  const missing = await fetch(base + '/clients/acme/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: unsigned_body });
+  assert.equal(missing.status, 401);
+  const forged = await fetch(base + '/clients/acme/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-hookdeck-signature': signHookdeckBody(unsigned_body, 'wrong-secret') }, body: unsigned_body });
+  assert.equal(forged.status, 401);
+  assert.equal(logs.acme[0].type, 'signature-rejected');
+  assert.equal(logs.acme.length, logs_before + 2);
+  const rejected = (await (await fetch(`${base}/api/deliveries`)).json()).filter((d: any) => d.status_code === 401);
+  assert.equal(rejected.length, 2);
+  assert.equal(rejected[0].type, 'rejected \u00b7 bad Hookdeck signature');
 
   // 2. an async tool call is acknowledged straight away, then the result goes to the call's controlUrl
   const started = Date.now();
@@ -105,7 +122,7 @@ async function main() {
   assert.equal((await (await fetch(`${base}/api/config`)).json()).lookup_delay_ms, 50);
 
   // 9. malformed bodies get a 400 and a log entry, never a crash or a stack trace
-  const raw_post = (path: string, body: string) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+  const raw_post = signed_post;
   const bad_args = tool_calls('asst-acme', 'x');
   (bad_args.toolCallList[0].function as any).arguments = '{bad';
   const bad_res = await post('/clients/acme/webhook', bad_args);

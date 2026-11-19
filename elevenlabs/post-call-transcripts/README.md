@@ -32,11 +32,13 @@ The demo has three parts: this app, an ElevenLabs agent, and Hookdeck. It shows:
    npm install
    ```
 
-2. Create `.env` and fill in `ELEVENLABS_API_KEY` and `HOOKDECK_API_KEY`:
+2. Create `.env` and fill in `ELEVENLABS_API_KEY`, `HOOKDECK_API_KEY` and `HOOKDECK_SIGNING_SECRET`:
 
    ```bash
    cp .env.example .env
    ```
+
+   `HOOKDECK_SIGNING_SECRET` is the project signing secret from the dashboard (Project settings → [Secrets](https://dashboard.hookdeck.com/settings/project/secrets)). The API key can't read it, so copy it by hand. The app uses it to verify `x-hookdeck-signature` on every delivery.
 
    You don't need an agent of your own: setup creates a dedicated one and writes its ID to `.env`.
 
@@ -91,7 +93,7 @@ The app listens on `127.0.0.1` only, which is enough because `hookdeck listen` r
 - **Who is who**: you are the customer ringing the Hookdeck Hair booking line; the booking assistant is the agent that `npm run setup` creates (its prompt is `AGENT_CONFIG` in `scripts/setup.ts`).
 - **Diary**: a week view above the conversations. A conversation whose `booking_made` evaluation is `success` fills a slot from `caller_name`, `requested_service` and `requested_time`. The page works this out from the stored conversations (`public/diary.js`); the webhook handler is unchanged. A `requested_time` it cannot read as a day and a time of day goes in an Unscheduled row as received.
 - **Themes**: Salon (the default, the Hookdeck Hair booking line), Light, Dark and System, from the switch at the top right. Salon is `public/theme-salon.css` and `public/theme-salon.copy.js`; the Data flow pane keeps the standard look. Explanations sit behind the ⓘ buttons and hover tips.
-- **Deliveries received** (collapsed): the latest requests the app received, with body size and result, and the result of the ElevenLabs SDK's `constructEvent` on the forwarded requests.
+- **Deliveries received** (collapsed): the latest requests the app received, with body size and result, and whether the Hookdeck signature check passed.
 
 Data collection results and evaluation criteria are configured per agent (agent -> **Analysis**). Setup gives the demo agent `caller_name`, `requested_service` and `requested_time` as data collection items and `booking_made` as an evaluation criterion; they show up in the conversation detail.
 
@@ -130,9 +132,12 @@ A `post_call_transcription` payload grows with the transcript, the analysis and 
 
 ## Verifying the signature
 
-Hookdeck verifies `ElevenLabs-Signature` at the source URL, so the app does not have to. Hookdeck forwards the original headers and the original body, so the signature header still reaches the app. When `ELEVENLABS_WEBHOOK_SECRET` is set, the app runs `elevenlabs.webhooks.constructEvent` from [`@elevenlabs/elevenlabs-js`](https://www.npmjs.com/package/@elevenlabs/elevenlabs-js) on each forwarded request and shows the result in the **SDK check** column. It does not block anything.
+Two signatures are in play, and each is checked once:
 
-The SDK rejects a timestamp older than 30 minutes, so a replay of an old event shows a tolerance error in that column while the event is still stored.
+- **`ElevenLabs-Signature`** is verified by Event Gateway at the source URL, so the app does not check it. Hookdeck forwards the original headers and body, so the header still reaches the app.
+- **`x-hookdeck-signature`** is verified by the app on every delivery, before it does anything else. It is the base64 HMAC-SHA256 of the raw request body, keyed with `HOOKDECK_SIGNING_SECRET` (`src/hookdeck-signature.ts`, synced from `_shared`). A delivery with a missing or wrong signature gets a `401` and shows in **Deliveries received** as `signature_rejected`, with a red **Hookdeck signature rejected** badge.
+
+Hookdeck's signature has no timestamp. Event Gateway verified ElevenLabs' signature when it accepted the request, so a retry or a replay hours later is legitimate and still passes.
 
 ## Topology scenes, and MP4s of them
 
@@ -177,6 +182,7 @@ elevenlabs/post-call-transcripts/
 ├── src/
 │   ├── server.ts         # Express app and API
 │   ├── webhook.ts        # POST /webhooks/elevenlabs
+│   ├── hookdeck-signature.ts # verifies x-hookdeck-signature (synced from _shared)
 │   ├── store.ts          # JSON-file storage, idempotency, audio files
 │   ├── events.ts         # event and record types
 │   └── samples.ts        # sample payloads and signer

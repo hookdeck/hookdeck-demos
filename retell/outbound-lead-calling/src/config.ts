@@ -1,7 +1,7 @@
 import 'dotenv/config';
 
 export const PORT = Number(process.env.PORT || 4000);
-/** Loopback by default: the endpoints trust the network path, so only expose them on purpose (HOST=0.0.0.0) */
+/** Loopback by default: the app mints calls with your Retell key, so only expose it on purpose (HOST=0.0.0.0) */
 export const HOST = process.env.HOST || '127.0.0.1';
 /** Shortest gap between two phone calls placed from the form (the demo only dials one number) */
 const configured_interval = Number(process.env.PHONE_DIAL_MIN_INTERVAL_SECONDS);
