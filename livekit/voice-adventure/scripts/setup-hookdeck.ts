@@ -55,9 +55,14 @@ async function main(): Promise<void> {
   }
 
   // PUT /connections creates or updates the source, the CLI destination and the rules, matched by name.
+  // A LIVEKIT source needs its verification settings (config.auth) when it is created, so they go here.
   const connection = await hookdeck('PUT', '/connections', {
     name: CONNECTION,
-    source: { name: SOURCE, type: 'LIVEKIT' },
+    source: {
+      name: SOURCE,
+      type: 'LIVEKIT',
+      config: { auth: { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET } },
+    },
     destination: { name: DESTINATION, type: 'CLI', config: { path: CLI_PATH } },
     rules: [
       // The same LiveKit event id inside 10 minutes is a duplicate. The API takes the window in milliseconds.
@@ -65,13 +70,6 @@ async function main(): Promise<void> {
       // If the app is down or erroring, retry for about two hours (30s, 60s, 2m, 4m, ...)
       { ...RETRY_RULE },
     ],
-  });
-
-  // PUT /sources sets the source's verification settings (config.auth), and changes an older WEBHOOK source to LIVEKIT.
-  await hookdeck('PUT', '/sources', {
-    name: SOURCE,
-    type: 'LIVEKIT',
-    config: { auth: { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET } },
   });
 
   console.log(`${CONNECTION}: ${connection.source.url} (LIVEKIT) -> ${DESTINATION} (${CLI_PATH})`);
