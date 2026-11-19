@@ -6,6 +6,7 @@ import { findCustomer } from './crm';
 import { assertControlUrl, sendToCall } from './live-call-control';
 import { createFlowState, AppFlowEntry } from './flow-drawer-server';
 import { createFlowExtras } from './flow-extras';
+import { requireHookdeckSigningSecret, verifyHookdeckSignature } from './hookdeck-signature';
 
 export interface LogEntry {
   at: string;
@@ -179,11 +180,11 @@ function handleToolCalls(client: Client, message: any, bytes: number, event_id: 
 
 export function createApp() {
   const app = express();
-  app.use(express.json({ limit: '2mb', verify: (req: any, _res, buf) => { req.raw_bytes = buf.length; } }));
+  app.use(express.json({ limit: '2mb', verify: (req: any, _res, buf) => { req.raw_body = Buffer.from(buf); req.raw_bytes = buf.length; } }));
 
   // One route per client: the client's own endpoint in this simulation
   for (const client of CLIENTS) {
-    app.post(client.path, async (req: Request & { raw_bytes?: number }, res: Response) => {
+    app.post(client.path, async (req: Request & { raw_bytes?: number; raw_body?: Buffer }, res: Response) => {
       const message = req.body?.message;
       const bytes = req.raw_bytes || 0;
       // Event Gateway adds the event's ID to every delivery; the pane joins on it
@@ -195,9 +196,15 @@ export function createApp() {
           label: `returned ${res.statusCode}`, detail: res.locals.flow_detail, status: res.statusCode,
           ok: res.statusCode < 400, duration_ms: Date.now() - started,
         });
-        deliveries.push({ id: `d${++delivery_count}`, received_at: new Date().toISOString(), client: client.slug, type: describeMessage(message), call_id: message?.call?.id, bytes, status_code: res.statusCode, hookdeck_event_id: event_id });
+        deliveries.push({ id: `d${++delivery_count}`, received_at: new Date().toISOString(), client: client.slug, type: res.locals.delivery_type ?? describeMessage(message), call_id: message?.call?.id, bytes, status_code: res.statusCode, hookdeck_event_id: event_id });
         if (deliveries.length > MAX_DELIVERIES) deliveries.splice(0, deliveries.length - MAX_DELIVERIES);
       });
+      // Verify Hookdeck's signature on the raw body before anything else
+      if (!verifyHookdeckSignature(req.raw_body ?? Buffer.alloc(0), req.get('x-hookdeck-signature'), process.env.HOOKDECK_SIGNING_SECRET, req.get('x-hookdeck-signature-2'))) {
+        res.locals.delivery_type = 'rejected \u00b7 bad Hookdeck signature';
+        res.locals.flow_detail = log(client, { type: 'signature-rejected', detail: req.get('x-hookdeck-signature') ? 'x-hookdeck-signature does not match the body' : 'no x-hookdeck-signature header', bytes });
+        return void res.status(401).json({ error: 'invalid Hookdeck signature' });
+      }
       if (!message?.type) return void res.status(400).json({ error: 'not a Vapi server message' });
 
       const got = assistant_id_of(message);
@@ -305,6 +312,7 @@ export function createApp() {
 }
 
 if (require.main === module) {
+  requireHookdeckSigningSecret();
   const port = Number(process.env.PORT || 4000);
   // Loopback only: `hookdeck listen` reaches the app from this machine. Set HOST=0.0.0.0 to expose it on the network.
   const host = process.env.HOST || '127.0.0.1';

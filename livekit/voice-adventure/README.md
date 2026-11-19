@@ -47,7 +47,8 @@ cp .env.example .env
 |---|---|
 | `LIVEKIT_URL` | LiveKit Cloud dashboard, Settings, API keys: the project's WebSocket URL (`wss://<project>.livekit.cloud`) |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | The same page: create a key pair. The secret is shown once |
-| `HOOKDECK_API_KEY` | Hookdeck dashboard, Project settings, API keys |
+| `HOOKDECK_API_KEY` | Hookdeck dashboard, Project settings, [Secrets](https://dashboard.hookdeck.com/settings/project/secrets) |
+| `HOOKDECK_SIGNING_SECRET` | The same page. The API key can't read it, so copy it by hand. The app verifies `x-hookdeck-signature` on every delivery with it |
 
 ### 3. Create the Hookdeck connection
 
@@ -55,7 +56,7 @@ cp .env.example .env
 npm run setup
 ```
 
-This creates a `livekit-voice-adventure` source, a CLI destination that forwards to `/webhooks/livekit`, and the connection between them with a deduplicate rule and a retry rule. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It logs the bundled Hookdeck CLI in to the project for `HOOKDECK_API_KEY` with a config file of its own, so your interactive `hookdeck login` is untouched.
+This creates a `livekit-voice-adventure` source of type `LIVEKIT` (Event Gateway verifies each LiveKit token with `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, and rejects a forged request before it reaches the app), a CLI destination that forwards to `/webhooks/livekit`, and the connection between them with a deduplicate rule and a retry rule. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It calls the Hookdeck API with `HOOKDECK_API_KEY`, so your interactive `hookdeck login` is untouched.
 
 ### 4. Add the webhook in LiveKit Cloud
 
@@ -87,8 +88,8 @@ Open <http://localhost:4000>.
 
 ## How it works
 
-- **Raw-body verification.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. The app verifies it with `WebhookReceiver` from `livekit-server-sdk` on the raw body (`application/webhook+json` is not parsed by `express.json()`).
-- **Retries after 5 minutes.** The token expires 5 minutes after LiveKit issues it, and Event Gateway forwards the original `Authorization` header on every retry. So the app verifies with a clock tolerance that covers the connection's retry window (about 2 hours 7 minutes, plus 5 minutes: `src/verify.ts`). The signature and the body hash are still checked; the trade-off is that a captured request stays acceptable for that long, which is harmless because events apply idempotently. With the LIVEKIT source type, Event Gateway does this check and the app doesn't need to (see the TODO below).
+- **Two checks, each done once.** LiveKit signs each webhook with a JWT in the `Authorization` header, and the JWT includes a SHA-256 hash of the body. Event Gateway verifies it at the `LIVEKIT` source with your API key and secret, so a forged request gets a 200, is recorded as `VERIFICATION_FAILED` and creates no event. The app verifies Hookdeck's `x-hookdeck-signature` (the base64 HMAC-SHA256 of the raw body, keyed with `HOOKDECK_SIGNING_SECRET`; `src/hookdeck-signature.ts`) on every delivery, before it does anything else, and answers 401 when it is missing or wrong. A rejected delivery shows in the delivery list as `rejected` and in the pane as `returned 401`. The app reads the body raw (`application/webhook+json` is not parsed by `express.json()`) so the signature covers the exact bytes.
+- **Retries after 5 minutes.** LiveKit's token expires 5 minutes after it issues it, and Event Gateway forwards the original `Authorization` header on every retry. The app doesn't check that token, so a retry after 5 minutes works. Hookdeck's signature has no timestamp, so a retry or a replay hours later also passes.
 - **Idempotent room record.** Each event is applied as a set-this-field update keyed by the room session id, so a duplicate delivery, a retry or an event that arrives out of order leaves the log correct. See [`src/call-log.ts`](src/call-log.ts).
 - **Delivery list.** The page lists every request the app received and whether it was applied, a duplicate or rejected.
 - **Join a call from the page.** A **Join a call** button connects your browser to a LiveKit room with `livekit-client` and your microphone, using a short-lived token the server mints (`POST /api/token`). The API secret stays on the server. The token's room configuration dispatches the agent by name (`story-gm`), so only rooms joined from this page get the story agent.
@@ -124,7 +125,7 @@ LiveKit Cloud fetches the file itself, so the URL must be public: `localhost` do
 
 ## The webhooks it produces
 
-Observed on LiveKit Cloud with a 20 second call (two participants), a WEBHOOK source type and the app verifying each delivery with `WebhookReceiver`:
+Observed on LiveKit Cloud with a 20 second call (two participants), a `LIVEKIT` source type, with the app verifying Hookdeck's signature on each delivery:
 
 | Event | Count | Body size |
 |---|---|---|
@@ -173,7 +174,7 @@ lk room delete <room-name>
 ```bash
 npm run simulate                                    # room_started, participant_joined, participant_left, room_finished
 npm run simulate -- room_finished --twice           # the second request is deduplicated by Event Gateway
-npm run simulate -- room_finished --bad-signature   # the app rejects it with 401
+npm run simulate -- room_finished --bad-signature   # Event Gateway rejects it (VERIFICATION_FAILED); the app is never called
 ```
 
 **A failing app.** In the page's failure injection panel, set "Fail the next" to 2 and generate some activity. The app answers 503 to the first two deliveries. Hookdeck keeps the event, retries it, and the call log updates when the app finally answers 200. LiveKit is never kept waiting. Set "Delay each answer" to make the app slow instead.
@@ -199,7 +200,7 @@ After each player input (a spoken answer) one small separate Inference call (`op
 npm test
 ```
 
-The tests build a call log from a sample event sequence, then check that duplicates, reverse order and a late `egress_updated` give the same result, and that `WebhookReceiver` accepts a signed body and rejects an altered one. The scene and pane tests run in a browser: install one with `npx playwright install chromium` first.
+The tests build a call log from a sample event sequence, then check that duplicates, reverse order and a late `egress_updated` give the same result, and that the Hookdeck signature check accepts a signed body and rejects a wrong secret, a changed body and a missing header. The scene and pane tests run in a browser: install one with `npx playwright install chromium` first.
 
 ## Replaying a delivery
 
@@ -228,7 +229,8 @@ livekit/voice-adventure/
 │   ├── activity.sh          # Creates a room and joins test participants with the lk CLI
 │   ├── simulate.ts          # Sends signed events (or a bad signature, or a duplicate) to the source
 │   ├── livekit-cloud.ts     # Creates the LiveKit Cloud webhook through the management API
-│   ├── hookdeck-cli.ts      # Synced from _shared: runs the Hookdeck CLI against the API key's project
+│   ├── hookdeck-api.ts      # Synced from _shared: calls the Hookdeck API with the API key
+│   ├── hookdeck-cli.ts      # Synced from _shared: runs the Hookdeck CLI for npm run listen
 │   ├── listen.ts            # npm run listen
 │   └── setup-hookdeck.ts    # npm run setup
 ├── src/
@@ -238,7 +240,7 @@ livekit/voice-adventure/
 │   ├── soundtrack-keeper.ts # Keeps one soundtrack playing per room, restarts it when it ends
 │   ├── rooms.ts             # Which rooms a Join may use, the room caps, the agent's secret header
 │   ├── call-log.ts          # Turns events into calls (idempotent, order-independent)
-│   ├── verify.ts            # Webhook verification with a clock tolerance for retries
+│   ├── hookdeck-signature.ts # Verifies x-hookdeck-signature (synced from _shared)
 │   ├── server.ts            # Express app and the verified webhook endpoint
 │   ├── deliveries.ts        # What the app answered, for the data flow pane
 │   └── store.ts             # JSON file persistence in data/
@@ -246,21 +248,9 @@ livekit/voice-adventure/
 └── public/                  # The call log page and the data flow pane
 ```
 
-<!--
-TODO(hookdeck/core#6254): publish this section when the LiveKit source type ships, then
-delete the comment markers. Also add LIVEKIT_SOURCE_TYPE to .env.example.
-
-## Verify in Event Gateway with the LiveKit source type
-
-The setup above uses a generic source and the app verifies each delivery. With the LiveKit source type, Hookdeck verifies the signature at the source using your API key and secret, so a request that fails verification never reaches your app. This is a one-step change:
-
-1. Add `LIVEKIT_SOURCE_TYPE=LIVEKIT` to `.env` and run `npm run setup` again.
-
-Then remove the app's own check in `src/verify.ts` and `src/server.ts`, and rely on Event Gateway's verification. Don't keep re-verifying the forwarded token: it expires 5 minutes after LiveKit issues it, and Event Gateway forwards that original `Authorization` header on every retry, so the app's check would reject any retry after 5 minutes (the clock tolerance below only works around that). Event Gateway checks the token's expiry against when it received the request.
--->
-
 ## Troubleshooting
 
 - **Webhook not arriving:** check that `npm run listen` is running and that the Hookdeck dashboard shows the event. Use **Actions, Send a test event** in LiveKit Cloud.
-- **Deliveries rejected with 401:** the API key selected as **Signing API key** in LiveKit must match `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in `.env`.
+- **Requests recorded as `VERIFICATION_FAILED` in Hookdeck:** the API key selected as **Signing API key** in LiveKit must match `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in `.env`, and `npm run setup` must have copied them to the source.
+- **Deliveries rejected with 401 by the app:** `HOOKDECK_SIGNING_SECRET` in `.env` must be the project signing secret from Project settings, Secrets.
 - **`lk` can't connect:** `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` must be set in `.env`; the script loads them.

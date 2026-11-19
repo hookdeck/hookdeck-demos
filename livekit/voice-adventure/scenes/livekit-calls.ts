@@ -20,9 +20,8 @@ import { type Canvas, connector, type Connector, node, type Node, type Point, ty
 // live view adds one outbound edge, `start`: when the game master starts a scene, the app calls
 // LiveKit's Ingress API to pull that scene's soundtrack into the room, and the ingress webhooks come
 // back through the same path. The scripted scenes show the webhook path only. LiveKit signs each webhook with a JWT in the `Authorization` header
-// and the app verifies it with `WebhookReceiver`, so the first chip is `Receive`, not `Verify`: the
-// source is a generic webhook source, and the bad-signature scene shows the app doing the check.
-// (The chip keeps the id `verify` because the kit's live feed addresses it by that id.)
+// and Event Gateway verifies it at the LiveKit source, so the first chip is `Verify` and the bad-signature
+// scene shows Event Gateway rejecting the request.
 //
 // No host code in this file: it imports gsap and the kit, nothing else.
 
@@ -39,8 +38,6 @@ export const facts = {
   retryCount: 8,
   /** The app's failure switch answers 503 (src/server.ts). */
   failStatus: 503,
-  /** The app answers 401 when WebhookReceiver rejects a delivery (src/server.ts). */
-  rejectStatus: 401,
 } as const
 
 // One whole sentence per resting state: the opening state, then each step. Terms in backticks
@@ -61,9 +58,9 @@ export const captionsBy = {
   ],
   'livekit-bad-signature': [
     'A request claims to come from LiveKit, but its token was signed with the wrong key.',
-    'Event Gateway receives and stores the request, answers LiveKit with a 200, and delivers it through `hookdeck listen` to the app.',
-    `The app checks the \`${facts.signatureHeader}\` token and the body hash with \`WebhookReceiver\` from \`livekit-server-sdk\`. The check fails.`,
-    `The app answers ${facts.rejectStatus} and leaves the call log alone. Event Gateway records the failed attempt.`,
+    'Event Gateway accepts the request, then checks its token.',
+    `Verification of \`${facts.signatureHeader}\` fails. The request is recorded as \`VERIFICATION_FAILED\` and no event is created.`,
+    'The sender still gets a 200, and your app is never called.',
   ],
   'livekit-app-down': [
     `The app is down: it answers every delivery with a ${facts.failStatus}.`,
@@ -79,7 +76,7 @@ export const captionsBy = {
 // page, which shows what the demo runs.
 export const deployedCaptionsBy = [
   'LiveKit sends a webhook for each room and participant event, and Event Gateway delivers each one to your app over HTTPS.',
-  'A room opens. LiveKit sends `room_started` to Event Gateway, which delivers it to your app over HTTPS. Your app checks LiveKit\'s token in the `Authorization` header, which Event Gateway forwards unchanged, and the call is in progress.',
+  'A room opens. LiveKit sends `room_started` to Event Gateway, which delivers it to your app over HTTPS. Event Gateway has verified LiveKit\'s token in the `Authorization` header, and the call is in progress.',
   'A participant joins. `participant_joined` arrives the same way, and your app adds the participant to the call.',
   'The participant leaves. `participant_left` is delivered, and your app marks them as left.',
   'The room closes. `room_finished` is delivered, and the call log shows the call as ended, with its start, end and duration.',
@@ -169,7 +166,7 @@ const LIVE_PHONE: Layout = {
 // ---- Components ----
 
 const CAPABILITIES = [
-  { id: 'verify', label: 'Receive' },
+  { id: 'verify', label: 'Verify' },
   { id: 'store', label: 'Store' },
   { id: 'dedup', label: 'Dedup' },
   { id: 'retry', label: 'Retry' },
@@ -308,7 +305,7 @@ function resetChips(c: Ctx, at: number) {
     toneTo(c.tl, chip, 'neutral', at)
 }
 
-/** One webhook's whole delivery: in to Event Gateway (receive and store), out to the CLI, local to the app. Returns the time the app has it. */
+/** One webhook's whole delivery: in to Event Gateway (verify and store), out to the CLI, local to the app. Returns the time the app has it. */
 function deliver(c: Ctx, at: number, label: string, app: { text: string, tone?: Tone }): number {
   let t = send(c, 'in', at, { label })
   c.status.agent.set(t - 0.1, 'sent', 'blue')
@@ -392,28 +389,20 @@ const scenarios: Record<ScenarioId, (b: SceneBuild, c: Ctx) => void> = {
     b.step((at) => {
       c.caption.to(tl, 1, at)
       forged = packet(c.stage, c.parts.edges.in, { label: 'bad token' })
-      const t = travel(tl, forged, at, 'into', 1.2)
-      c.status.agent.set(t - 0.1, 'sent', 'blue')
-      const stored = work(c, ['verify', 'store'], 'success', t)
-      c.status.gateway.set(stored - 0.3, 'stored', 'success')
-      c.status.agent.set(stored, 'got 200', 'success')
-      // The same request travels on to the app.
-      let u = send(c, 'out', stored, { label: 'bad token' })
-      c.status.listen.set(u - 0.2, 'forwarding', 'blue')
-      forged = packet(c.stage, c.parts.edges.local, { label: 'bad token' })
-      u = travel(tl, forged, u, 'arrive', 1.2)
-      return c.status.listen.set(u, 'connected')
+      const t = travel(tl, forged, at, 'arrive', 1.2)
+      return c.status.agent.set(t - 0.1, 'sent', 'blue')
     })
     b.step((at) => {
       c.caption.to(tl, 2, at)
-      return c.status.app.set(at + 0.2, 'checking token', 'blue')
+      const t = work(c, ['verify'], 'danger', at + 0.1)
+      down(tl, c.parts.nodes.gateway, at + 0.1)
+      dropAt(tl, forged, at + 0.3, true)
+      return c.status.gateway.set(t - 0.2, 'verification failed', 'danger')
     })
     b.step((at) => {
       c.caption.to(tl, 3, at)
-      down(tl, c.parts.nodes.app, at + 0.1)
-      bounce(tl, forged, at + 0.1)
-      c.status.app.set(at + 0.2, `rejected · ${facts.rejectStatus}`, 'danger')
-      return c.status.gateway.set(at + 0.6, 'attempt 1 failed', 'danger')
+      c.status.agent.set(at + 0.1, 'got 200', 'success')
+      return c.status.app.set(at + 0.2, 'never called', 'neutral')
     })
   },
 
@@ -565,7 +554,7 @@ function deployedScene(layout: DeployedLayout, name: string) {
       for (const chip of Object.values(chips))
         toneTo(tl, chip, 'neutral', at)
     }
-    /** One webhook's whole delivery: in to Event Gateway (receive and store), out to your app over HTTPS. */
+    /** One webhook's whole delivery: in to Event Gateway (verify and store), out to your app over HTTPS. */
     const deliver = (at: number, label: string, lead: string) => {
       let t = send('in', at, label)
       status.agent.set(t - 0.1, 'sent', 'blue')
@@ -644,7 +633,7 @@ export const desktopCrop = LIVE_DESKTOP.crop
 /**
  * The live scene: the same components, no steps. Everything is on stage from the start, and
  * `scene.live` (a LiveDriver) launches packets and sets badges as the page's feeds report events.
- * Node ids: agent, gateway, listen, app. Edge ids: in, out, local, start (app to LiveKit's Ingress API). Chip ids: verify (labelled Receive), store, dedup, retry.
+ * Node ids: agent, gateway, listen, app. Edge ids: in, out, local, start (app to LiveKit's Ingress API). Chip ids: verify, store, dedup, retry.
  */
 function live(layout: Layout, name: string) {
   return defineScene(name, (b) => {

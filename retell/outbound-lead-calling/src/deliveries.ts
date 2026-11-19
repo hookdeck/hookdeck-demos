@@ -17,7 +17,7 @@ export interface DeliveryRecord {
   call_id?: string;
   bytes: number;
   status_code: number;
-  /** applied, duplicate, unknown_lead, simulated_failure, acknowledged */
+  /** applied, duplicate, unknown_lead, simulated_failure, acknowledged, signature_rejected */
   result: string;
   hookdeck_event_id?: string;
 }

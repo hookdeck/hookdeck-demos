@@ -2,12 +2,14 @@
   "pieces": {
     "ds": "_shared/ds",
     "hookdeck-cli": "_shared/hookdeck/hookdeck-cli.ts",
+    "hookdeck-api": "_shared/hookdeck/hookdeck-api.ts",
     "hookdeck-listen": "_shared/hookdeck/hookdeck-listen.ts",
     "flow-drawer": "_shared/flow-drawer/client",
     "flow-drawer-server": "_shared/flow-drawer/server.ts",
     "scenes": "_shared/scenes",
     "topology-pane": "_shared/topology-pane",
-    "theme": "_shared/theme/theme.js"
+    "theme": "_shared/theme/theme.js",
+    "hookdeck-signature": "_shared/hookdeck/hookdeck-signature.ts"
   },
   "demos": {
     "deepgram/stt-tts": {
@@ -26,8 +28,10 @@
     },
     "vapi/agency-routing": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
+      "hookdeck-signature": "src/hookdeck-signature.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
       "scenes": "scenes/kit",
       "topology-pane": "public/topology-pane",
@@ -35,8 +39,10 @@
     },
     "elevenlabs/post-call-transcripts": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
+      "hookdeck-signature": "src/hookdeck-signature.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
       "scenes": "scenes/kit",
       "topology-pane": "public/topology-pane",
@@ -44,8 +50,10 @@
     },
     "retell/outbound-lead-calling": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
+      "hookdeck-signature": "src/hookdeck-signature.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
       "scenes": "scenes/kit",
       "topology-pane": "public/topology-pane",
@@ -53,8 +61,10 @@
     },
     "livekit/voice-adventure": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
+      "hookdeck-signature": "src/hookdeck-signature.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
       "scenes": "scenes/kit",
       "topology-pane": "public/topology-pane",

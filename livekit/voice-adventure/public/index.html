@@ -109,7 +109,7 @@
     <h3 class="subtitle-m">Soundtracks</h3>
     <p class="body-s">At each new scene this app pulls a soundtrack into the room with LiveKit's Ingress API. The soundtrack's volume slider only changes what you hear.</p>
     <h3 class="subtitle-m">Webhooks</h3>
-    <p class="body-s">LiveKit sends every room event (people joining and dropping, tracks, soundtracks starting and ending, the room finishing) to a Hookdeck source. Hookdeck delivers them to this app through <code>hookdeck listen</code>, deduplicates repeats on the event <code>id</code> and retries failed deliveries. The app verifies each webhook's signed token with LiveKit's <code>WebhookReceiver</code>.</p>
+    <p class="body-s">LiveKit sends every room event (people joining and dropping, tracks, soundtracks starting and ending, the room finishing) to a Hookdeck source. Hookdeck delivers them to this app through <code>hookdeck listen</code>, deduplicates repeats on the event <code>id</code> and retries failed deliveries. Event Gateway verifies LiveKit's signed token when it accepts each webhook, and the app verifies Hookdeck's <code>x-hookdeck-signature</code> on every delivery.</p>
     <h3 class="subtitle-m">Session chronicle and calls</h3>
     <p class="body-s">Both are built only from the webhooks this app receives. Players, the story agent and soundtracks are told apart by the participant <code>kind</code> in each payload.</p>
     <h3 class="subtitle-m">Failure injection</h3>

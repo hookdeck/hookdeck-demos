@@ -10,11 +10,12 @@ import { listDeliveries, listOutbound, logDelivery, logOutbound, flow_entries } 
 import { EVENTS_CONNECTION, FUNCTION_CONNECTION } from './config';
 import { MAX_ATTEMPTS, RETRY_DELAY_SECONDS, isRetryDue } from './retry';
 import { postSigned, simulatedCallId, simulatedPayload } from './simulated';
+import { requireHookdeckSigningSecret, verifyHookdeckSignature } from './hookdeck-signature';
 import { addLead, addTimeline, findLeadByCall, getLead, Lead, listLeads, updateLead } from './store';
 
 const app = express();
 // The raw body's length is the webhook's size, for the topology pane's packets
-app.use(express.json({ limit: '5mb', verify: (req: any, _res, buf) => { req.raw_bytes = buf.length; } }));
+app.use(express.json({ limit: '5mb', verify: (req: any, _res, buf) => { req.raw_body = Buffer.from(buf); req.raw_bytes = buf.length; } }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Failure injection, to show Hookdeck absorbing a slow or failing app
@@ -265,15 +266,28 @@ app.post('/api/chaos', (req, res) => {
 });
 
 /**
- * Retell call events, delivered by Hookdeck (signature already verified, repeats already
+ * Verifies Hookdeck's signature on the raw body of a delivery, before any handler runs. A missing or wrong
+ * signature gets a 401 and is recorded as `signature_rejected` in the deliveries the page shows. The signature
+ * has no timestamp: Event Gateway verified the sender's signature when it accepted the request, so a retry or a
+ * replay from hours ago is legitimate and still passes.
+ */
+function requireHookdeckSignature(connection: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const started = Date.now();
+    const raw_body: Buffer = (req as any).raw_body ?? Buffer.alloc(0);
+    if (verifyHookdeckSignature(raw_body, req.header('x-hookdeck-signature'), process.env.HOOKDECK_SIGNING_SECRET, req.header('x-hookdeck-signature-2'))) return next();
+    console.warn(`🚫 ${req.path}: x-hookdeck-signature ${req.header('x-hookdeck-signature') ? 'does not match the body' : 'is missing'}, rejected`);
+    logDelivery({ type: 'unverified', bytes: raw_body.length, status_code: 401, result: 'signature_rejected', hookdeck_event_id: req.header('x-hookdeck-eventid') }, connection, started);
+    res.status(401).json({ error: 'invalid Hookdeck signature' });
+  };
+}
+
+/**
+ * Retell call events, delivered by Hookdeck (Retell's signature already verified by Event Gateway, repeats already
  * deduplicated). Hookdeck acknowledged Retell long ago; a non-2xx here only makes
  * Hookdeck retry this delivery.
- *
- * This endpoint trusts the network path: `hookdeck listen` forwards to localhost and the app
- * binds to loopback. A deployed endpoint reachable from the internet must verify Hookdeck's
- * signature (the x-hookdeck-signature header) before it applies anything.
  */
-app.post('/webhooks/retell', async (req: Request, res: Response) => {
+app.post('/webhooks/retell', requireHookdeckSignature(EVENTS_CONNECTION), async (req: Request, res: Response) => {
   const started = Date.now();
   const body = req.body as RetellWebhook;
   const hookdeck_event_id = req.header('x-hookdeck-eventid');
@@ -314,7 +328,7 @@ app.post('/webhooks/retell', async (req: Request, res: Response) => {
  * Retell doesn't wait for the answer, so the endpoint (a Hookdeck source) just acknowledges.
  * The app does the slow work, then injects the result with update-live-call.
  */
-app.post('/webhooks/retell-function', safe((req: Request, res: Response) => {
+app.post('/webhooks/retell-function', requireHookdeckSignature(FUNCTION_CONNECTION), safe((req: Request, res: Response) => {
   res.sendStatus(200);
 
   const { call, args } = req.body || {};
@@ -351,6 +365,7 @@ app.use((error: any, _req: Request, res: Response, _next: NextFunction) => {
   if (!res.headersSent) res.status(status).json({ error: status === 500 ? 'internal error' : (error.type === 'entity.parse.failed' ? 'invalid JSON' : 'bad request') });
 });
 
+requireHookdeckSigningSecret();
 app.listen(PORT, HOST, () => {
   const missing = missingCallConfig();
   console.log(`🚀 Retell outbound lead calling on http://${HOST === '127.0.0.1' ? 'localhost' : HOST}:${PORT}`);

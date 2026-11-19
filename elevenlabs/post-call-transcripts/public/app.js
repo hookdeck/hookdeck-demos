@@ -90,7 +90,7 @@ function renderConversation(c, open) {
 }
 
 function resultBadge(result) {
-  const cls = result === 'stored' ? 'badge--success' : result === 'simulated_failure' ? 'badge--danger' : '';
+  const cls = result === 'stored' ? 'badge--success' : result === 'simulated_failure' || result === 'signature_rejected' ? 'badge--danger' : '';
   return `<span class="badge ${cls}">${esc(result)}</span>`;
 }
 
@@ -135,15 +135,14 @@ async function refresh() {
       : `<span class="empty body-s">${wording('empty', EMPTY_PLAIN)}</span>`,
   );
 
-  const checked = deliveries.filter((d) => d.sdk_check);
-  const sdk_ok = checked.filter((d) => d.sdk_check === 'ok').length;
   const failed = deliveries.filter((d) => d.status_code >= 400).length;
   $('deliverySummary').textContent = deliveries.length
     ? `${deliveries.length} received${failed ? `, ${failed} failed on purpose or by error` : ''}`
     : 'none yet';
-  $('sdkBadge').innerHTML = checked.length
-    ? `<span class="badge ${sdk_ok === checked.length ? 'badge--success' : 'badge--danger'}" title="ElevenLabs SDK constructEvent run on each forwarded request">SDK check ${sdk_ok === checked.length ? 'ok' : `${sdk_ok}/${checked.length}`}</span>`
-    : state.sdk_check ? '<span class="badge">SDK check: no deliveries yet</span>' : '';
+  const rejected = deliveries.filter((d) => d.result === 'signature_rejected').length;
+  $('signatureBadge').innerHTML = rejected
+    ? `<span class="badge badge--danger" title="Deliveries refused with a 401 because x-hookdeck-signature was missing or wrong">${rejected} Hookdeck signature rejected</span>`
+    : deliveries.length ? '<span class="badge badge--success" title="The app verified x-hookdeck-signature on every delivery it received">Hookdeck signature ok</span>' : '';
   show('deliveries', deliveries.length
     ? deliveries
         .slice(0, 6)

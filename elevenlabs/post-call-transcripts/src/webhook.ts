@@ -1,10 +1,10 @@
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Request, Response, Router } from 'express';
 import { randomUUID } from 'crypto';
 import { DeliveryRecord, ElevenLabsEvent, HANDLED_TYPES } from './events';
 import { SOURCE_NAME } from './source-name';
 import { InvalidEventError, Store } from './store';
 import type { AppFlowEntry } from './flow-drawer-server';
+import { verifyHookdeckSignature } from './hookdeck-signature';
 
 export interface FailureMode {
   /** Respond 500 to this many more deliveries, then recover */
@@ -14,26 +14,6 @@ export interface FailureMode {
 declare module 'http' {
   interface IncomingMessage {
     rawBody?: Buffer;
-  }
-}
-
-/**
- * Optional: run the ElevenLabs SDK's constructEvent on what Hookdeck forwarded, so the
- * UI can show that the original ElevenLabs-Signature still verifies. Event Gateway's
- * source verification is the gate here: it has already verified the signature before the
- * event reaches this app, and the handler stores the event whatever this returns. The
- * result is a display-only badge. constructEvent also rejects a signature older than 30
- * minutes, so a replay or a retry of an older event shows a failed check on an event that
- * was verified when it arrived.
- */
-async function sdkCheck(raw_body: string, signature: string | undefined, secret: string | undefined) {
-  if (!secret) return undefined;
-  try {
-    const elevenlabs = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY || 'webhook-only' });
-    await elevenlabs.webhooks.constructEvent(raw_body, signature as string, secret);
-    return 'ok';
-  } catch (error: any) {
-    return error?.message || 'failed';
   }
 }
 
@@ -71,13 +51,14 @@ export function webhookRouter(store: Store, failure: FailureMode, flow_entries: 
       if (flow_entries.length > 300) flow_entries.splice(0, flow_entries.length - 300);
       console.log(`${delivery.type} ${delivery.conversation_id ?? ''} ${delivery.bytes} bytes -> ${status_code} ${result}`);
       res.status(status_code).json(payload);
-      // After the response, so the check never delays the answer; the log is saved again with its result
-      if (process.env.ELEVENLABS_WEBHOOK_SECRET) {
-        sdkCheck(raw.toString('utf8'), signature, process.env.ELEVENLABS_WEBHOOK_SECRET)
-          .then((result) => { delivery.sdk_check = result; store.save(); })
-          .catch(() => {});
-      }
     };
+
+    // Event Gateway verified ElevenLabs-Signature when it accepted the request. This app verifies Hookdeck's
+    // signature on the raw body before it does anything else. There is no timestamp, so a retry or replay
+    // from hours ago still passes.
+    if (!verifyHookdeckSignature(raw, req.header('x-hookdeck-signature'), process.env.HOOKDECK_SIGNING_SECRET, req.header('x-hookdeck-signature-2'))) {
+      return finish(401, 'signature_rejected', { error: 'invalid Hookdeck signature' });
+    }
 
     // The retry demo: fail on purpose so Hookdeck retries the event
     if (failure.fail_next > 0) {

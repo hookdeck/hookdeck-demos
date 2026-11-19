@@ -84,7 +84,7 @@ export function createHookdeckCli(options: HookdeckCliOptions = {}) {
     const key = process.env.HOOKDECK_API_KEY;
     if (!key || key.startsWith('your_')) {
       console.error('❌ HOOKDECK_API_KEY is not set. Add a project API key to .env');
-      console.error('   (Hookdeck dashboard: Project settings -> API keys).');
+      console.error('   (Hookdeck dashboard: Project settings -> Secrets, https://dashboard.hookdeck.com/settings/project/secrets).');
       process.exit(1);
     }
     return key;
@@ -201,7 +201,7 @@ export function createHookdeckCli(options: HookdeckCliOptions = {}) {
     return withPrivateJson(`rules-${spec.name}.json`, spec.rules, (file) => json([...args, '--rules-file', file]));
   }
 
-  /** Reads from the Hookdeck API with the project API key. The demos' probe scripts use it to find a source and list its requests; setup goes through the CLI only. */
+  /** Calls the Hookdeck API with the project API key. Demos that set up through the API use hookdeck-api.ts instead. */
   async function api<T = any>(method: string, route: string, body?: unknown): Promise<T> {
     const response = await fetch(`${api_base}${route}`, {
       method,

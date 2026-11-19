@@ -1,7 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AccessToken, WebhookReceiver } from 'livekit-server-sdk';
-import * as crypto from 'crypto';
 import { applyEvent, emptyLog, summarise, LiveKitEvent } from '../src/call-log';
 
 const T0 = 1_800_000_000; // seconds
@@ -59,17 +57,6 @@ test('a call with no room_finished is in progress', () => {
   const [call] = build(events.slice(0, 3));
   assert.equal(call.status, 'in progress');
   assert.equal(call.duration_s, undefined);
-});
-
-test('WebhookReceiver accepts a signed body and rejects a changed one', async () => {
-  const key = 'APItest', secret = 'a-test-secret-that-is-long-enough-for-hs256';
-  const body = JSON.stringify(events[0]);
-  const token = new AccessToken(key, secret);
-  token.sha256 = crypto.createHash('sha256').update(body).digest('base64');
-  const jwt = await token.toJwt();
-  const receiver = new WebhookReceiver(key, secret);
-  assert.equal((await receiver.receive(body, jwt)).event, 'room_started');
-  await assert.rejects(receiver.receive(body + ' ', jwt));
 });
 
 test('a minted token joins one room, can publish, expires and carries no secret', async () => {

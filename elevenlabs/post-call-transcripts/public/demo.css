@@ -98,7 +98,7 @@ footer { color: var(--neutral-fg-3); }
 .deliveries__toggle::before { content: '\25B8'; color: var(--neutral-fg-3); }
 .deliveries__toggle[aria-expanded="true"]::before { content: '\25BE'; }
 .deliveries__toggle:focus-visible { outline: 2px solid var(--focused-outline); outline-offset: 2px; border-radius: var(--radius-s); }
-.deliveries__head #sdkBadge { margin-left: auto; }
+.deliveries__head #signatureBadge { margin-left: auto; }
 .delivery-list { margin-top: var(--s3); }
 .delivery-list { display: grid; gap: var(--s1-5); }
 .delivery { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s1-5) 0; border-top: 1px solid var(--neutral-outline-3); color: var(--neutral-fg-2); }

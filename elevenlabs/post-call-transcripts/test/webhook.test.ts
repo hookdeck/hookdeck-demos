@@ -8,9 +8,11 @@ import { AddressInfo } from 'net';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { createApp } from '../src/server';
 import { Store } from '../src/store';
+import { signHookdeckBody } from '../src/hookdeck-signature';
 import { audioEvent, failureEvent, sign, transcriptionEvent } from '../src/samples';
 
 const SECRET = 'wsec_test_secret';
+const SIGNING_SECRET = 'test-hookdeck-signing-secret';
 
 describe('POST /webhooks/elevenlabs', () => {
   let server: ReturnType<ReturnType<typeof createApp>['app']['listen']>;
@@ -20,6 +22,7 @@ describe('POST /webhooks/elevenlabs', () => {
 
   beforeEach(async () => {
     process.env.ELEVENLABS_WEBHOOK_SECRET = SECRET;
+    process.env.HOOKDECK_SIGNING_SECRET = SIGNING_SECRET;
     data_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'elevenlabs-demo-'));
     ctx = createApp(data_dir);
     server = ctx.app.listen(0);
@@ -35,7 +38,7 @@ describe('POST /webhooks/elevenlabs', () => {
     const raw_body = JSON.stringify(payload);
     return fetch(`${base}/webhooks/elevenlabs`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'elevenlabs-signature': sign(SECRET, raw_body), ...extra },
+      headers: { 'content-type': 'application/json', 'elevenlabs-signature': sign(SECRET, raw_body), 'x-hookdeck-signature': signHookdeckBody(raw_body, SIGNING_SECRET), ...extra },
       body: raw_body,
     });
   }
@@ -102,21 +105,30 @@ describe('POST /webhooks/elevenlabs', () => {
     assert.equal(ctx.store.listConversations().length, 0);
   });
 
-  // The SDK check runs after the response, so wait for it to be written to the delivery log
-  async function sdk_check() {
-    for (let i = 0; i < 100 && !ctx.store.listDeliveries()[0].sdk_check; i++) await new Promise((r) => setTimeout(r, 10));
-    return ctx.store.listDeliveries()[0].sdk_check;
-  }
-
-  it('shows that the forwarded body still passes the SDK constructEvent', async () => {
-    await post(transcriptionEvent('conv_sdk'));
-    assert.equal(await sdk_check(), 'ok');
+  it('answers 401 and records the delivery when x-hookdeck-signature is missing, wrong, or for another body', async () => {
+    const raw_body = JSON.stringify(transcriptionEvent('conv_unsigned'));
+    const send = (signature?: string) => fetch(`${base}/webhooks/elevenlabs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(signature ? { 'x-hookdeck-signature': signature } : {}) },
+      body: raw_body,
+    });
+    assert.equal((await send()).status, 401);
+    assert.equal((await send(signHookdeckBody(raw_body, 'wrong-secret'))).status, 401);
+    assert.equal((await send(signHookdeckBody(raw_body + ' ', SIGNING_SECRET))).status, 401);
+    assert.equal(ctx.store.listConversations().length, 0);
+    const deliveries = ctx.store.listDeliveries();
+    assert.equal(deliveries.length, 3);
+    assert.ok(deliveries.every((d) => d.result === 'signature_rejected' && d.status_code === 401));
   });
 
-  it('reports a bad signature in the SDK check without blocking the (Hookdeck-verified) event', async () => {
-    await post(transcriptionEvent('conv_bad'), { 'elevenlabs-signature': `t=${Math.floor(Date.now() / 1000)},v0=deadbeef` });
-    assert.match((await sdk_check()) || '', /does not match/);
-    assert.equal(ctx.store.listConversations().length, 1);
+  it('accepts a replay of an old event: the Hookdeck signature has no timestamp', async () => {
+    const raw_body = JSON.stringify(transcriptionEvent('conv_old'));
+    const response = await fetch(`${base}/webhooks/elevenlabs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'elevenlabs-signature': sign(SECRET, raw_body, 1_600_000_000), 'x-hookdeck-signature': signHookdeckBody(raw_body, SIGNING_SECRET) },
+      body: raw_body,
+    });
+    assert.equal(response.status, 200);
   });
 });
 
@@ -128,6 +140,7 @@ describe('the demo app\'s own routes', () => {
 
   beforeEach(async () => {
     delete process.env.ELEVENLABS_WEBHOOK_SECRET;
+    process.env.HOOKDECK_SIGNING_SECRET = SIGNING_SECRET;
     data_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'elevenlabs-demo-'));
     ctx = createApp(data_dir);
     server = ctx.app.listen(0, '127.0.0.1');
@@ -170,13 +183,14 @@ describe('the demo app\'s own routes', () => {
   });
 
   it('answers a malformed body with a JSON error and no stack trace or path', async () => {
-    const res = await request('POST', '/webhooks/elevenlabs', { 'content-type': 'application/json' }, '{"type":');
+    const res = await request('POST', '/webhooks/elevenlabs', { 'content-type': 'application/json', 'x-hookdeck-signature': signHookdeckBody('{"type":', SIGNING_SECRET) }, '{"type":');
     assert.equal(res.status, 400);
     assert.deepEqual(JSON.parse(res.text), { error: 'bad request' });
   });
 
   async function hook(payload: unknown) {
-    const res = await request('POST', '/webhooks/elevenlabs', { 'content-type': 'application/json' }, JSON.stringify(payload));
+    const body = JSON.stringify(payload);
+    const res = await request('POST', '/webhooks/elevenlabs', { 'content-type': 'application/json', 'x-hookdeck-signature': signHookdeckBody(body, SIGNING_SECRET) }, body);
     return res.status;
   }
 

@@ -87,8 +87,6 @@ footer { color: var(--neutral-fg-3); }
 .muted { color: var(--neutral-fg-3); }
 .field.inline { display: flex; align-items: center; gap: var(--s2); }
 .input.narrow { width: 72px; }
-/* The default WEBHOOK source verifies nothing, so the detail strip's "Verified" pill would overclaim */
-body.no-verify .tp-pill.tp-ok { display: none; }
 
 /* Chronicle */
 .timeline { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }

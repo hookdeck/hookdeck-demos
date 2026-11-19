@@ -12,7 +12,8 @@
  */
 import 'dotenv/config';
 import * as crypto from 'crypto';
-import { SOURCE_NAME, cli } from './config';
+import { SOURCE_NAME } from './config';
+import { hookdeck } from './hookdeck-api';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -23,8 +24,7 @@ async function main(): Promise<void> {
     console.error('ELEVENLABS_WEBHOOK_SECRET and ELEVENLABS_WEBHOOK_URL are not set. Run npm run setup first.');
     process.exit(1);
   }
-  cli.login();
-  const source = (await cli.api('GET', `/sources?name=${encodeURIComponent(SOURCE_NAME)}`)).models[0];
+  const source = (await hookdeck('GET', `/sources?name=${encodeURIComponent(SOURCE_NAME)}`)).models[0];
   let all_ok = true;
   for (const good of [true, false]) {
     const conversation_id = `probe_${good ? 'good' : 'bad'}_${crypto.randomBytes(4).toString('hex')}`;
@@ -43,9 +43,9 @@ async function main(): Promise<void> {
     let record: any;
     for (let i = 0; i < 8 && !record; i++) {
       await sleep(1500);
-      const list = await cli.api('GET', `/requests?source_id=${source.id}&limit=20`);
+      const list = await hookdeck('GET', `/requests?source_id=${source.id}&limit=20`);
       for (const summary of list.models) {
-        const detail = await cli.api('GET', `/requests/${summary.id}`);
+        const detail = await hookdeck('GET', `/requests/${summary.id}`);
         if (detail.data?.body?.data?.conversation_id === conversation_id) { record = detail; break; }
       }
     }

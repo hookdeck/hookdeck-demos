@@ -1,7 +1,7 @@
 /**
  * Sets up both sides of the demo. Idempotent: safe to run multiple times.
  *
- * Hookdeck (project of HOOKDECK_API_KEY):
+ * Hookdeck (project of HOOKDECK_API_KEY, through the Hookdeck API):
  *   source elevenlabs-post-call (type ELEVENLABS)  ->  CLI destination local-elevenlabs (/webhooks/elevenlabs)
  *   connection rules: deduplicate on event type + conversation_id, retry up to 5 times
  *
@@ -22,7 +22,8 @@ import 'dotenv/config';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CLI_PATH, CONNECTION_NAME, DESTINATION_NAME, SOURCE_NAME, cli } from './config';
+import { CLI_PATH, CONNECTION_NAME, DESTINATION_NAME, SOURCE_NAME } from './config';
+import { hookdeck, requireHookdeckApiKey } from './hookdeck-api';
 
 const PROJECT_DIR = path.join(__dirname, '..');
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
@@ -102,16 +103,15 @@ function writeEnv(values: { [key: string]: string }): void {
   fs.writeFileSync(ENV_FILE, env);
 }
 
+/**
+ * Creates the connection with the Hookdeck API. One PUT /connections creates or updates the
+ * ELEVENLABS source, the CLI destination and the rules, matched by name.
+ */
 async function setupHookdeck(): Promise<{ source_url: string; source_id: string }> {
-  cli.login();
-  console.log(cli.whoami() || 'Not logged in: check HOOKDECK_API_KEY in .env');
-
-  const destination = cli.upsertCliDestination({ name: DESTINATION_NAME, path: CLI_PATH });
-  const connection = cli.upsertConnection({
+  const connection = await hookdeck('PUT', '/connections', {
     name: CONNECTION_NAME,
-    sourceName: SOURCE_NAME,
-    sourceType: 'ELEVENLABS',
-    destinationId: destination.id,
+    source: { name: SOURCE_NAME, type: 'ELEVENLABS' },
+    destination: { name: DESTINATION_NAME, type: 'CLI', config: { path: CLI_PATH } },
     rules: RULES,
   });
   console.log(`Hookdeck: ${connection.source.url} -> ${DESTINATION_NAME} (${CLI_PATH})`);
@@ -119,14 +119,14 @@ async function setupHookdeck(): Promise<{ source_url: string; source_id: string 
 }
 
 /**
- * Sets the signing secret on the source through the CLI (config.auth). The header name,
- * algorithm and timestamp format are fixed by the ELEVENLABS source type, so only the secret is needed.
+ * Sets the signing secret on the source (config.auth). The header name, algorithm and
+ * timestamp format are fixed by the ELEVENLABS source type, so only the secret is needed.
  */
 async function setSourceSecret(secret: string): Promise<void> {
-  const source = cli.upsertSource({
+  const source = await hookdeck('PUT', '/sources', {
     name: SOURCE_NAME,
     type: 'ELEVENLABS',
-    auth: { webhook_secret_key: secret },
+    config: { auth: { webhook_secret_key: secret } },
   });
   console.log(`Hookdeck: signature verification enabled on the source (auth ${source.config?.auth ? 'set' : 'NOT set'})`);
 }
@@ -183,6 +183,7 @@ async function setupElevenLabs(source_url: string): Promise<{ id: string; secret
 }
 
 async function main(): Promise<void> {
+  requireHookdeckApiKey();
   const { source_url } = await setupHookdeck();
   const { id, secret, agent_id } = await setupElevenLabs(source_url);
   if (secret) await setSourceSecret(secret);
@@ -198,6 +199,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error('Setup failed:', error.stderr?.toString().trim() || error.message || error);
+  console.error('Setup failed:', error.message || error);
   process.exit(1);
 });
