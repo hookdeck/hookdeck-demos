@@ -167,7 +167,8 @@ elevenlabs/post-call-transcripts/
 │   ├── call.ts           # text-only conversation with the agent
 │   ├── send-sample.ts    # signed sample payloads, duplicates, large bodies
 │   ├── probe.ts          # checks that a good signature is accepted and a bad one rejected
-│   └── hookdeck-cli.ts   # runs the Hookdeck CLI against HOOKDECK_API_KEY's project (synced from _shared)
+│   ├── hookdeck-api.ts   # calls the Hookdeck API with HOOKDECK_API_KEY (synced from _shared)
+│   └── hookdeck-cli.ts   # runs the Hookdeck CLI for npm run listen (synced from _shared)
 ├── scenes/
 │   ├── post-call.ts      # the topology scene: live, and four scripted scenarios (desktop + phone)
 │   ├── entry.ts          # what the page's bundle exposes

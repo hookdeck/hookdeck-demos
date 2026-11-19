@@ -11,7 +11,7 @@
  */
 import 'dotenv/config';
 import * as crypto from 'crypto';
-import { createHookdeckCli } from './hookdeck-cli';
+import { hookdeck } from './hookdeck-api';
 
 const secret = process.env.VAPI_WEBHOOK_SECRET!;
 const targets = [
@@ -29,20 +29,19 @@ async function send(label: string, url: string, body: string, headers: Record<st
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The request record whose body carries `call_id`, read back from the Hookdeck API. */
-async function findRequest(cli: ReturnType<typeof createHookdeckCli>, source_id: string, call_id: string): Promise<any> {
-  const list = await cli.api('GET', `/requests?source_id=${source_id}&limit=20`);
+async function findRequest(source_id: string, call_id: string): Promise<any> {
+  const list = await hookdeck('GET', `/requests?source_id=${source_id}&limit=20`);
   for (const summary of list.models) {
-    const detail = await cli.api('GET', `/requests/${summary.id}`);
+    const detail = await hookdeck('GET', `/requests/${summary.id}`);
     if (detail.data?.body?.message?.call?.id === call_id) return detail;
   }
   return undefined;
 }
 
 async function prove(): Promise<boolean> {
-  const cli = createHookdeckCli();
   let all_ok = true;
   for (const t of targets) {
-    const source = (await cli.api('GET', `/sources?name=${encodeURIComponent(t.name === 'Acme' ? 'vapi-acme-dental' : 'vapi-globex-plumbing')}`)).models[0];
+    const source = (await hookdeck('GET', `/sources?name=${encodeURIComponent(t.name === 'Acme' ? 'vapi-acme-dental' : 'vapi-globex-plumbing')}`)).models[0];
     const results: Array<[string, boolean, string]> = [];
     for (const [label, good] of [['correctly signed', true], ['badly signed', false]] as const) {
       const call_id = `probe-${label.split(' ')[0]}-${crypto.randomBytes(4).toString('hex')}`;
@@ -51,7 +50,7 @@ async function prove(): Promise<boolean> {
       let record: any;
       for (let i = 0; i < 8 && !record; i++) {
         await sleep(1500);
-        record = await findRequest(cli, source.id, call_id);
+        record = await findRequest(source.id, call_id);
       }
       const ok = good
         ? res.status === 200 && record?.verified === true

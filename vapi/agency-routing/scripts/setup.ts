@@ -2,7 +2,7 @@
  * One command to wire the whole demo. Safe to run again: it updates what it created before (the IDs in .env)
  * and never changes a Vapi credential, tool or assistant that only shares a name with one of its own.
  *
- * Hookdeck (project for HOOKDECK_API_KEY), per client:
+ * Hookdeck (project for HOOKDECK_API_KEY, through the Hookdeck API), per client:
  *   source (type VAPI, HMAC verification on) -> connection -> CLI destination (the client's route)
  * Vapi (account for VAPI_API_KEY):
  *   one HMAC custom credential, one async function tool, one assistant per client whose
@@ -13,7 +13,7 @@
 import 'dotenv/config';
 import * as crypto from 'crypto';
 import { CLIENTS, Client } from '../src/clients';
-import { createHookdeckCli } from './hookdeck-cli';
+import { hookdeck, requireHookdeckApiKey } from './hookdeck-api';
 import { writeEnv } from './env-file';
 import { vapi, requireVapiKey } from './vapi-api';
 
@@ -33,32 +33,34 @@ const CONNECTION_RULES = [
   { type: 'retry', strategy: 'exponential', count: 4, interval: 10000 },
 ];
 
-const cli = createHookdeckCli();
-
+/**
+ * Creates the client's connection with the Hookdeck API, then turns on signature verification.
+ * PUT /connections creates or updates the VAPI source, the CLI destination and the rules, matched
+ * by name. PUT /sources sets the source's verification settings (config.auth).
+ */
 async function setupHookdeck(client: Client, secret: string): Promise<string> {
-  const destination = cli.upsertCliDestination({ name: client.destination, path: client.path });
-  // Verification (`auth`) goes through the CLI's source config file (hookdeck-cli 3.2.0 or later),
-  // so the header, algorithm and encoding stay as set here.
-  const source = cli.upsertSource({
+  // Event Gateway answers Vapi at once, then delivers to the app. Repeats are dropped; if the app answers
+  // 5xx or is down, retry with short demo intervals: attempt #2 after about 10s, #3 after 20s, #4 after 40s, #5 after 80s.
+  const connection = await hookdeck('PUT', '/connections', {
     name: client.source,
-    type: 'VAPI',
-    config: { trim_payload: TRIM_PAYLOAD },
-    auth: { webhook_secret_key: secret, algorithm: 'sha256', encoding: 'hex', header_key: 'x-signature' },
-  });
-  const connection = cli.upsertConnection({
-    name: client.source,
-    sourceId: source.id,
-    destinationId: destination.id,
-    // Event Gateway answers Vapi at once, then delivers to the app. Repeats are dropped; if the app answers
-    // 5xx or is down, retry with short demo intervals: attempt #2 after about 10s, #3 after 20s, #4 after 40s, #5 after 80s.
+    source: { name: client.source, type: 'VAPI' },
+    destination: { name: client.destination, type: 'CLI', config: { path: client.path } },
     rules: CONNECTION_RULES,
   });
-  if (connection.destination.id !== destination.id) {
+  if (connection.destination.name !== client.destination) {
     console.error(`Connection ${client.source} points at destination ${connection.destination.name}, not ${client.destination}.`);
-    console.error(`A connection's destination can't be changed. Delete it and run this script again:`);
-    console.error(`  hookdeck gateway connection delete ${connection.id} --force`);
+    console.error(`A connection's destination can't be changed. Delete the connection ${connection.id} in the Hookdeck dashboard and run this script again.`);
     process.exit(1);
   }
+  // The header, algorithm and encoding match the Vapi credential that setupVapi creates.
+  const source = await hookdeck('PUT', '/sources', {
+    name: client.source,
+    type: 'VAPI',
+    config: {
+      trim_payload: TRIM_PAYLOAD,
+      auth: { webhook_secret_key: secret, algorithm: 'sha256', encoding: 'hex', header_key: 'x-signature' },
+    },
+  });
   console.log(`Hookdeck ${client.name}: ${source.url} -> ${client.path} (verification: ${source.config?.auth ? 'set' : 'NOT set'})`);
   return source.url;
 }
@@ -143,8 +145,7 @@ async function setupVapi(secret: string, urls: { [slug: string]: string }) {
 
 async function main() {
   requireVapiKey();
-  cli.login();
-  console.log((cli.whoami() || '') + '\n');
+  requireHookdeckApiKey();
 
   const secret = process.env.VAPI_WEBHOOK_SECRET && !process.env.VAPI_WEBHOOK_SECRET.startsWith('your_')
     ? process.env.VAPI_WEBHOOK_SECRET
@@ -166,6 +167,6 @@ async function main() {
 }
 
 main().catch((error: any) => {
-  console.error('Setup failed:', error.stderr?.toString().trim() || error.message);
+  console.error('Setup failed:', error.message);
   process.exit(1);
 });

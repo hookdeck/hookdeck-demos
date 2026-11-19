@@ -15,7 +15,8 @@
 import 'dotenv/config';
 import * as crypto from 'crypto';
 import { signRetellBody } from '../src/retell-signature';
-import { EVENTS_SOURCE, FUNCTION_SOURCE, cli } from './config';
+import { EVENTS_SOURCE, FUNCTION_SOURCE } from './config';
+import { hookdeck } from './hookdeck-api';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -26,7 +27,7 @@ const payloads: { [source: string]: (id: string) => object } = {
 };
 
 async function probeSource(name: string, secret: string): Promise<boolean> {
-  const source = (await cli.api('GET', `/sources?name=${encodeURIComponent(name)}`)).models[0];
+  const source = (await hookdeck('GET', `/sources?name=${encodeURIComponent(name)}`)).models[0];
   if (!source) {
     console.log(`SKIP  ${name}: source not found (run npm run setup)`);
     return true;
@@ -45,9 +46,9 @@ async function probeSource(name: string, secret: string): Promise<boolean> {
     let record: any;
     for (let i = 0; i < 8 && !record; i++) {
       await sleep(1500);
-      const list = await cli.api('GET', `/requests?source_id=${source.id}&limit=20`);
+      const list = await hookdeck('GET', `/requests?source_id=${source.id}&limit=20`);
       for (const summary of list.models) {
-        const detail = await cli.api('GET', `/requests/${summary.id}`);
+        const detail = await hookdeck('GET', `/requests/${summary.id}`);
         if (detail.data?.body?.call?.call_id === call_id) { record = detail; break; }
       }
     }
@@ -67,7 +68,6 @@ async function main(): Promise<void> {
     console.error('RETELL_SECRET_KEY (or RETELL_API_KEY) is not set in .env.');
     process.exit(1);
   }
-  cli.login();
   let all_ok = true;
   for (const name of [EVENTS_SOURCE, FUNCTION_SOURCE]) all_ok = (await probeSource(name, secret)) && all_ok;
   console.log(all_ok ? '\nVerification is ON.' : '\nVerification check FAILED.');

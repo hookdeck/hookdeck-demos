@@ -2,6 +2,7 @@
   "pieces": {
     "ds": "_shared/ds",
     "hookdeck-cli": "_shared/hookdeck/hookdeck-cli.ts",
+    "hookdeck-api": "_shared/hookdeck/hookdeck-api.ts",
     "hookdeck-listen": "_shared/hookdeck/hookdeck-listen.ts",
     "flow-drawer": "_shared/flow-drawer/client",
     "flow-drawer-server": "_shared/flow-drawer/server.ts",
@@ -26,6 +27,7 @@
     },
     "vapi/agency-routing": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
@@ -35,6 +37,7 @@
     },
     "elevenlabs/post-call-transcripts": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
@@ -44,6 +47,7 @@
     },
     "retell/outbound-lead-calling": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",
@@ -53,6 +57,7 @@
     },
     "livekit/voice-adventure": {
       "ds": "public/ds",
+      "hookdeck-api": "scripts/hookdeck-api.ts",
       "hookdeck-cli": "scripts/hookdeck-cli.ts",
       "hookdeck-listen": "scripts/hookdeck-listen.ts",
       "flow-drawer-server": "src/flow-drawer-server.ts",

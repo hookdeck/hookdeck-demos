@@ -114,7 +114,8 @@ retell/outbound-lead-calling/
 │   ├── listen.ts         # hookdeck listen for the demo's sources
 │   ├── simulate.ts       # signed sample events, duplicates, bad signatures
 │   ├── probe.ts          # signed + badly signed requests, checked against Hookdeck's request records
-│   └── hookdeck-cli.ts   # shared helper (_shared/hookdeck): runs the CLI against the API key's project
+│   ├── hookdeck-api.ts   # shared helper (_shared/hookdeck): calls the Hookdeck API with the API key
+│   └── hookdeck-cli.ts   # shared helper (_shared/hookdeck): runs the CLI for npm run listen
 ├── src/
 │   ├── server.ts         # form API, webhook endpoints, failure injection
 │   ├── retell.ts         # create-phone-call and update-live-call (the web call runs in the browser)

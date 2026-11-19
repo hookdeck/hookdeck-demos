@@ -5,8 +5,8 @@
  *   source livekit-voice-adventure -> destination local-livekit-voice-adventure (CLI, /webhooks/livekit),
  *   with a deduplicate rule (body.id) and an exponential retry rule
  *
- * Uses the project whose HOOKDECK_API_KEY is in .env, through the hookdeck-cli
- * npm dependency with a config file of its own (see hookdeck-cli.ts).
+ * Uses the project whose HOOKDECK_API_KEY is in .env, through the Hookdeck API
+ * (see hookdeck-api.ts).
  *
  * TODO(hookdeck/core#6254): the LIVEKIT branch below is for when the LiveKit source
  * type ships; see the commented section in the README. Until then the source type
@@ -18,11 +18,12 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { SOURCE, cli } from './config';
+import { SOURCE } from './config';
+import { hookdeck, requireHookdeckApiKey } from './hookdeck-api';
 import { RETRY_RULE } from '../src/config';
 import { CLI_CONFIG_PATH, ensureWebhook, readCliConfig, resolveSession } from './livekit-cloud';
 
-const PROJECT_DIR = cli.projectDir;
+const PROJECT_DIR = path.join(__dirname, '..');
 const ENV_FILE = path.join(PROJECT_DIR, '.env');
 const ENV_EXAMPLE_FILE = path.join(PROJECT_DIR, '.env.example');
 
@@ -48,27 +49,15 @@ function writeEnv(values: { [key: string]: string }): void {
 
 async function main(): Promise<void> {
   require('dotenv').config({ path: ENV_FILE });
-  cli.login();
-  console.log(cli.whoami() || 'Not logged in: check HOOKDECK_API_KEY in .env');
+  requireHookdeckApiKey();
 
   const source_type = (process.env.LIVEKIT_SOURCE_TYPE || 'WEBHOOK').toUpperCase();
-  let auth: Record<string, unknown> | undefined;
-  if (source_type === 'LIVEKIT') {
-    // The LiveKit source type verifies deliveries with your project's API key and secret
-    const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
-    if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
-      console.error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in .env for the LIVEKIT source type.');
-      process.exit(1);
-    }
-    // Both fields live under the source's config.auth; upsertSource sets them through the CLI.
-    auth = { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET };
-  }
-  const source = cli.upsertSource({ name: SOURCE, type: source_type, auth });
-  const destination = cli.upsertCliDestination({ name: DESTINATION, path: CLI_PATH });
-  const connection = cli.upsertConnection({
+
+  // PUT /connections creates or updates the source, the CLI destination and the rules, matched by name.
+  const connection = await hookdeck('PUT', '/connections', {
     name: CONNECTION,
-    sourceId: source.id,
-    destinationId: destination.id,
+    source: { name: SOURCE, type: source_type },
+    destination: { name: DESTINATION, type: 'CLI', config: { path: CLI_PATH } },
     rules: [
       // The same LiveKit event id inside 10 minutes is a duplicate. The API takes the window in milliseconds.
       { type: 'deduplicate', window: 600000, include_fields: ['body.id'] },
@@ -76,6 +65,21 @@ async function main(): Promise<void> {
       { ...RETRY_RULE },
     ],
   });
+
+  if (source_type === 'LIVEKIT') {
+    // The LiveKit source type verifies deliveries with your project's API key and secret
+    const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+    if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+      console.error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in .env for the LIVEKIT source type.');
+      process.exit(1);
+    }
+    // PUT /sources sets the source's verification settings (config.auth).
+    await hookdeck('PUT', '/sources', {
+      name: SOURCE,
+      type: source_type,
+      config: { auth: { api_key: LIVEKIT_API_KEY, api_secret: LIVEKIT_API_SECRET } },
+    });
+  }
 
   console.log(`${CONNECTION}: ${connection.source.url} (${source_type}) -> ${DESTINATION} (${CLI_PATH})`);
   console.log('');
@@ -112,6 +116,6 @@ async function registerLiveKitWebhook(url: string): Promise<boolean> {
 }
 
 main().catch((error: any) => {
-  console.error('Setup failed:', error.stderr?.toString().trim() || error.message);
+  console.error('Setup failed:', error.message);
   process.exit(1);
 });

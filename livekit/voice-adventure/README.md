@@ -55,7 +55,7 @@ cp .env.example .env
 npm run setup
 ```
 
-This creates a `livekit-voice-adventure` source, a CLI destination that forwards to `/webhooks/livekit`, and the connection between them with a deduplicate rule and a retry rule. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It logs the bundled Hookdeck CLI in to the project for `HOOKDECK_API_KEY` with a config file of its own, so your interactive `hookdeck login` is untouched.
+This creates a `livekit-voice-adventure` source, a CLI destination that forwards to `/webhooks/livekit`, and the connection between them with a deduplicate rule and a retry rule. It writes the source URL to `LIVEKIT_WEBHOOK_URL` in `.env`. The script is idempotent. It calls the Hookdeck API with `HOOKDECK_API_KEY`, so your interactive `hookdeck login` is untouched.
 
 ### 4. Add the webhook in LiveKit Cloud
 
@@ -228,7 +228,8 @@ livekit/voice-adventure/
 │   ├── activity.sh          # Creates a room and joins test participants with the lk CLI
 │   ├── simulate.ts          # Sends signed events (or a bad signature, or a duplicate) to the source
 │   ├── livekit-cloud.ts     # Creates the LiveKit Cloud webhook through the management API
-│   ├── hookdeck-cli.ts      # Synced from _shared: runs the Hookdeck CLI against the API key's project
+│   ├── hookdeck-api.ts      # Synced from _shared: calls the Hookdeck API with the API key
+│   ├── hookdeck-cli.ts      # Synced from _shared: runs the Hookdeck CLI for npm run listen
 │   ├── listen.ts            # npm run listen
 │   └── setup-hookdeck.ts    # npm run setup
 ├── src/
