@@ -21,7 +21,7 @@ cp .env.example .env
 Add two keys to `.env`:
 
 - `DEEPGRAM_API_KEY`: from the [Deepgram Console](https://console.deepgram.com/)
-- `HOOKDECK_API_KEY`: a Hookdeck project API key (Project settings -> API keys)
+- `HOOKDECK_API_KEY`: a Hookdeck project API key (Project settings -> [Secrets](https://dashboard.hookdeck.com/settings/project/secrets))
 
 ```env
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
