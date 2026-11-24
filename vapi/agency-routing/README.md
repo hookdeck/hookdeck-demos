@@ -19,7 +19,7 @@ No Vapi dashboard needed.
 
 1. Open http://localhost:4000.
 2. On the Acme Dental card, click **Plug in and call** (**Call Acme Dental** in the System, Light and Dark themes) and allow microphone access. You are the caller; the card names the assistant you are ringing.
-3. Say: "Hi, I'm Priya Shah, what's my next appointment?" The assistant says it is checking, then stays quiet (the prompt limits it to looking up an existing account and booking, so for anything else it says it can't do that and offers a call back); about 6 seconds later the CRM result is spoken into the call. The **While you wait** panel on the card shows the tool request, the CRM delay counting down and the result being posted to the call's `controlUrl`.
+3. Say: "Hi, I'm Priya Shah, when's my next appointment?" The assistant says it is checking, then stays quiet (the prompt limits it to looking up an existing account and booking, so for anything else it says it can't do that and offers a call back); about 6 seconds later the CRM result is spoken into the call. The **While you wait** panel on the card shows the tool request, the CRM delay counting down and the result being posted to the call's `controlUrl`.
 4. Click **End call** (**Pull the plug** in Switchboard). Repeat in the Globex Plumbing column with: "Hi, I'm Maria Lopez, when is my plumber coming?"
 
 Each column shows the events that arrived through that client's Hookdeck source. The page loads the Vapi Web SDK (`@vapi-ai/web`, pinned) from esm.sh; the server only exposes `VAPI_PUBLIC_KEY` and the assistant IDs at `/api/config`.
