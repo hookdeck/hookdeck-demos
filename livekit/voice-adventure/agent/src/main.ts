@@ -26,6 +26,7 @@ import { botName, fetchLine, planLedger, shouldFetchBram } from './names.ts';
 import { chooseGesture, respondLine } from './pixel-lines.ts';
 import { addSummaryLine, buildState, decodeState, encodeState, recapInstructions, resumePlayers, shouldResume, type StoryState } from './resume.ts';
 import { BREVITY, CLOSING_LINE, GOAL_LINE, bramInstructions, createEndWatcher, onBramReply, onPlayerInput, onPlayout, onSceneStart, speechFilter, createLlmWatchdog, createTurnRecovery, stallLine } from './story.ts';
+import { createEmptyRoomWatcher } from './empty-room.ts';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -464,6 +465,17 @@ export default defineAgent({
         .catch(() => undefined)
         .finally(() => setTimeout(() => job_ctx.shutdown('the story is over'), 3000));
     });
+    // The last human left: the agent and the soundtrack are the only things keeping the room open, so stop the music and leave
+    // (after a few seconds, so a silent bot player sees the story has ended and leaves too). LiveKit then finishes the room.
+    const empty_room = createEmptyRoomWatcher(() => {
+      console.log(`the last player left at ${new Date().toISOString()}: stopping the soundtrack and leaving`);
+      session.userData.ending = true;
+      publish(job_ctx, { 'story.state': 'ended', 'story.turn': '', 'story.turn_name': '' });
+      fetch(`${APP_URL}/api/scene/end`, { method: 'POST', headers: APP_HEADERS, body: JSON.stringify({ room: job_ctx.room.name }), signal: AbortSignal.timeout(10000) })
+        .catch(() => undefined)
+        .finally(() => setTimeout(() => job_ctx.shutdown('everyone left'), 10000));
+    });
+    const humans_after = (leaving?: RemoteParticipant) => humans(job_ctx).filter((h) => h.identity !== leaving?.identity).length;
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (e: any) => session.userData.end_watcher?.onAgentState(e.oldState, e.newState));
     // Who is still in the room: a player who left never gets the turn
     const here = (p: Player) => ctx.room.remoteParticipants.has(p.identity);
@@ -543,6 +555,7 @@ export default defineAgent({
     // and take them out of Bram's roster so he doesn't address them
     ctx.room.on('participantDisconnected', (p: RemoteParticipant) => {
       const data = session.userData;
+      if (!is_bot(p) && is_player(p)) empty_room.update(humans_after(p));
       const had_turn = ctx.room.localParticipant?.attributes?.['story.turn'] === p.identity;
       if (listening_to(session) === p.identity || had_turn) {
         const next = data.players.find((x) => !x.bot && x.identity !== p.identity && here(x)) ?? humans(ctx)[0];
@@ -576,6 +589,7 @@ export default defineAgent({
     // ledger, so without this it would never get a turn. Bram's roster is updated and he acknowledges the arrival once.
     ctx.room.on('participantConnected', (p: RemoteParticipant) => {
       const data = session.userData;
+      if (!is_bot(p) && is_player(p)) empty_room.update(humans_after());
       if (!data.handed_off || !is_player(p) || data.players.some((x) => x.identity === p.identity)) return;
       const bot = is_bot(p);
       // A late joiner who gave no name still joins, as "Traveller": otherwise they would never be heard. They can say their name ("I'm Priya").

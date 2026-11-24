@@ -32,41 +32,53 @@ export function createSoundtrackKeeper(deps: { ingresses: IngressApi; reachable:
     return ours.length;
   }
 
+  // One change at a time per room. A late ingress_ended webhook (for example the one for the scene ingress the last scene change
+  // deleted) must not run in the middle of a scene change: it would restart the old scene's soundtrack and delete the new one.
+  const queues = new Map<string, Promise<unknown>>();
+  function serial<T>(room: string, work: () => Promise<T>): Promise<T> {
+    const run = (queues.get(room) ?? Promise.resolve()).then(work);
+    const tail = run.catch(() => undefined);
+    queues.set(room, tail);
+    tail.then(() => { if (queues.get(room) === tail) queues.delete(room); });
+    return run;
+  }
+
+  async function ensureNow(room: string, scene: SceneName): Promise<EnsureResult> {
+    const here = (await deps.ingresses.list(room)).filter((i) => i.name.startsWith('scene:'));
+    const playing = here.find((i) => i.name === `scene:${scene}` && isPlaying(i));
+    if (playing) {
+      wanted.set(room, { scene, since: wanted.get(room)?.scene === scene ? wanted.get(room)!.since : now() });
+      return { ok: true, kept: true, ingress_id: playing.ingressId };
+    }
+    // One soundtrack at a time: the previous scene's stops before the next starts
+    await removeScenes(room);
+    const url = url_of(scene);
+    if (!(await deps.reachable(url))) {
+      wanted.delete(room);
+      return { ok: false, reason: `the soundtrack at ${url} can't be fetched` };
+    }
+    const ingress = await deps.ingresses.create({ name: `scene:${scene}`, room, identity: `soundtrack-${scene}`, participant_name: `Soundtrack: ${scene}`, url });
+    wanted.set(room, { scene, since: now() });
+    return { ok: true, ingress_id: ingress.ingressId };
+  }
+
   return {
     wanted,
     /** Makes sure `scene`'s soundtrack is playing in `room`: kept if it already is, otherwise the room's scene ingresses are replaced by a fresh one. */
-    async ensure(room: string, scene: SceneName): Promise<EnsureResult> {
-      const here = (await deps.ingresses.list(room)).filter((i) => i.name.startsWith('scene:'));
-      const playing = here.find((i) => i.name === `scene:${scene}` && isPlaying(i));
-      if (playing) {
-        wanted.set(room, { scene, since: wanted.get(room)?.scene === scene ? wanted.get(room)!.since : now() });
-        return { ok: true, kept: true, ingress_id: playing.ingressId };
-      }
-      // One soundtrack at a time: the previous scene's stops before the next starts
-      await removeScenes(room);
-      const url = url_of(scene);
-      if (!(await deps.reachable(url))) {
-        wanted.delete(room);
-        return { ok: false, reason: `the soundtrack at ${url} can't be fetched` };
-      }
-      const ingress = await deps.ingresses.create({ name: `scene:${scene}`, room, identity: `soundtrack-${scene}`, participant_name: `Soundtrack: ${scene}`, url });
-      wanted.set(room, { scene, since: now() });
-      return { ok: true, ingress_id: ingress.ingressId };
-    },
+    ensure: (room: string, scene: SceneName): Promise<EnsureResult> => serial(room, () => ensureNow(room, scene)),
     /** The story ended or the room finished: delete the room's soundtracks and stop wanting one. Returns how many were deleted. */
-    async stop(room: string): Promise<number> {
-      wanted.delete(room);
-      return removeScenes(room);
-    },
+    stop: (room: string): Promise<number> => serial(room, async () => { wanted.delete(room); return removeScenes(room); }),
     /** An `ingress_ended` webhook for a scene ingress: start the same soundtrack again if the room is still in that scene. */
-    async onEnded(room: string, ingress_name: string): Promise<'restarted' | 'ignored'> {
-      const scene = ingress_name.replace(/^scene:/, '');
-      const want = wanted.get(room);
-      if (!isScene(scene) || !want || want.scene !== scene) return 'ignored';
-      if (now() - want.since < MIN_PLAY_MS) return 'ignored';
-      if (!(await deps.room_open(room))) { wanted.delete(room); return 'ignored'; }
-      const result = await this.ensure(room, scene);
-      return result.ok && !result.kept ? 'restarted' : 'ignored';
-    },
+    onEnded: (room: string, ingress_name: string): Promise<'restarted' | 'ignored'> =>
+      // Decided inside the queue: when a late webhook gets its turn, the wanted scene is already the new one
+      serial(room, async () => {
+        const scene = ingress_name.replace(/^scene:/, '');
+        const want = wanted.get(room);
+        if (!isScene(scene) || !want || want.scene !== scene) return 'ignored';
+        if (now() - want.since < MIN_PLAY_MS) return 'ignored';
+        if (!(await deps.room_open(room))) { wanted.delete(room); return 'ignored'; }
+        const result = await ensureNow(room, scene);
+        return result.ok && !result.kept ? 'restarted' : 'ignored';
+      }),
   };
 }

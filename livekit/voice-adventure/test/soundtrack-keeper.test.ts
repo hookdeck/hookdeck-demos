@@ -76,3 +76,27 @@ test('the reachability check is a HEAD request, falls back to a ranged GET, and 
   assert.equal(await soundtrackReachable('https://x.test/a.ogg', (async (_u: any, init: any) => new Response(null, { status: init?.method === 'HEAD' ? 405 : 206 })) as any), true);
   assert.deepEqual(seen, ['HEAD:200', 'HEAD:404']);
 });
+
+test('a late ingress_ended for the scene just replaced does not restart it or delete the new scene', async () => {
+  const store: IngressLike[] = [];
+  const calls: string[] = [];
+  let n = 0;
+  let clock = 1000;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const ingresses: IngressApi = {
+    async list(room) { return store.filter((i) => i.roomName === room); },
+    async create(o) { await sleep(30); calls.push(`create ${o.name}`); const i = { ingressId: `IN_${++n}`, name: o.name, roomName: o.room, state: { status: 2 } }; store.push(i); return i; },
+    async remove(id) { calls.push(`remove ${id}`); store.splice(store.findIndex((i) => i.ingressId === id), 1); },
+  };
+  const keeper = createSoundtrackKeeper({ ingresses, reachable: async () => true, room_open: async () => true, url_of: (s) => `https://x.test/${s}.ogg`, now: () => clock });
+  await keeper.ensure('story-aaaaaa', 'tavern');
+  clock += 69000;
+  // The scene changes; the webhook for the deleted tavern ingress arrives while the forest ingress is still being created
+  const change = keeper.ensure('story-aaaaaa', 'forest');
+  await sleep(10);
+  const late = keeper.onEnded('story-aaaaaa', 'scene:tavern');
+  assert.equal(await late, 'ignored');
+  assert.equal((await change).ok, true);
+  assert.deepEqual(calls, ['create scene:tavern', 'remove IN_1', 'create scene:forest']);
+  assert.deepEqual(store.map((i) => i.name), ['scene:forest']);
+});
