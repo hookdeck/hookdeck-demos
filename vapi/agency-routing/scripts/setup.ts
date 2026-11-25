@@ -23,7 +23,7 @@ const TOOL_NAME = 'lookup_customer';
 const SIGNATURE_PREFIX = process.env.VAPI_SIGNATURE_PREFIX || '';
 // Set TRIM_PAYLOAD=true to have Hookdeck strip system prompts from payloads after verification
 const TRIM_PAYLOAD = process.env.TRIM_PAYLOAD === 'true';
-const MODEL = { provider: 'openai', model: process.env.VAPI_MODEL || 'gpt-4o' };
+const MODEL = { provider: 'openai', model: process.env.VAPI_MODEL || 'gpt-4.1' };
 
 const CONNECTION_RULES = [
   // The same message of the same call inside 10 minutes is a duplicate: the message type, call, status
@@ -128,6 +128,8 @@ async function setupVapi(secret: string, urls: { [slug: string]: string }) {
       firstMessage: client.first_message,
       model: { ...MODEL, messages: [{ role: 'system', content: client.system_prompt }], toolIds: [tool.id] },
       voice: { provider: 'vapi', voiceId: 'Elliot' },
+      // Deepgram key-term prompting for the names callers give, so the lookup gets the right spelling
+      transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en', keyterm: client.crm.map((r) => r.name) },
       server: { url: urls[client.slug], credentialId: credential.id, timeoutSeconds: 20 },
       serverMessages: ['status-update', 'end-of-call-report', 'tool-calls'],
       monitorPlan: { controlEnabled: true, listenEnabled: false },

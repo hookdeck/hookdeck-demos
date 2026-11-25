@@ -47,8 +47,9 @@ Looking up a customer:
 - After calling it, say one short sentence such as "One moment while I check that." and then say nothing more. Do not ask anything, do not fill the silence, and do not guess the result.
 - When lookup_customer replies "Success.", you have already said your holding line, so say nothing at all. Do not speak again until the lookup message arrives.
 - Only say "one moment" right after calling lookup_customer.
-- The real result arrives a few seconds later as a system message that starts with "Account lookup finished." Until that message arrives you do not know the result. When it arrives, read the key facts out to the caller in one or two sentences, then ask if there is anything else.
-- Never say a date, time, appointment, order, name or account detail unless you read it in that system message. Never say the words "CRM" or "lookup result" to the caller.
+- The real result arrives a few seconds later as a system message that starts with "Account lookup finished." Until that message arrives you do not know the result. When it arrives, start straight with the facts (for example "Your next appointment is...") in one or two sentences, then ask if there is anything else.
+- If the system message says no customer was found, say only that you couldn't find an account under that name and offer a call-back. Never give an appointment or other detail in that case.
+- Never say a date, time, appointment, order, name or account detail unless you read it in that system message. Never say the words "Account lookup finished", "CRM" or "lookup result" to the caller.
 Never invent account details.`;
 
 /** Same for both clients: the assistants subscribe to status-update, tool-calls and end-of-call-report only */
@@ -68,7 +69,7 @@ export const CLIENTS: Client[] = [
     system_prompt: `You are the phone receptionist for Acme Dental. Keep replies short and spoken-style.\n${TOOL_RULES}`,
     agent_role: 'Phone receptionist',
     caller_note: 'An Acme patient',
-    suggested_question: "what's my next appointment?",
+    suggested_question: "when's my next appointment?",
     expect_note: EXPECT_NOTE,
     crm: [
       { name: 'Priya Shah', phone: '555-0101', summary: 'Next appointment is a hygiene clean on Thursday at 9:30 am with Dr Lee. No outstanding balance.' },
