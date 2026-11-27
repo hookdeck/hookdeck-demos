@@ -18,12 +18,12 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@trigger.dev/sdk": "^4.3.3"
+    "@trigger.dev/sdk": "^4.8.10"
   },
   "devDependencies": {
-    "@trigger.dev/build": "^4.3.3",
+    "@trigger.dev/build": "^4.8.10",
     "dotenv": "^16.4.5",
-    "trigger.dev": "^4.3.3",
+    "trigger.dev": "^4.8.10",
     "typescript": "^5.7.0"
   }
 }
