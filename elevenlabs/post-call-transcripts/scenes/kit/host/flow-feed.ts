@@ -166,8 +166,10 @@ export function createFlowFeed(options: FlowFeedOptions) {
     return failures[which] > 0 ? Math.min(slowed * 2 ** Math.min(failures[which], 4), 15000) : slowed
   }
 
+  /** The webhook's type, short: "post_call_transcription" becomes "transcript". */
+  const kindOf = (raw: string) => raw.replace(/^post_call_/, '').replace(/^transcription$/, 'transcript')
   const label = options.packetLabel ?? ((m: FeedMessage) => {
-    const kind = m.label.replace(/^post_call_/, '').replace(/^transcription$/, 'transcript')
+    const kind = kindOf(m.label)
     const size = formatBytes(m.bytes)
     return size ? `${kind} ${size}` : kind
   })
@@ -181,7 +183,13 @@ export function createFlowFeed(options: FlowFeedOptions) {
     return entry.latest
   }
 
-  interface Journey { label: string, bytes: number | null, request_id?: string, event_id?: string | null }
+  /**
+   * One webhook's trip. `name` (its type, such as "transcript") prefixes the badges, because a
+   * sender often sends two webhooks at once: without it, the second webhook's "handled" replaces
+   * the first one's "answering 500" and reads as the failed attempt succeeding.
+   */
+  interface Journey { label: string, name: string, bytes: number | null, request_id?: string, event_id?: string | null }
+  const tag = (j: Journey, text: string) => j.name ? `${j.name} · ${text}` : text
 
   /** The webhook reaches Event Gateway: packet in, then the chips do their work. */
   async function playIngest(j: Journey, outcome: 'ok' | 'duplicate' | 'rejected', sender_status = 200) {
@@ -198,19 +206,19 @@ export function createFlowFeed(options: FlowFeedOptions) {
     if (rejected) {
       live.chip(ids.verify, 'danger', 5)
       live.state(ids.gateway, 'down', 5)
-      live.badge(ids.gateway, 'verification failed', 'danger', 6)
+      live.badge(ids.gateway, tag(j, 'verification failed'), 'danger', 6)
       return
     }
     live.chip(ids.verify, 'success', 3)
     await sleep(350)
     if (outcome === 'duplicate') {
       live.chip(ids.dedup, 'warn', 5)
-      live.badge(ids.gateway, 'duplicate · dropped', 'warn', 6)
+      live.badge(ids.gateway, tag(j, 'duplicate · dropped'), 'warn', 6)
       return
     }
     live.chip(ids.store, 'success', 3)
     live.chip(ids.dedup, 'success', 3)
-    live.badge(ids.gateway, 'verified · stored', 'success', 4)
+    live.badge(ids.gateway, tag(j, 'verified · stored'), 'success', 4)
     await sleep(300)
   }
 
@@ -220,7 +228,7 @@ export function createFlowFeed(options: FlowFeedOptions) {
     const big = (j.bytes ?? 0) >= bigBytes
     if (attempt_no > 1) {
       live.chip(ids.retry, 'warn', 3)
-      live.badge(ids.gateway, `retry · attempt ${attempt_no}`, 'warn', 3)
+      live.badge(ids.gateway, tag(j, `retry · attempt ${attempt_no}`), 'warn', 3)
     }
     await live.send(ids.out, { label: j.label, big, data })
     live.badge(ids.listen, 'forwarding', 'blue', 3)
@@ -228,20 +236,20 @@ export function createFlowFeed(options: FlowFeedOptions) {
     last_app_activity = Date.now()
     if (answer.ok) {
       live.state(ids.app, 'ok', 4)
-      live.badge(ids.app, `handled · attempt ${attempt_no}`, 'success', 8)
-      live.badge(ids.gateway, attempt_no > 1 ? `delivered · attempt ${attempt_no}` : 'delivered', 'success', 5)
+      live.badge(ids.app, tag(j, attempt_no > 1 ? `handled · attempt ${attempt_no}` : 'handled'), 'success', 8)
+      live.badge(ids.gateway, tag(j, attempt_no > 1 ? `delivered · attempt ${attempt_no}` : 'delivered'), 'success', 5)
       if (attempt_no > 1)
         live.chip(ids.retry, 'success', 4)
       return
     }
     live.state(ids.app, 'down')
-    live.badge(ids.app, `answering ${answer.text}`, 'danger')
+    live.badge(ids.app, tag(j, `answering ${answer.text}`), 'danger')
     if (answer.final) {
-      live.badge(ids.gateway, `attempt ${attempt_no} failed`, 'danger', 8)
+      live.badge(ids.gateway, tag(j, `attempt ${attempt_no} failed`), 'danger', 8)
       return
     }
     live.chip(ids.retry, 'warn')
-    live.badge(ids.gateway, answer.retry_in ? `attempt ${attempt_no} failed · retry in ${answer.retry_in} s` : `attempt ${attempt_no} failed · will retry`, 'warn')
+    live.badge(ids.gateway, tag(j, answer.retry_in ? `attempt ${attempt_no} failed · retry in ${answer.retry_in} s` : `attempt ${attempt_no} failed · will retry`), 'warn')
   }
 
   // ---- From the flow state (Event Gateway's API) ----
@@ -250,7 +258,7 @@ export function createFlowFeed(options: FlowFeedOptions) {
     const m = await verdict(entry)
     options.onActivity?.(m)
     const duplicate = !m.rejected && m.events.length === 0 && (m.ignored_count ?? 0) > 0
-    await playIngest({ label: label(m), bytes: m.bytes ?? null, request_id: m.request_id }, m.rejected ? 'rejected' : duplicate ? 'duplicate' : 'ok', m.sender_status)
+    await playIngest({ label: label(m), name: kindOf(m.label), bytes: m.bytes ?? null, request_id: m.request_id }, m.rejected ? 'rejected' : duplicate ? 'duplicate' : 'ok', m.sender_status)
   }
 
   async function deliver(entry: Entry, event_id: string, attempt_id: string) {
@@ -260,7 +268,7 @@ export function createFlowFeed(options: FlowFeedOptions) {
     if (!event || !attempt)
       return
     const retrying = !TERMINAL.has(event.status) && event.next_attempt_at
-    await playDeliver({ label: label(m), bytes: m.bytes ?? null, request_id: m.request_id }, attempt.number, {
+    await playDeliver({ label: label(m), name: kindOf(m.label), bytes: m.bytes ?? null, request_id: m.request_id }, attempt.number, {
       ok: attempt.status === 'SUCCESSFUL',
       text: attempt.response_status ?? attempt.error_code ?? 'no answer',
       retry_in: retrying ? Math.max(1, Math.round((Date.parse(event.next_attempt_at!) - Date.now()) / 1000)) : null,
@@ -323,9 +331,9 @@ export function createFlowFeed(options: FlowFeedOptions) {
             if (fast_first)
               continue
             const attempt_no = ev.count
-            const kind = d.label.replace(/^post_call_/, '').replace(/^transcription$/, 'transcript')
+            const kind = kindOf(d.label)
             const size = formatBytes(d.bytes)
-            const j: Journey = { label: options.packetLabel ? options.packetLabel({ label: d.label, bytes: d.bytes } as FeedMessage) : size ? `${kind} ${size}` : kind, bytes: d.bytes, event_id: d.event_id }
+            const j: Journey = { label: options.packetLabel ? options.packetLabel({ label: d.label, bytes: d.bytes } as FeedMessage) : size ? `${kind} ${size}` : kind, name: kind, bytes: d.bytes, event_id: d.event_id }
             const ok = d.status < 400
             ev.chain = ev.chain.then(async () => {
               if (attempt_no === 1) {
