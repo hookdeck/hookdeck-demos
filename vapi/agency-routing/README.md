@@ -1,5 +1,7 @@
 # Vapi agency routing
 
+**Tutorial:** [Building agency call routing with Vapi and Hookdeck](https://hookdeck.com/webhooks/platforms/building-agency-call-routing-with-vapi)
+
 A voice AI agency routes each client's Vapi call events to that client's endpoint through Hookdeck, with an async tool that returns its result into the live call.
 
 ## Set up
