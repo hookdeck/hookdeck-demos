@@ -16,6 +16,7 @@ vapi/           Vapi integration demos
 elevenlabs/     ElevenLabs integration demos
 retell/         Retell AI integration demos
 livekit/        LiveKit integration demos
+ecommerce/      Demo Hookdeck project setup with e-commerce webhook traffic
 _shared/        Source of truth for code shared across demos
 ```
 
@@ -95,6 +96,14 @@ For example, `npx giget@latest gh:hookdeck/hookdeck-demos/deepgram/stt-tts my-de
 | Demo | Description |
 |------|-------------|
 | [voice-adventure](livekit/voice-adventure/) | A multiplayer LiveKit voice adventure with AI characters; room, participant and ingress webhooks through Hookdeck build a session chronicle |
+
+### E-commerce
+
+This folder doesn't follow the `vendor/use-case/` convention, because it covers several e-commerce vendors.
+
+| Demo | Description |
+|------|-------------|
+| [ecommerce](ecommerce/) | Terraform creates sources, destinations and connections in a Hookdeck project, then a generator sends Shopify, BigCommerce, WooCommerce, Attentive and WhatsApp webhooks to it at set rates, including a Shopify scenario where one store spikes past its delivery group's limit |
 
 ## Shared Utilities
 
