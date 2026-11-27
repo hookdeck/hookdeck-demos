@@ -1,5 +1,7 @@
 # Retell outbound lead calling with Hookdeck
 
+**Tutorial:** [Building outbound lead calling with Retell AI and Hookdeck](https://hookdeck.com/webhooks/platforms/building-outbound-lead-calling-with-retell)
+
 A lead arrives in the demo app. The page starts a browser call with [Retell AI](https://www.retellai.com/)'s voice agent (optionally the app places an outbound phone call instead), passing the lead's details as dynamic variables. Retell's call events come back through [Hookdeck Event Gateway](https://hookdeck.com/event-gateway) to the app, which updates the lead's status and stores the call summary and analysis.
 
 ```

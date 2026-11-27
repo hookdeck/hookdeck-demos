@@ -1,5 +1,7 @@
 # LiveKit story night with Hookdeck
 
+**Tutorial:** [Building a call log and session chronicle with LiveKit and Hookdeck](https://hookdeck.com/webhooks/platforms/building-a-call-log-with-livekit)
+
 ## The use case
 
 A backend that needs a reliable record of what happens in LiveKit rooms: who joined, who dropped, which tracks were published, when an ingress or egress started and ended, and how long the session ran. LiveKit reports all of it as webhooks. This demo builds that record from the room webhooks, delivered through [Hookdeck Event Gateway](https://hookdeck.com/event-gateway): the app verifies each webhook's signed token, Event Gateway deduplicates repeats on the event `id` and retries deliveries when the app fails, and every event can be replayed.
